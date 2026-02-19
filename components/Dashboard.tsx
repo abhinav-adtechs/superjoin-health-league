@@ -19,7 +19,7 @@ interface DashboardProps {
 
 export const Dashboard: React.FC<DashboardProps> = ({ players, matches }) => {
   const [trajectoryView, setTrajectoryView] = useState<StandingsView>('NORMALISED');
-  const colors = ['#00E676', '#448AFF', '#FF6E40', '#FFD740', '#7C4DFF', '#FF5252'];
+  const colors = ['#059669', '#2563eb', '#ea580c', '#d97706', '#7c3aed', '#dc2626'];
 
   const sortedMatches = [...matches].sort((a, b) => a.timestamp - b.timestamp);
 
@@ -238,31 +238,31 @@ export const Dashboard: React.FC<DashboardProps> = ({ players, matches }) => {
           ) : (
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={trajectoryData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" />
                 <XAxis
                   dataKey="match"
-                  stroke="rgba(255,255,255,0.1)"
-                  tick={{ fontSize: 11, fill: '#55556A', fontFamily: 'JetBrains Mono' }}
-                  axisLine={{ stroke: 'rgba(255,255,255,0.04)' }}
+                  stroke="rgba(0,0,0,0.12)"
+                  tick={{ fontSize: 11, fill: '#64748b', fontFamily: 'JetBrains Mono' }}
+                  axisLine={{ stroke: 'rgba(0,0,0,0.06)' }}
                 />
                 <YAxis
-                  stroke="rgba(255,255,255,0.1)"
-                  tick={{ fontSize: 11, fill: '#55556A', fontFamily: 'JetBrains Mono' }}
-                  axisLine={{ stroke: 'rgba(255,255,255,0.04)' }}
+                  stroke="rgba(0,0,0,0.12)"
+                  tick={{ fontSize: 11, fill: '#64748b', fontFamily: 'JetBrains Mono' }}
+                  axisLine={{ stroke: 'rgba(0,0,0,0.06)' }}
                   tickFormatter={trajectoryView !== 'TABLE' ? (v) => Number(v).toFixed(2) : undefined}
                 />
                 <Tooltip
                   contentStyle={{
-                    backgroundColor: 'rgba(15, 15, 36, 0.95)',
-                    border: '1px solid rgba(255,255,255,0.08)',
+                    backgroundColor: 'rgba(255, 255, 255, 0.98)',
+                    border: '1px solid rgba(0,0,0,0.08)',
                     borderRadius: '12px',
                     backdropFilter: 'blur(20px)',
-                    boxShadow: '0 20px 40px -12px rgba(0,0,0,0.5)',
+                    boxShadow: '0 20px 40px -12px rgba(0,0,0,0.15)',
                     fontSize: '12px',
                     fontFamily: 'JetBrains Mono',
                   }}
-                  itemStyle={{ color: '#EAEAF0', fontSize: '11px' }}
-                  labelStyle={{ color: '#55556A', fontSize: '10px', fontWeight: 600 }}
+                  itemStyle={{ color: '#0f172a', fontSize: '11px' }}
+                  labelStyle={{ color: '#64748b', fontSize: '10px', fontWeight: 600 }}
                 />
                 <Legend
                   wrapperStyle={{ fontSize: '11px', fontFamily: 'Inter' }}
@@ -281,7 +281,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ players, matches }) => {
                       r: 5,
                       stroke: colors[i % colors.length],
                       strokeWidth: 2,
-                      fill: '#050510',
+                      fill: '#ffffff',
                     }}
                   />
                 ))}

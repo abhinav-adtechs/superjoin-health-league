@@ -11,7 +11,7 @@ import { Login } from './components/Login';
 import { LoginDetails } from './components/LoginDetails';
 import { db } from './services/storage';
 import { auth, Admin } from './services/auth';
-import { Trophy, Users, History, PlusCircle, LayoutDashboard, Lock, Zap, ChevronRight } from 'lucide-react';
+import { Trophy, Users, History, PlusCircle, LayoutDashboard, Lock, Heart, ChevronRight } from 'lucide-react';
 
 const App: React.FC = () => {
   const [players, setPlayers] = useState<Player[]>([]);
@@ -134,18 +134,18 @@ const App: React.FC = () => {
           <div className="h-14 sm:h-16 flex items-center justify-between">
             {/* Logo */}
             <div className="flex items-center gap-3">
-              <div className="relative group">
+                <div className="relative group">
                 <div className="absolute -inset-1 bg-gradient-to-r from-accent-green/20 to-accent-gold/20 rounded-xl blur opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
                 <div className="relative w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-glass-medium border border-glass-border flex items-center justify-center overflow-hidden">
-                  <Zap className="w-4 h-4 sm:w-5 sm:h-5 text-accent-green" />
+                  <Heart className="w-4 h-4 sm:w-5 sm:h-5 text-accent-green" />
                 </div>
               </div>
               <div className="flex items-center gap-1.5">
-                <span className="text-sm sm:text-base font-bold text-text-primary tracking-tight">FIFA</span>
-                <span className="text-sm sm:text-base font-bold gradient-text-static tracking-tight">LEAGUE</span>
+                <span className="text-sm sm:text-base font-bold text-text-primary tracking-tight">OFFICE</span>
+                <span className="text-sm sm:text-base font-bold gradient-text-static tracking-tight">HEALTH</span>
               </div>
               <span className="hidden sm:inline-flex items-center text-[10px] font-mono font-medium text-text-muted bg-glass-light border border-glass-border rounded-md px-1.5 py-0.5">
-                S1
+                Wellness
               </span>
             </div>
 
@@ -163,8 +163,8 @@ const App: React.FC = () => {
               className="btn-primary flex items-center gap-2 text-xs sm:text-sm disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:transform-none disabled:hover:shadow-none"
             >
               <PlusCircle className="w-4 h-4" />
-              <span className="hidden sm:inline">Record Result</span>
-              <span className="sm:hidden">Result</span>
+              <span className="hidden sm:inline">Log Activity</span>
+              <span className="sm:hidden">Log</span>
             </button>
           </div>
         </div>
@@ -178,15 +178,15 @@ const App: React.FC = () => {
             <div className="animate-fade-up">
               <div className="flex items-center gap-2 mb-2">
                 <div className="w-2 h-2 rounded-full bg-accent-green animate-glow-pulse"></div>
-                <span className="text-[11px] font-mono font-medium text-accent-green uppercase tracking-widest">Live Season</span>
+                <span className="text-[11px] font-mono font-medium text-accent-green uppercase tracking-widest">Wellness</span>
               </div>
               <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-tight text-text-primary leading-[1.1]">
-                FC26 League<br />
-                <span className="gradient-text">Tracker</span>
+                Office Health<br />
+                <span className="gradient-text">Leaderboard</span>
               </h1>
               <p className="mt-3 text-sm text-text-secondary max-w-md leading-relaxed">
-                Track matches, standings, and stats for your FIFA league. 
-                {matches.length > 0 && ` ${matches.length} matches played so far this season.`}
+                Track activity, wellness, and leaderboard for your office. 
+                {matches.length > 0 && ` ${matches.length} entries so far.`}
               </p>
             </div>
 
@@ -195,7 +195,7 @@ const App: React.FC = () => {
               <div className="animate-stagger-2 glass-card gradient-border p-4 sm:p-5 min-w-[200px]">
                 <div className="flex items-center gap-2 mb-3">
                   <Trophy className="w-3.5 h-3.5 text-accent-gold" />
-                  <span className="text-[10px] font-semibold text-accent-gold uppercase tracking-widest">League Leader</span>
+                  <span className="text-[10px] font-semibold text-accent-gold uppercase tracking-widest">Top Performer</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <img
@@ -277,10 +277,10 @@ const App: React.FC = () => {
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              <Zap className="w-4 h-4 text-text-muted" />
-              <span className="text-xs font-medium text-text-muted">FIFA League Tracker</span>
+              <Heart className="w-4 h-4 text-text-muted" />
+              <span className="text-xs font-medium text-text-muted">Office Health League</span>
               <span className="text-text-muted">·</span>
-              <span className="text-xs text-text-muted">FC26 Season 1</span>
+              <span className="text-xs text-text-muted">Wellness Leaderboard</span>
             </div>
             <div className="text-[11px] text-text-muted font-medium">
               Powered by <span className="text-text-secondary">Superjoin</span>

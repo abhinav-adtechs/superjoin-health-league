@@ -15,7 +15,7 @@ export interface LoginAuditEntry {
   user_agent: string | null;
 }
 
-const AUTH_STORAGE_KEY = 'fifa_admin_auth';
+const AUTH_STORAGE_KEY = 'office_health_admin_auth';
 
 export const auth = {
   // Check if user is authenticated

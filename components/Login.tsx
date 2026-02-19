@@ -76,7 +76,7 @@ export const Login: React.FC<LoginProps> = ({ currentAdmin, onLogin, onLogout })
             <div>
               <div className="text-xs font-semibold text-accent-green">Admin Access Active</div>
               <div className="text-[10px] text-text-muted mt-0.5">
-                You can add matches, manage players, and modify resources.
+                You can log activity, manage participants, and modify resources.
               </div>
             </div>
           </div>
