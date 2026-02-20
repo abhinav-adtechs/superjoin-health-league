@@ -31,7 +31,9 @@ export async function PUT(request: Request) {
   const body = await request.json();
   const allowed = [
     'display_name', 'age', 'gender', 'height_cm', 'starting_weight', 'current_weight',
-    'fitness_goal', 'timezone', 'reminder_time', 'slack_user_id', 'avatar_url'
+    'fitness_goal', 'timezone', 'reminder_time', 'slack_user_id', 'avatar_url',
+    'goal_workout_mins_week', 'goal_workout_days_week', 'goal_steps_day',
+    'goal_sleep_hours', 'goal_sleep_hours_min', 'goal_sleep_hours_max', 'goal_water_liters', 'goal_home_cooked_per_week'
   ];
   const updates: Record<string, unknown> = {};
   for (const key of allowed) {

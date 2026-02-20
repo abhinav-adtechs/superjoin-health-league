@@ -189,11 +189,11 @@ body {
 .rank-2 { background: linear-gradient(135deg, rgba(100, 116, 139, 0.12), rgba(100, 116, 139, 0.04)); border: 1px solid rgba(100, 116, 139, 0.25); color: #475569; }
 .rank-3 { background: linear-gradient(135deg, rgba(180, 83, 9, 0.12), rgba(180, 83, 9, 0.04)); border: 1px solid rgba(180, 83, 9, 0.25); color: #92400e; }
 
-/* Modal */
+/* Modal – high z-index so dialogs appear above header/nav when portaled */
 .modal-overlay {
   position: fixed;
   inset: 0;
-  z-index: 100;
+  z-index: 9999;
   background: rgba(15, 23, 42, 0.4);
   backdrop-filter: blur(8px);
   display: flex;
@@ -215,4 +215,21 @@ body {
 }
 @media (min-width: 640px) {
   .modal-content { max-width: 32rem; }
+}
+
+/* New entry: full-screen on mobile, touch-friendly */
+@media (max-width: 639px) {
+  .entry-modal-overlay {
+    padding: 0;
+    align-items: stretch;
+  }
+  .entry-modal-content {
+    max-width: none;
+    max-height: none;
+    height: 100dvh;
+    min-height: 100dvh;
+    border-radius: 0;
+    display: flex;
+    flex-direction: column;
+  }
 }

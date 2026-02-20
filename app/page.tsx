@@ -20,7 +20,7 @@ const TABS: { id: TabId; label: string; icon: typeof Heart }[] = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'log', label: 'Workout history', icon: PenLine },
   { id: 'leaderboard', label: 'Leaderboard', icon: Trophy },
-  { id: 'me', label: 'My Stats', icon: User },
+  { id: 'me', label: 'Profile & Goals', icon: User },
 ];
 
 export default function Home() {
@@ -259,7 +259,7 @@ export default function Home() {
                 </div>
               </div>
             <div className="flex items-center gap-2">
-              <NewEntryCTA onSuccess={() => { loadUser(); setEntryRefresh((r) => r + 1); }} />
+              <NewEntryCTA profile={profile ?? null} onSuccess={() => { loadUser(); setEntryRefresh((r) => r + 1); }} />
               <span className="text-xs text-text-muted hidden sm:inline">{profile?.display_name}</span>
               <button
                 type="button"
@@ -295,7 +295,7 @@ export default function Home() {
         {activeTab === 'dashboard' && <DashboardTab profile={profile!} onRefresh={loadUser} />}
         {activeTab === 'log' && <LogEntryTab profile={profile!} onSuccess={loadUser} refreshTrigger={entryRefresh} />}
         {activeTab === 'leaderboard' && <LeaderboardTab />}
-        {activeTab === 'me' && <MyStatsTab profile={profile!} />}
+        {activeTab === 'me' && <MyStatsTab profile={profile!} onSuccess={loadUser} />}
       </main>
 
       <footer className="border-t border-white/10 mt-12">

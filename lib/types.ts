@@ -34,6 +34,15 @@ export interface Profile {
   pin_set_at?: string | null;
   created_at: string;
   updated_at: string;
+  // Personal goals (optional)
+  goal_workout_mins_week?: number | null;
+  goal_workout_days_week?: number | null;
+  goal_steps_day?: number | null;
+  goal_sleep_hours?: number | null;
+  goal_sleep_hours_min?: number | null;
+  goal_sleep_hours_max?: number | null;
+  goal_water_liters?: number | null;
+  goal_home_cooked_per_week?: number | null;
 }
 
 export interface DailyEntry {

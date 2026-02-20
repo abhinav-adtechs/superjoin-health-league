@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
+import { createServiceRoleClient } from '@/lib/supabase/admin';
 import { NextResponse } from 'next/server';
-import { calculateDailyPoints } from '@/lib/points';
 import type { LeaderboardView, LeaderboardRanking } from '@/lib/types';
 
 type ProfileRow = { id: string; display_name: string; age_bracket: string; joined_at: string };
@@ -71,17 +71,29 @@ export async function GET(request: Request) {
     });
   }
 
+  // Use service-role client so we can read ALL users' daily_entries (RLS otherwise only returns current user's rows)
   let entries: { user_id: string; date: string; daily_points: number }[] = [];
-
-  if (dateFilter) {
-    let q = supabase.from('daily_entries').select('user_id, date, daily_points');
-    q = q.gte(dateFilter.column, dateFilter.gte);
-    if (dateFilter.lte) q = q.lte(dateFilter.column, dateFilter.lte);
-    const { data } = await q;
-    entries = (data ?? []) as typeof entries;
-  } else {
-    const { data } = await supabase.from('daily_entries').select('user_id, date, daily_points');
-    entries = (data ?? []) as typeof entries;
+  try {
+    const adminSupabase = createServiceRoleClient();
+    if (dateFilter) {
+      let q = adminSupabase.from('daily_entries').select('user_id, date, daily_points');
+      q = q.gte(dateFilter.column, dateFilter.gte);
+      if (dateFilter.lte) q = q.lte(dateFilter.column, dateFilter.lte);
+      const { data } = await q;
+      entries = (data ?? []) as typeof entries;
+    } else {
+      const { data } = await adminSupabase.from('daily_entries').select('user_id, date, daily_points');
+      entries = (data ?? []) as typeof entries;
+    }
+  } catch (e) {
+    return NextResponse.json({
+      error: 'Cannot load leaderboard entries',
+      view,
+      period,
+      rankings: [],
+      category_leaders: {},
+      team_stats: {},
+    }, { status: 503 });
   }
 
   const pointsByUser = new Map<string, number>();

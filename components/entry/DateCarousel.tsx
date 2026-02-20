@@ -1,0 +1,84 @@
+'use client';
+
+import { useMemo } from 'react';
+
+const MAX_DAYS_BACK = 7;
+
+function getDateStrings(): { date: string; label: string; sublabel: string }[] {
+  const today = new Date();
+  today.setHours(12, 0, 0, 0);
+  const out: { date: string; label: string; sublabel: string }[] = [];
+  for (let i = 0; i <= MAX_DAYS_BACK; i++) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    const dateStr = d.toISOString().slice(0, 10);
+    const label =
+      i === 0 ? 'Today' : i === 1 ? 'Yesterday' : `${i} days ago`;
+    const sublabel = d.toLocaleDateString(undefined, {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+    });
+    out.push({ date: dateStr, label, sublabel });
+  }
+  return out;
+}
+
+interface DateCarouselProps {
+  value: string;
+  onChange: (date: string) => void;
+  className?: string;
+}
+
+export function DateCarousel({ value, onChange, className = '' }: DateCarouselProps) {
+  const DATE_OPTIONS = useMemo(() => getDateStrings(), []);
+  
+  // Normalize the value date to YYYY-MM-DD format for comparison
+  const normalizeDate = (dateStr: string): string => {
+    try {
+      const d = new Date(dateStr + 'T12:00:00');
+      return d.toISOString().slice(0, 10);
+    } catch {
+      return dateStr;
+    }
+  };
+  
+  const normalizedValue = normalizeDate(value);
+  const index = DATE_OPTIONS.findIndex((o) => o.date === normalizedValue);
+  const currentIndex = index >= 0 ? index : 0;
+  const selected = DATE_OPTIONS[currentIndex];
+
+  const go = (delta: number) => {
+    const next = Math.max(0, Math.min(DATE_OPTIONS.length - 1, currentIndex + delta));
+    onChange(DATE_OPTIONS[next].date);
+  };
+
+  return (
+    <div className={`flex items-center justify-between gap-3 ${className}`}>
+      <button
+        type="button"
+        onClick={() => go(1)}
+        disabled={currentIndex >= DATE_OPTIONS.length - 1}
+        className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl border border-white/10 bg-surface-0/50 text-text-muted hover:bg-black/5 hover:text-text-primary disabled:opacity-40 disabled:pointer-events-none touch-manipulation"
+        aria-label="Older date"
+      >
+        <span className="text-lg font-medium">←</span>
+      </button>
+      <div className="flex-1 text-center min-w-0">
+        <p className="font-semibold text-text-primary truncate">{selected.label}</p>
+        <p className="text-sm text-text-muted truncate">{selected.sublabel}</p>
+      </div>
+      <button
+        type="button"
+        onClick={() => go(-1)}
+        disabled={currentIndex <= 0}
+        className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl border border-white/10 bg-surface-0/50 text-text-muted hover:bg-black/5 hover:text-text-primary disabled:opacity-40 disabled:pointer-events-none touch-manipulation"
+        aria-label="More recent date"
+      >
+        <span className="text-lg font-medium">→</span>
+      </button>
+    </div>
+  );
+}
+
+export { MAX_DAYS_BACK };

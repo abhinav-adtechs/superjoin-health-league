@@ -17,8 +17,7 @@ export async function POST(request: Request) {
   const age = Number(body.age);
   const gender = body.gender;
   const height_cm = Number(body.height_cm);
-  const starting_weight = Number(body.starting_weight);
-  const fitness_goal = body.fitness_goal;
+  const current_weight = Number(body.current_weight ?? body.starting_weight);
 
   if (!display_name || display_name.length < 1) {
     return NextResponse.json({ error: 'display_name required' }, { status: 400 });
@@ -32,12 +31,8 @@ export async function POST(request: Request) {
   if (!Number.isFinite(height_cm) || height_cm <= 0 || height_cm > 300) {
     return NextResponse.json({ error: 'Valid height_cm required' }, { status: 400 });
   }
-  if (!Number.isFinite(starting_weight) || starting_weight <= 0 || starting_weight > 500) {
-    return NextResponse.json({ error: 'Valid starting_weight required' }, { status: 400 });
-  }
-  const validGoals = ['lose_weight', 'gain_muscle', 'stay_active', 'general_wellness'];
-  if (!validGoals.includes(fitness_goal)) {
-    return NextResponse.json({ error: 'Valid fitness_goal required' }, { status: 400 });
+  if (!Number.isFinite(current_weight) || current_weight <= 0 || current_weight > 500) {
+    return NextResponse.json({ error: 'Valid current_weight required' }, { status: 400 });
   }
 
   const age_bracket = getAgeBracket(age);
@@ -49,9 +44,9 @@ export async function POST(request: Request) {
       age,
       gender,
       height_cm,
-      starting_weight,
-      current_weight: starting_weight,
-      fitness_goal,
+      starting_weight: current_weight,
+      current_weight,
+      fitness_goal: 'general_wellness',
       age_bracket,
     })
     .select()

@@ -51,7 +51,16 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   joined_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   is_active BOOLEAN NOT NULL DEFAULT true,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+  -- Personal goals (optional)
+  goal_workout_mins_week INTEGER CHECK (goal_workout_mins_week IS NULL OR (goal_workout_mins_week >= 0 AND goal_workout_mins_week <= 600)),
+  goal_workout_days_week INTEGER CHECK (goal_workout_days_week IS NULL OR (goal_workout_days_week >= 0 AND goal_workout_days_week <= 7)),
+  goal_steps_day INTEGER CHECK (goal_steps_day IS NULL OR (goal_steps_day >= 0 AND goal_steps_day <= 100000)),
+  goal_sleep_hours_min NUMERIC(3,1) CHECK (goal_sleep_hours_min IS NULL OR (goal_sleep_hours_min >= 0 AND goal_sleep_hours_min <= 24)),
+  goal_sleep_hours_max NUMERIC(3,1) CHECK (goal_sleep_hours_max IS NULL OR (goal_sleep_hours_max >= 0 AND goal_sleep_hours_max <= 24)),
+  goal_water_liters NUMERIC(3,1) CHECK (goal_water_liters IS NULL OR (goal_water_liters >= 0 AND goal_water_liters <= 10)),
+  goal_home_cooked_per_week INTEGER CHECK (goal_home_cooked_per_week IS NULL OR (goal_home_cooked_per_week >= 0 AND goal_home_cooked_per_week <= 21))
 );
 
 -- For non-Slack / email auth: slack_user_id can be null; id comes from auth.users
@@ -78,10 +87,11 @@ CREATE TABLE IF NOT EXISTS public.daily_entries (
 
   -- Nutrition
   water_liters NUMERIC(4,2) CHECK (water_liters IS NULL OR (water_liters >= 0 AND water_liters <= 10)),
-  home_cooked_meals INTEGER CHECK (home_cooked_meals IS NULL OR (home_cooked_meals >= 0 AND home_cooked_meals <= 3)),
+  home_cooked_meals INTEGER CHECK (home_cooked_meals IS NULL OR (home_cooked_meals >= 0 AND home_cooked_meals <= 5)),
   protein_meal BOOLEAN,
   protein_qty INTEGER CHECK (protein_qty IS NULL OR (protein_qty >= 0 AND protein_qty <= 500)),
   junk_food BOOLEAN,
+  meals_log JSONB,
   alcohol alcohol_enum,
 
   -- Sleep

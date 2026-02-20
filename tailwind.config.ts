@@ -9,6 +9,9 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        'primary-orange': '#FF6B35',
+        'primary-orange-dark': '#E55A2B',
+        'primary-orange-light': '#FF8C5A',
         surface: {
           '0': '#ffffff',
           '1': '#f8fafc',

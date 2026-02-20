@@ -5,7 +5,7 @@ import type { AgeBracket } from '@/lib/types';
 
 const ALLOWED_FIELDS = [
   'workout_done', 'workout_duration', 'workout_types', 'cardio_done', 'cardio_duration', 'cardio_type',
-  'steps', 'water_liters', 'home_cooked_meals', 'protein_meal', 'protein_qty', 'junk_food', 'alcohol',
+  'steps', 'water_liters', 'home_cooked_meals', 'protein_meal', 'protein_qty', 'junk_food', 'meals_log', 'alcohol',
   'sleep_hours', 'sleep_quality',
 ] as const;
 
@@ -14,13 +14,27 @@ function isValidDate(dateStr: string): boolean {
   return !isNaN(d.getTime());
 }
 
-function isTodayOrYesterday(dateStr: string): boolean {
-  const d = new Date(dateStr);
+const MAX_DAYS_BACK = 7;
+
+function isWithinAllowedPastRange(dateStr: string, maxDaysBack: number = MAX_DAYS_BACK): boolean {
+  const d = new Date(dateStr + 'T12:00:00');
   const today = new Date();
-  const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
-  const dDate = d.toDateString();
-  return dDate === today.toDateString() || dDate === yesterday.toDateString();
+  today.setHours(12, 0, 0, 0);
+  const dTime = d.getTime();
+  const todayTime = today.getTime();
+  if (dTime > todayTime) return false;
+  const minDate = new Date(today);
+  minDate.setDate(minDate.getDate() - maxDaysBack);
+  minDate.setHours(12, 0, 0, 0);
+  return dTime >= minDate.getTime();
+}
+
+function weekStart(d: Date): string {
+  const day = d.getDay();
+  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+  const monday = new Date(d);
+  monday.setDate(diff);
+  return monday.toISOString().slice(0, 10);
 }
 
 export async function GET(request: Request) {
@@ -55,8 +69,8 @@ export async function POST(request: Request) {
   if (!isValidDate(date)) {
     return NextResponse.json({ error: 'Invalid date' }, { status: 400 });
   }
-  if (!isTodayOrYesterday(date)) {
-    return NextResponse.json({ error: 'Only today or yesterday can be logged' }, { status: 400 });
+  if (!isWithinAllowedPastRange(date)) {
+    return NextResponse.json({ error: 'Date must be today or up to 7 days in the past' }, { status: 400 });
   }
 
   // Merge with existing entry so multiple logs per day (movement, meal, sleep) combine
@@ -89,7 +103,23 @@ export async function POST(request: Request) {
     } : {}),
   };
   for (const key of ALLOWED_FIELDS) {
-    if (body[key] !== undefined) entry[key] = body[key];
+    if (body[key] === undefined) continue;
+    if (key === 'workout_types') {
+      // Union: merge existing + new without duplicates
+      const existingTypes: string[] = Array.isArray(entry.workout_types) ? (entry.workout_types as string[]) : [];
+      const newTypes: string[] = Array.isArray(body[key]) ? body[key] : [];
+      const merged = [...existingTypes, ...newTypes];
+      entry[key] = merged.filter((v, i) => merged.indexOf(v) === i);
+    } else if (key === 'workout_duration' && body[key] && existing?.workout_duration) {
+      // Sum: add new session on top of existing
+      entry[key] = Number(existing.workout_duration) + Number(body[key]);
+    } else if (key === 'cardio_duration' && body[key] && existing?.cardio_duration) {
+      // Sum: add new cardio on top of existing
+      entry[key] = Number(existing.cardio_duration) + Number(body[key]);
+    } else {
+      // All other fields: new value wins
+      entry[key] = body[key];
+    }
   }
 
   // Validation: if workout_done is false, clear duration/types
@@ -117,5 +147,16 @@ export async function POST(request: Request) {
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // Optional weight: upsert weekly_weigh_ins for entry date's week and update profile
+  const weight_kg = body.weight_kg != null ? Number(body.weight_kg) : undefined;
+  if (weight_kg != null && Number.isFinite(weight_kg) && weight_kg > 0 && weight_kg <= 500) {
+    const week_start = weekStart(new Date(date + 'T12:00:00'));
+    await supabase
+      .from('weekly_weigh_ins')
+      .upsert({ user_id: user.id, week_start, weight_kg }, { onConflict: 'user_id,week_start' });
+    await supabase.from('profiles').update({ current_weight: weight_kg }).eq('id', user.id);
+  }
+
   return NextResponse.json(data);
 }

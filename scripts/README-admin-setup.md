@@ -83,3 +83,28 @@ You should see:
 - Verify auth user exists: Check Supabase Dashboard > Authentication > Users
 - Verify email is confirmed (should be auto-confirmed)
 - Try resetting password via Supabase Dashboard
+
+---
+
+## Dummy data for testing
+
+To seed past health history for all existing profiles (daily entries, weekly weigh-ins, streaks):
+
+```bash
+# Uses SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY from .env.local or env
+node scripts/seed-dummy-data.js
+```
+
+Optional env vars:
+
+- `SEED_DAYS=90` — number of past days to generate (default: 90)
+- `SEED_ENTRY_PROB=0.72` — probability each day has an entry per user (default: 0.72)
+
+**Requirement:** At least one profile must exist (e.g. run `create-users` or create admin first).
+
+To remove the seeded data later:
+
+```bash
+node scripts/cleanup-dummy-data.js
+# Optional: SEED_DAYS=90 (must match the value used when seeding)
+```

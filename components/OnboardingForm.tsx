@@ -8,8 +8,7 @@ export function OnboardingForm({ onSuccess }: { onSuccess: () => void }) {
   const [age, setAge] = useState('');
   const [gender, setGender] = useState<'male' | 'female' | 'other'>('male');
   const [height_cm, setHeightCm] = useState('');
-  const [starting_weight, setStartingWeight] = useState('');
-  const [fitness_goal, setFitnessGoal] = useState<string>('general_wellness');
+  const [current_weight, setCurrentWeight] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -17,6 +16,7 @@ export function OnboardingForm({ onSuccess }: { onSuccess: () => void }) {
     e.preventDefault();
     setLoading(true);
     setError('');
+    const weight = Number(current_weight);
     const res = await fetch(apiUrl('/api/users/setup'), getApiFetchOptions({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -25,8 +25,7 @@ export function OnboardingForm({ onSuccess }: { onSuccess: () => void }) {
         age: Number(age),
         gender,
         height_cm: Number(height_cm),
-        starting_weight: Number(starting_weight),
-        fitness_goal,
+        current_weight: weight,
       }),
     }));
     const data = await res.json();
@@ -61,6 +60,7 @@ export function OnboardingForm({ onSuccess }: { onSuccess: () => void }) {
             value={age}
             onChange={(e) => setAge(e.target.value)}
             className="input-field"
+            placeholder="e.g. 28"
             required
           />
         </div>
@@ -88,35 +88,24 @@ export function OnboardingForm({ onSuccess }: { onSuccess: () => void }) {
             value={height_cm}
             onChange={(e) => setHeightCm(e.target.value)}
             className="input-field"
+            placeholder="e.g. 170"
             required
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-text-secondary mb-1">Starting weight (kg)</label>
+          <label className="block text-sm font-medium text-text-secondary mb-1">Current weight (kg)</label>
           <input
             type="number"
             min={1}
             max={500}
             step={0.1}
-            value={starting_weight}
-            onChange={(e) => setStartingWeight(e.target.value)}
+            value={current_weight}
+            onChange={(e) => setCurrentWeight(e.target.value)}
             className="input-field"
+            placeholder="e.g. 70"
             required
           />
         </div>
-      </div>
-      <div>
-        <label className="block text-sm font-medium text-text-secondary mb-1">Fitness goal</label>
-        <select
-          value={fitness_goal}
-          onChange={(e) => setFitnessGoal(e.target.value)}
-          className="input-field"
-        >
-          <option value="lose_weight">Lose weight</option>
-          <option value="gain_muscle">Gain muscle</option>
-          <option value="stay_active">Stay active</option>
-          <option value="general_wellness">General wellness</option>
-        </select>
       </div>
       {error && <p className="text-sm text-accent-red">{error}</p>}
       <button type="submit" disabled={loading} className="btn-primary w-full">

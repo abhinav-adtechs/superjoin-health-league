@@ -1,87 +1,104 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
-import { X } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
+import { X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { apiUrl, getApiFetchOptions } from '@/lib/api';
-import type { WorkoutOption, CardioType, Alcohol } from '@/lib/types';
+import type { WorkoutOption, CardioType, Profile } from '@/lib/types';
+import { DateCarousel, MAX_DAYS_BACK } from '@/components/entry/DateCarousel';
+import { SliderField } from '@/components/entry/SliderField';
+import { MealsSlots, mealsToCounts, mealsFromExisting, EMPTY_MEALS_LOG, type MealsLog } from '@/components/entry/MealsSlots';
+import { WorkoutSection } from '@/components/entry/WorkoutSection';
 
-const WORKOUT_BODY_PARTS: WorkoutOption[] = ['bicep', 'tricep', 'shoulder', 'chest', 'back', 'core', 'quad', 'hamstring', 'glute', 'calf', 'forearm'];
-const WORKOUT_CLUSTERS: WorkoutOption[] = ['push', 'pull', 'legs', 'full_body', 'bodyweight', 'other'];
-const CARDIO_OPTIONS: CardioType[] = [
-  'running', 'cycling', 'swimming', 'walking', 'hiking', 'rowing', 'dance',
-  'football', 'cricket', 'basketball', 'badminton', 'tennis', 'squash', 'volleyball', 'hockey',
-  'martial_arts', 'sports', 'other',
-];
-
-function label(s: string): string {
-  return s.replace(/_/g, ' ');
+export function getProteinTargetGrams(profile: Profile): number {
+  const weightKg = profile.current_weight ?? profile.starting_weight;
+  return Math.round(weightKg * 1.6);
 }
 
-export type EntryType = 'full' | 'movement' | 'meal_recovery' | 'sleep';
+export type EntryType = 'full' | 'movement' | 'meal_recovery' | 'sleep' | 'weight';
 
 const ENTRY_TITLES: Record<EntryType, string> = {
   full: 'Log full day',
-  movement: 'Workout',
+  movement: 'Strength',
   meal_recovery: 'Food',
   sleep: 'Sleep',
+  weight: 'Weight',
 };
+
+const CTA_TEXT: Record<EntryType, string> = {
+  movement: 'Log Strength 💪',
+  meal_recovery: 'Log Food 🥗',
+  sleep: 'Log Sleep 😴',
+  weight: 'Save Weight',
+  full: 'Smash it! 🎯',
+};
+
+const SUCCESS_MSG: Record<EntryType, (pts: number) => string> = {
+  movement: (pts) => `🔥 Crushed it! +${pts} pts`,
+  meal_recovery: (pts) => `🥗 Fuelled up! +${pts} pts`,
+  sleep: (pts) => `😴 Rest logged! +${pts} pts`,
+  weight: () => '⚖️ Weight saved!',
+  full: (pts) => `🏆 Full day locked in! +${pts} pts`,
+};
+
+const WIZARD_STEPS = ['date', 'movement', 'food', 'sleep', 'weight'] as const;
+type WizardStep = (typeof WIZARD_STEPS)[number];
+
+function isWithinAllowedPastRange(dateStr: string): boolean {
+  const d = new Date(dateStr + 'T12:00:00');
+  const today = new Date();
+  today.setHours(12, 0, 0, 0);
+  if (d.getTime() > today.getTime()) return false;
+  const min = new Date(today);
+  min.setDate(min.getDate() - MAX_DAYS_BACK);
+  min.setHours(12, 0, 0, 0);
+  return d.getTime() >= min.getTime();
+}
 
 interface LogEntryModalProps {
   entryType: EntryType;
+  profile: Profile;
   onClose: () => void;
   onSuccess: () => void;
 }
 
-export function LogEntryModal({ entryType, onClose, onSuccess }: LogEntryModalProps) {
+export function LogEntryModal({ entryType, profile, onClose, onSuccess }: LogEntryModalProps) {
   const today = new Date().toISOString().slice(0, 10);
   const [date, setDate] = useState(today);
-  const [workout_done, setWorkoutDone] = useState<boolean | null>(null);
-  const [workout_duration, setWorkoutDuration] = useState('');
+  const [wizardStep, setWizardStep] = useState(0);
+
+  // Workout — always start fresh (additive: backend merges on top of existing)
+  const [workout_duration, setWorkoutDuration] = useState(0);
   const [workout_types, setWorkoutTypes] = useState<WorkoutOption[]>([]);
-  const [workoutSearch, setWorkoutSearch] = useState('');
-  const [cardio_done, setCardioDone] = useState<boolean | null>(null);
-  const [cardio_duration, setCardioDuration] = useState('');
+  const [cardio_duration, setCardioDuration] = useState(0);
   const [cardio_type, setCardioType] = useState<CardioType | ''>('');
-  const [cardioSearch, setCardioSearch] = useState('');
-  const [steps, setSteps] = useState('');
-  const [water_liters, setWaterLiters] = useState('');
-  const [home_cooked_meals, setHomeCookedMeals] = useState<number | ''>('');
-  const [protein_meal, setProteinMeal] = useState<boolean | null>(null);
-  const [protein_qty, setProteinQty] = useState('');
-  const [junk_food, setJunkFood] = useState<boolean | null>(null);
-  const [alcohol, setAlcohol] = useState<Alcohol | ''>('');
-  const [sleep_hours, setSleepHours] = useState('');
-  const [sleep_quality, setSleepQuality] = useState<number | ''>('');
+  const [steps, setSteps] = useState<number | null>(null);
+
+  // Food / Sleep — load existing (last-value-wins totals for the day)
+  const [water_liters, setWaterLiters] = useState(0);
+  const [mealsLog, setMealsLog] = useState<MealsLog>(EMPTY_MEALS_LOG);
+  const [protein_qty, setProteinQty] = useState(0);
+  const [sleep_hours, setSleepHours] = useState(7);
+
+  // Weight — separate from workout step
+  const [weight_kg, setWeightKg] = useState<number | null>(null);
+
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: 'ok' | 'error'; text: string } | null>(null);
 
-  const isTodayOrYesterday = (d: string) => {
-    const dt = new Date(d);
-    const todayDate = new Date();
-    const yesterday = new Date(todayDate);
-    yesterday.setDate(yesterday.getDate() - 1);
-    return dt.toDateString() === todayDate.toDateString() || dt.toDateString() === yesterday.toDateString();
-  };
+  const proteinTarget = getProteinTargetGrams(profile);
+  const proteinMax = Math.max(150, proteinTarget + 30);
 
+  // Load food/sleep from existing entry (pre-fill totals); workout always starts fresh
   const loadExisting = async () => {
     const res = await fetch(apiUrl(`/api/entries?date=${date}`), getApiFetchOptions());
     const data = await res.json();
     if (data?.id) {
-      setWorkoutDone(data.workout_done ?? null);
-      setWorkoutDuration(data.workout_duration ?? '');
-      setWorkoutTypes(Array.isArray(data.workout_types) ? data.workout_types : []);
-      setCardioDone(data.cardio_done ?? null);
-      setCardioDuration(data.cardio_duration ?? '');
-      setCardioType(data.cardio_type ?? '');
-      setSteps(data.steps ?? '');
-      setWaterLiters(data.water_liters ?? '');
-      setHomeCookedMeals(data.home_cooked_meals ?? '');
-      setProteinMeal(data.protein_meal ?? null);
-      setProteinQty(data.protein_qty ?? '');
-      setJunkFood(data.junk_food ?? null);
-      setAlcohol(data.alcohol ?? '');
-      setSleepHours(data.sleep_hours ?? '');
-      setSleepQuality(data.sleep_quality ?? '');
+      setWaterLiters(Number(data.water_liters) || 0);
+      setMealsLog(mealsFromExisting(data.meals_log, Number(data.home_cooked_meals) || 0, Boolean(data.junk_food)));
+      setProteinQty(Number(data.protein_qty) || 0);
+      setSleepHours(Number(data.sleep_hours) || 7);
+      // Workout stays at default (0 / []) so each log is additive on the backend
     }
   };
 
@@ -89,58 +106,50 @@ export function LogEntryModal({ entryType, onClose, onSuccess }: LogEntryModalPr
     loadExisting();
   }, [date]);
 
-  const toggleWorkoutOption = (opt: WorkoutOption) => {
-    setWorkoutTypes((prev) =>
-      prev.includes(opt) ? prev.filter((o) => o !== opt) : [...prev, opt]
-    );
-  };
-
-  const workoutFilter = useMemo(() => {
-    const q = workoutSearch.trim().toLowerCase();
-    if (!q) return { body: WORKOUT_BODY_PARTS, clusters: WORKOUT_CLUSTERS };
-    const match = (s: string) => label(s).toLowerCase().includes(q);
-    return {
-      body: WORKOUT_BODY_PARTS.filter((o) => match(o)),
-      clusters: WORKOUT_CLUSTERS.filter((o) => match(o)),
-    };
-  }, [workoutSearch]);
-
-  const cardioFiltered = useMemo(() => {
-    const q = cardioSearch.trim().toLowerCase();
-    if (!q) return CARDIO_OPTIONS;
-    return CARDIO_OPTIONS.filter((c) => label(c).toLowerCase().includes(q));
-  }, [cardioSearch]);
-
   const buildPayload = (): Record<string, unknown> => {
-    const base: Record<string, unknown> = { date };
-    if (entryType === 'full' || entryType === 'movement') {
-      base.workout_done = workout_done ?? undefined;
-      base.workout_duration = workout_duration ? Number(workout_duration) : undefined;
-      base.workout_types = workout_types.length ? workout_types : undefined;
-      base.cardio_done = cardio_done ?? undefined;
-      base.cardio_duration = cardio_duration ? Number(cardio_duration) : undefined;
-      base.cardio_type = cardio_type || undefined;
-      base.steps = steps ? Number(steps) : undefined;
+    const { home_cooked_meals, junk_food, meals_log } = mealsToCounts(mealsLog);
+    const payload: Record<string, unknown> = { date };
+    const includeMovement = entryType === 'full' || entryType === 'movement';
+    const includeFood = entryType === 'full' || entryType === 'meal_recovery';
+    const includeSleep = entryType === 'full' || entryType === 'sleep';
+    const includeWeight = entryType === 'full' || entryType === 'weight';
+
+    if (includeMovement) {
+      if (workout_types.length > 0) payload.workout_types = workout_types;
+      if (workout_duration > 0) {
+        payload.workout_done = true;
+        payload.workout_duration = workout_duration;
+      }
+      if (cardio_duration > 0 || cardio_type) {
+        payload.cardio_done = true;
+        if (cardio_duration > 0) payload.cardio_duration = cardio_duration;
+        if (cardio_type) payload.cardio_type = cardio_type;
+      }
+      if (steps != null && steps > 0) payload.steps = steps;
     }
-    if (entryType === 'full' || entryType === 'meal_recovery') {
-      base.water_liters = water_liters ? Number(water_liters) : undefined;
-      base.home_cooked_meals = home_cooked_meals !== '' ? Number(home_cooked_meals) : undefined;
-      base.protein_meal = protein_meal ?? undefined;
-      base.protein_qty = protein_qty ? Number(protein_qty) : undefined;
-      base.junk_food = junk_food ?? undefined;
-      base.alcohol = alcohol || undefined;
+    if (includeFood) {
+      if (water_liters > 0) payload.water_liters = water_liters;
+      payload.home_cooked_meals = home_cooked_meals;
+      payload.junk_food = junk_food;
+      payload.meals_log = meals_log;
+      if (protein_qty > 0) {
+        payload.protein_meal = true;
+        payload.protein_qty = protein_qty;
+      }
     }
-    if (entryType === 'full' || entryType === 'sleep') {
-      base.sleep_hours = sleep_hours ? Number(sleep_hours) : undefined;
-      base.sleep_quality = sleep_quality !== '' ? Number(sleep_quality) : undefined;
+    if (includeSleep) {
+      if (sleep_hours > 0) payload.sleep_hours = sleep_hours;
     }
-    return base;
+    if (includeWeight && weight_kg != null && weight_kg > 0) {
+      payload.weight_kg = weight_kg;
+    }
+    return payload;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!isTodayOrYesterday(date)) {
-      setMessage({ type: 'error', text: 'You can only log for today or yesterday.' });
+    if (!isWithinAllowedPastRange(date)) {
+      setMessage({ type: 'error', text: 'Date must be today or up to 7 days in the past.' });
       return;
     }
     setSaving(true);
@@ -156,178 +165,223 @@ export function LogEntryModal({ entryType, onClose, onSuccess }: LogEntryModalPr
       setMessage({ type: 'error', text: data.error || 'Failed to save' });
       return;
     }
-    setMessage({ type: 'ok', text: `Saved! Today's points: ${data.daily_points ?? 0}` });
+    const pts = data.daily_points ?? 0;
+    setMessage({ type: 'ok', text: SUCCESS_MSG[entryType](pts) });
     onSuccess();
-    setTimeout(onClose, 800);
+    setTimeout(onClose, 1200);
   };
 
-  const showMovement = entryType === 'full' || entryType === 'movement';
-  const showMealRecovery = entryType === 'full' || entryType === 'meal_recovery';
-  const showSleep = entryType === 'full' || entryType === 'sleep';
+  const isWizard = entryType === 'full';
+  const currentStep = WIZARD_STEPS[wizardStep];
+  const isLastStep = isWizard && wizardStep === WIZARD_STEPS.length - 1;
 
-  return (
-    <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-        <div className="sticky top-0 z-10 bg-white border-b border-white/10 rounded-t-2xl px-4 sm:px-6 py-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-text-primary">{ENTRY_TITLES[entryType]}</h2>
-          <button type="button" onClick={onClose} className="p-2 rounded-lg hover:bg-black/5 text-text-muted" aria-label="Close">
+  const renderStepContent = () => {
+    if (isWizard && currentStep === 'date') {
+      return (
+        <div className="space-y-4 py-4">
+          <p className="text-sm text-text-muted text-center">Which day are you logging?</p>
+          <DateCarousel value={date} onChange={setDate} />
+        </div>
+      );
+    }
+
+    if ((isWizard && currentStep === 'movement') || entryType === 'movement') {
+      return (
+        <WorkoutSection
+          selected={workout_types}
+          onChangeSelected={setWorkoutTypes}
+          workoutDuration={workout_duration}
+          onWorkoutDuration={setWorkoutDuration}
+          cardioType={cardio_type}
+          onCardioType={setCardioType}
+          cardioDuration={cardio_duration}
+          onCardioDuration={setCardioDuration}
+          steps={steps}
+          onSteps={setSteps}
+          className="py-2"
+        />
+      );
+    }
+
+    if ((isWizard && currentStep === 'food') || entryType === 'meal_recovery') {
+      return (
+        <div className="space-y-6 py-2">
+          <SliderField label="Water" value={water_liters} min={0} max={5} step={0.25} onChange={setWaterLiters} unit=" L" />
+          <MealsSlots meals={mealsLog} onChange={setMealsLog} />
+          <SliderField
+            label={`Protein — target ~${proteinTarget}g/day`}
+            value={protein_qty}
+            min={0}
+            max={proteinMax}
+            step={5}
+            onChange={setProteinQty}
+            unit=" g"
+            suffix={protein_qty > 0 ? ` (${Math.round((protein_qty / proteinTarget) * 100)}%)` : ''}
+          />
+        </div>
+      );
+    }
+
+    if ((isWizard && currentStep === 'sleep') || entryType === 'sleep') {
+      return (
+        <div className="py-2">
+          <SliderField label="Sleep hours" value={sleep_hours} min={4} max={12} step={0.5} onChange={setSleepHours} unit=" h" />
+        </div>
+      );
+    }
+
+    if ((isWizard && currentStep === 'weight') || entryType === 'weight') {
+      const displayWeight = weight_kg ?? (profile.current_weight ?? 70);
+      return (
+        <div className="space-y-3 py-2">
+          <SliderField
+            label="Weight"
+            value={displayWeight}
+            min={30}
+            max={150}
+            step={0.5}
+            onChange={(v) => setWeightKg(v)}
+            unit=" kg"
+          />
+          {isWizard && (
+            <button type="button" onClick={() => setWeightKg(null)} className="text-sm text-text-muted underline block">
+              Leave blank
+            </button>
+          )}
+        </div>
+      );
+    }
+
+    return null;
+  };
+
+  const renderSuccessMessage = () => {
+    if (!message) return null;
+    if (message.type === 'error') {
+      return (
+        <div className="rounded-xl p-3 bg-red-50 border border-red-200">
+          <p className="text-sm text-red-600">{message.text}</p>
+        </div>
+      );
+    }
+    return (
+      <div className="rounded-xl p-4 text-center bg-gradient-to-br from-primary-orange/10 via-accent-gold/10 to-accent-green/10 border border-primary-orange/20">
+        <p className="text-xl mb-1">{message.text.split(' ')[0]}</p>
+        <p className="font-bold text-text-primary">{message.text.slice(message.text.indexOf(' ') + 1)}</p>
+      </div>
+    );
+  };
+
+  const renderQuickLog = () => (
+    <form onSubmit={handleSubmit} className="p-4 sm:px-5 pb-6 space-y-5 overflow-y-auto flex-1">
+      <p className="text-xs text-text-muted">Only fill what you did — everything else stays blank.</p>
+      <DateCarousel value={date} onChange={setDate} />
+      {renderStepContent()}
+      {renderSuccessMessage()}
+      <button
+        type="submit"
+        disabled={saving || !isWithinAllowedPastRange(date)}
+        className="btn-primary w-full min-h-[52px] text-base font-bold"
+      >
+        {saving ? 'Saving…' : CTA_TEXT[entryType]}
+      </button>
+    </form>
+  );
+
+  const WIZARD_LABELS: Record<WizardStep, string> = {
+    date: 'Date',
+    movement: 'Strength',
+    food: 'Food',
+    sleep: 'Sleep',
+    weight: 'Weight',
+  };
+
+  const renderWizard = () => (
+    <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
+      {/* Step indicator */}
+      <div className="px-4 sm:px-5 pt-1 pb-3 flex items-center gap-1.5">
+        {WIZARD_STEPS.map((step, i) => (
+          <div key={step} className="flex items-center gap-1.5 flex-1 min-w-0">
+            <div
+              className={`shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold transition-all ${
+                i < wizardStep
+                  ? 'bg-accent-green text-white'
+                  : i === wizardStep
+                    ? 'bg-primary-orange text-white'
+                    : 'bg-black/8 text-text-muted'
+              }`}
+            >
+              {i < wizardStep ? '✓' : i + 1}
+            </div>
+            <span className={`text-[10px] font-medium truncate ${i === wizardStep ? 'text-text-primary' : 'text-text-muted'}`}>
+              {WIZARD_LABELS[step]}
+            </span>
+            {i < WIZARD_STEPS.length - 1 && (
+              <div className={`flex-1 h-px ${i < wizardStep ? 'bg-accent-green/40' : 'bg-black/10'}`} />
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Step content */}
+      <div className="flex-1 overflow-y-auto px-4 sm:px-5">
+        {renderStepContent()}
+      </div>
+
+      {/* Navigation */}
+      <div className="px-4 sm:px-5 pb-5 pt-3 space-y-3 shrink-0 border-t border-black/5">
+        {renderSuccessMessage()}
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setWizardStep((s) => Math.max(0, s - 1))}
+            disabled={wizardStep === 0}
+            className="btn-ghost min-h-[52px] flex-1 flex items-center justify-center gap-1 disabled:opacity-40"
+          >
+            <ChevronLeft className="w-4 h-4" /> Back
+          </button>
+          {!isLastStep ? (
+            <button
+              type="button"
+              onClick={() => setWizardStep((s) => Math.min(WIZARD_STEPS.length - 1, s + 1))}
+              className="btn-primary min-h-[52px] flex-1 flex items-center justify-center gap-1 font-bold"
+            >
+              Next <ChevronRight className="w-4 h-4" />
+            </button>
+          ) : (
+            <button
+              type="submit"
+              disabled={saving || !isWithinAllowedPastRange(date)}
+              className="btn-primary min-h-[52px] flex-1 text-base font-bold"
+            >
+              {saving ? 'Saving…' : CTA_TEXT.full}
+            </button>
+          )}
+        </div>
+      </div>
+    </form>
+  );
+
+  const modal = (
+    <div className="modal-overlay entry-modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal-content entry-modal-content flex flex-col" onClick={(e) => e.stopPropagation()}>
+        {/* Header */}
+        <div className="sticky top-0 z-10 bg-white border-b border-black/5 rounded-t-2xl px-4 sm:px-5 py-4 flex items-center justify-between shrink-0">
+          <h2 className="text-lg font-bold text-text-primary">{ENTRY_TITLES[entryType]}</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-2 min-w-[44px] min-h-[44px] rounded-xl hover:bg-black/5 text-text-muted flex items-center justify-center"
+            aria-label="Close"
+          >
             <X className="w-5 h-5" />
           </button>
         </div>
-        <form onSubmit={handleSubmit} className="p-4 sm:px-6 pb-6 space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-text-secondary mb-1">Date</label>
-            <input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              max={today}
-              className="input-field max-w-[180px]"
-            />
-            {!isTodayOrYesterday(date) && (
-              <p className="text-xs text-accent-red mt-1">Only today or yesterday allowed.</p>
-            )}
-          </div>
-
-          {showMovement && (
-            <div className="glass-card p-4 space-y-4">
-              <h3 className="font-medium text-text-primary">Workout</h3>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="block text-sm text-text-secondary mb-2">Workout?</label>
-                  <div className="flex gap-2 flex-wrap">
-                    <button type="button" onClick={() => setWorkoutDone(true)} className={workout_done === true ? 'btn-primary' : 'btn-ghost'}>Yes</button>
-                    <button type="button" onClick={() => { setWorkoutDone(false); setWorkoutDuration(''); setWorkoutTypes([]); }} className={workout_done === false ? 'btn-primary' : 'btn-ghost'}>No</button>
-                    <button type="button" onClick={() => setWorkoutDone(null)} className={workout_done === null ? 'btn-primary' : 'btn-ghost'}>Skip</button>
-                  </div>
-                  {workout_done === true && (
-                    <div className="mt-3 space-y-2">
-                      <input type="text" placeholder="Search…" value={workoutSearch} onChange={(e) => setWorkoutSearch(e.target.value)} className="input-field max-w-full" />
-                      <div className="max-h-40 overflow-y-auto rounded-lg border border-white/10 bg-surface-0/50 p-2 space-y-2">
-                        <p className="text-[10px] font-semibold text-text-muted uppercase">Body</p>
-                        <div className="flex flex-wrap gap-2">
-                          {workoutFilter.body.map((t) => (
-                            <label key={t} className="inline-flex items-center gap-1.5 cursor-pointer">
-                              <input type="checkbox" checked={workout_types.includes(t)} onChange={() => toggleWorkoutOption(t)} className="rounded border-text-muted" />
-                              <span className="text-sm">{label(t)}</span>
-                            </label>
-                          ))}
-                        </div>
-                        <p className="text-[10px] font-semibold text-text-muted uppercase pt-1">Clusters</p>
-                        <div className="flex flex-wrap gap-2">
-                          {workoutFilter.clusters.map((t) => (
-                            <label key={t} className="inline-flex items-center gap-1.5 cursor-pointer">
-                              <input type="checkbox" checked={workout_types.includes(t)} onChange={() => toggleWorkoutOption(t)} className="rounded border-text-muted" />
-                              <span className="text-sm">{label(t)}</span>
-                            </label>
-                          ))}
-                        </div>
-                      </div>
-                      <input type="number" min={1} placeholder="Duration (min)" value={workout_duration} onChange={(e) => setWorkoutDuration(e.target.value)} className="input-field w-28" />
-                    </div>
-                  )}
-                </div>
-                <div>
-                  <label className="block text-sm text-text-secondary mb-2">Cardio?</label>
-                  <div className="flex gap-2 flex-wrap">
-                    <button type="button" onClick={() => setCardioDone(true)} className={cardio_done === true ? 'btn-primary' : 'btn-ghost'}>Yes</button>
-                    <button type="button" onClick={() => { setCardioDone(false); setCardioDuration(''); setCardioType(''); }} className={cardio_done === false ? 'btn-primary' : 'btn-ghost'}>No</button>
-                    <button type="button" onClick={() => setCardioDone(null)} className={cardio_done === null ? 'btn-primary' : 'btn-ghost'}>Skip</button>
-                  </div>
-                  {cardio_done === true && (
-                    <div className="mt-3 space-y-2">
-                      <input type="text" placeholder="Search…" value={cardioSearch} onChange={(e) => setCardioSearch(e.target.value)} className="input-field max-w-full" />
-                      <select value={cardio_type} onChange={(e) => setCardioType(e.target.value as CardioType)} className="input-field max-w-full">
-                        <option value="">Select type</option>
-                        {cardioFiltered.map((t) => <option key={t} value={t}>{label(t)}</option>)}
-                      </select>
-                      <input type="number" min={1} placeholder="Min" value={cardio_duration} onChange={(e) => setCardioDuration(e.target.value)} className="input-field w-20" />
-                    </div>
-                  )}
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm text-text-secondary mb-1">Steps</label>
-                <input type="number" min={0} placeholder="Optional" value={steps} onChange={(e) => setSteps(e.target.value)} className="input-field max-w-[140px]" />
-              </div>
-            </div>
-          )}
-
-          {showMealRecovery && (
-            <div className="glass-card p-4 space-y-4">
-              <h3 className="font-medium text-text-primary">Food</h3>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="block text-sm text-text-secondary mb-1">Water (L)</label>
-                  <input type="number" min={0} max={10} step={0.1} placeholder="e.g. 2.5" value={water_liters} onChange={(e) => setWaterLiters(e.target.value)} className="input-field max-w-[100px]" />
-                </div>
-                <div>
-                  <label className="block text-sm text-text-secondary mb-1">Home-cooked meals (0–3)</label>
-                  <select value={home_cooked_meals} onChange={(e) => setHomeCookedMeals(e.target.value === '' ? '' : Number(e.target.value))} className="input-field max-w-[100px]">
-                    <option value="">Skip</option>
-                    {[0, 1, 2, 3].map((n) => <option key={n} value={n}>{n}</option>)}
-                  </select>
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm text-text-secondary mb-2">Protein meal?</label>
-                <div className="flex gap-2 flex-wrap">
-                  <button type="button" onClick={() => setProteinMeal(true)} className={protein_meal === true ? 'btn-primary' : 'btn-ghost'}>Yes</button>
-                  <button type="button" onClick={() => { setProteinMeal(false); setProteinQty(''); }} className={protein_meal === false ? 'btn-primary' : 'btn-ghost'}>No</button>
-                  <button type="button" onClick={() => setProteinMeal(null)} className={protein_meal === null ? 'btn-primary' : 'btn-ghost'}>Skip</button>
-                </div>
-                {protein_meal === true && (
-                  <input type="number" min={0} max={500} placeholder="Approx grams (optional)" value={protein_qty} onChange={(e) => setProteinQty(e.target.value)} className="input-field max-w-[180px] mt-2" />
-                )}
-              </div>
-              <div>
-                <label className="block text-sm text-text-secondary mb-2">Junk food today?</label>
-                <div className="flex gap-2 flex-wrap">
-                  <button type="button" onClick={() => setJunkFood(true)} className={junk_food === true ? 'btn-primary' : 'btn-ghost'}>Yes</button>
-                  <button type="button" onClick={() => setJunkFood(false)} className={junk_food === false ? 'btn-primary' : 'btn-ghost'}>No</button>
-                  <button type="button" onClick={() => setJunkFood(null)} className={junk_food === null ? 'btn-primary' : 'btn-ghost'}>Skip</button>
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm text-text-secondary mb-1">Alcohol</label>
-                <select value={alcohol} onChange={(e) => setAlcohol(e.target.value as Alcohol | '')} className="input-field max-w-[180px]">
-                  <option value="">Skip</option>
-                  <option value="zero">Zero</option>
-                  <option value="one_to_two">1–2</option>
-                  <option value="three_plus">3+</option>
-                </select>
-              </div>
-            </div>
-          )}
-
-          {showSleep && (
-            <div className="glass-card p-4 space-y-4">
-              <h3 className="font-medium text-text-primary">Sleep</h3>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="block text-sm text-text-secondary mb-1">Hours</label>
-                  <input type="number" min={0} max={24} step={0.5} placeholder="e.g. 7.5" value={sleep_hours} onChange={(e) => setSleepHours(e.target.value)} className="input-field max-w-[100px]" />
-                </div>
-                <div>
-                  <label className="block text-sm text-text-secondary mb-1">Quality (1–5)</label>
-                  <div className="flex gap-1">
-                    {[1, 2, 3, 4, 5].map((n) => (
-                      <button key={n} type="button" onClick={() => setSleepQuality(n)} className={`w-9 h-9 rounded-lg text-sm font-medium ${sleep_quality === n ? 'btn-primary' : 'btn-ghost'}`}>{n}</button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {message && (
-            <p className={`text-sm ${message.type === 'error' ? 'text-accent-red' : 'text-accent-green'}`}>{message.text}</p>
-          )}
-          <button type="submit" disabled={saving || !isTodayOrYesterday(date)} className="btn-primary w-full">
-            {saving ? 'Saving…' : 'Save'}
-          </button>
-        </form>
+        {isWizard ? renderWizard() : renderQuickLog()}
       </div>
     </div>
   );
+
+  if (typeof document === 'undefined') return null;
+  return createPortal(modal, document.body);
 }

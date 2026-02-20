@@ -1,21 +1,24 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Plus, ChevronDown, Calendar, Activity, Utensils, Moon } from 'lucide-react';
+import { Plus, ChevronDown, Calendar, Dumbbell, Utensils, Moon, Scale } from 'lucide-react';
 import { LogEntryModal, type EntryType } from './LogEntryModal';
+import type { Profile } from '@/lib/types';
 
-const ENTRY_OPTIONS: { type: EntryType; label: string; icon: typeof Activity }[] = [
-  { type: 'movement', label: 'Log Workout', icon: Activity },
+const ENTRY_OPTIONS: { type: EntryType; label: string; icon: typeof Dumbbell }[] = [
+  { type: 'movement', label: 'Log Strength', icon: Dumbbell },
   { type: 'meal_recovery', label: 'Log Food', icon: Utensils },
   { type: 'sleep', label: 'Log Sleep', icon: Moon },
+  { type: 'weight', label: 'Log Weight', icon: Scale },
   { type: 'full', label: 'Log full day', icon: Calendar },
 ];
 
 interface NewEntryCTAProps {
+  profile: Profile | null;
   onSuccess: () => void;
 }
 
-export function NewEntryCTA({ onSuccess }: NewEntryCTAProps) {
+export function NewEntryCTA({ profile, onSuccess }: NewEntryCTAProps) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [modalType, setModalType] = useState<EntryType | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -65,9 +68,10 @@ export function NewEntryCTA({ onSuccess }: NewEntryCTAProps) {
           </div>
         )}
       </div>
-      {modalType && (
+      {modalType && profile && (
         <LogEntryModal
           entryType={modalType}
+          profile={profile}
           onClose={() => setModalType(null)}
           onSuccess={onSuccess}
         />
