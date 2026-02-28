@@ -181,8 +181,8 @@ const App: React.FC = () => {
                 <span className="text-[11px] font-mono font-medium text-accent-green uppercase tracking-widest">Wellness</span>
               </div>
               <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-tight text-text-primary leading-[1.1]">
-                Office Health<br />
-                <span className="gradient-text">Leaderboard</span>
+                Superjoin<br />
+                <span className="gradient-text">Health OS</span>
               </h1>
               <p className="mt-3 text-sm text-text-secondary max-w-md leading-relaxed">
                 Track activity, wellness, and leaderboard for your office. 
@@ -278,7 +278,7 @@ const App: React.FC = () => {
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <Heart className="w-4 h-4 text-text-muted" />
-              <span className="text-xs font-medium text-text-muted">Office Health League</span>
+              <span className="text-xs font-medium text-text-muted">Superjoin Health OS</span>
               <span className="text-text-muted">·</span>
               <span className="text-xs text-text-muted">Wellness Leaderboard</span>
             </div>

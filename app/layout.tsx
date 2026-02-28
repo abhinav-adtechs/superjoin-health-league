@@ -6,8 +6,8 @@ const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
 const jetbrainsMono = JetBrains_Mono({ subsets: ['latin'], variable: '--font-mono' });
 
 export const metadata: Metadata = {
-  title: 'Office Health Tracker — Wellness Leaderboard',
-  description: 'Daily health tracking for your team. Log in 30 seconds, earn points for healthy actions, compete on a fair leaderboard.',
+  title: 'Superjoin Health OS — Workplace Wellness Platform',
+  description: 'The operating system for workplace wellness. Built for teams who compete, improve, and win together. Fair scoring. Real results.',
 };
 
 export default function RootLayout({

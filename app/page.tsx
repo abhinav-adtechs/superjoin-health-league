@@ -3,30 +3,38 @@
 import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { apiUrl, getApiFetchOptions } from '@/lib/api';
-import { Heart, LayoutDashboard, PenLine, Trophy, User, LogOut } from 'lucide-react';
+import { Heart, LayoutDashboard, PenLine, Trophy, User, LogOut, Link2 } from 'lucide-react';
 import { DashboardTab } from '@/components/DashboardTab';
 import { LogEntryTab } from '@/components/LogEntryTab';
 import { LeaderboardTab } from '@/components/LeaderboardTab';
 import { MyStatsTab } from '@/components/MyStatsTab';
+import { ConnectedAccountsTab } from '@/components/ConnectedAccountsTab';
 import { NewEntryCTA } from '@/components/NewEntryCTA';
 import { LoginForm } from '@/components/LoginForm';
 import { OnboardingForm } from '@/components/OnboardingForm';
 import { SetPinForm } from '@/components/SetPinForm';
 import type { Profile } from '@/lib/types';
 
-type TabId = 'dashboard' | 'log' | 'leaderboard' | 'me';
+type TabId = 'dashboard' | 'log' | 'leaderboard' | 'me' | 'connected';
 
 const TABS: { id: TabId; label: string; icon: typeof Heart }[] = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'log', label: 'Workout history', icon: PenLine },
   { id: 'leaderboard', label: 'Leaderboard', icon: Trophy },
   { id: 'me', label: 'Profile & Goals', icon: User },
+  { id: 'connected', label: 'Connected', icon: Link2 },
 ];
 
 export default function Home() {
   const [user, setUser] = useState<{ id: string; email?: string } | null>(null);
   const [profile, setProfile] = useState<Profile | null | undefined>(undefined);
-  const [activeTab, setActiveTab] = useState<TabId>('dashboard');
+  const [activeTab, setActiveTab] = useState<TabId>(() => {
+    if (typeof window !== 'undefined') {
+      const tab = new URLSearchParams(window.location.search).get('tab');
+      if (tab === 'connected') return 'connected';
+    }
+    return 'dashboard';
+  });
   const [loading, setLoading] = useState(true);
   const [entryRefresh, setEntryRefresh] = useState(0);
 
@@ -153,17 +161,19 @@ export default function Home() {
                   <Heart className="w-4 h-4 sm:w-5 sm:h-5 text-accent-superjoin-orange" />
                 </div>
                 <div className="flex items-center gap-1 sm:gap-2">
-                  <span className="text-sm sm:text-base font-bold text-text-primary">Office Health</span>
-                  <span className="text-sm sm:text-base font-bold text-accent-superjoin-orange">Tracker</span>
+                  <span className="text-sm sm:text-base font-bold text-text-primary">Superjoin</span>
+                  <span className="text-sm sm:text-base font-bold text-accent-superjoin-orange">Health OS</span>
                 </div>
-              </div>
-              <div className="text-xs sm:text-sm font-semibold text-accent-superjoin-orange">
-                Superjoin
               </div>
             </div>
           </div>
         </header>
         <main className="max-w-md mx-auto px-4 py-8 sm:py-12 min-h-[calc(100vh-80px)] flex flex-col">
+          <div className="text-center mb-6 sm:mb-8">
+            <p className="text-sm sm:text-base text-text-secondary font-medium max-w-xl mx-auto leading-relaxed">
+              The operating system for workplace wellness. Built for teams who compete, improve, and win together.
+            </p>
+          </div>
           <div className="flex-1 flex items-center justify-center">
             <div className="glass-card p-6 sm:p-8 w-full">
               <div className="flex flex-col items-center mb-6 sm:mb-8">
@@ -176,7 +186,10 @@ export default function Home() {
               <LoginForm onSuccess={loadUser} />
             </div>
           </div>
-          <footer className="mt-8 sm:mt-12 pb-6 sm:pb-8 text-center">
+          <footer className="mt-8 sm:mt-12 pb-6 sm:pb-8 text-center space-y-2">
+            <p className="text-sm text-text-secondary max-w-md mx-auto">
+              Where health becomes a team sport. Fair scoring. Real results. Every step, workout, and healthy habit counts toward your team&apos;s success.
+            </p>
             <p className="text-xs text-text-muted">
               Powered by <span className="font-semibold text-accent-superjoin-orange">Superjoin</span>
             </p>
@@ -197,12 +210,9 @@ export default function Home() {
                   <Heart className="w-4 h-4 sm:w-5 sm:h-5 text-accent-superjoin-orange" />
                 </div>
                 <div className="flex items-center gap-1 sm:gap-2">
-                  <span className="text-sm sm:text-base font-bold text-text-primary">Office Health</span>
-                  <span className="text-sm sm:text-base font-bold text-accent-superjoin-orange">Tracker</span>
+                  <span className="text-sm sm:text-base font-bold text-text-primary">Superjoin</span>
+                  <span className="text-sm sm:text-base font-bold text-accent-superjoin-orange">Health OS</span>
                 </div>
-              </div>
-              <div className="text-xs sm:text-sm font-semibold text-accent-superjoin-orange">
-                Superjoin
               </div>
             </div>
           </div>
@@ -230,7 +240,7 @@ export default function Home() {
               <div className="w-9 h-9 rounded-xl bg-accent-green/10 border border-accent-green/20 flex items-center justify-center">
                 <Heart className="w-5 h-5 text-accent-green" />
               </div>
-              <span className="font-bold text-text-primary">Office Health Tracker</span>
+              <span className="font-bold text-text-primary">Superjoin Health OS</span>
             </div>
           </div>
         </header>
@@ -254,28 +264,38 @@ export default function Home() {
                   <Heart className="w-4 h-4 sm:w-5 sm:h-5 text-accent-superjoin-orange" />
                 </div>
                 <div className="flex items-center gap-1 sm:gap-2">
-                  <span className="text-sm sm:text-base font-bold text-text-primary">Office Health</span>
-                  <span className="text-sm sm:text-base font-bold text-accent-superjoin-orange">Tracker</span>
+                  <span className="text-sm sm:text-base font-bold text-text-primary">Superjoin</span>
+                  <span className="text-sm sm:text-base font-bold text-accent-superjoin-orange">Health OS</span>
                 </div>
               </div>
             <div className="flex items-center gap-2">
               <NewEntryCTA profile={profile ?? null} onSuccess={() => { loadUser(); setEntryRefresh((r) => r + 1); }} />
-              <span className="text-xs text-text-muted hidden sm:inline">{profile?.display_name}</span>
-              <button
-                type="button"
-                onClick={handleLogout}
-                className="p-2 rounded-lg hover:bg-surface-2 text-text-muted hover:text-text-primary transition-colors"
-                aria-label="Sign out"
-              >
-                <LogOut className="w-4 h-4" />
-              </button>
+              <div className="flex items-center gap-1.5 pl-1 pr-2 py-1 rounded-full bg-surface-1 border border-white/10">
+                <div className="w-6 h-6 rounded-full bg-accent-superjoin-orange/20 border border-accent-superjoin-orange/30 flex items-center justify-center flex-shrink-0">
+                  <span className="text-[10px] font-semibold text-accent-superjoin-orange leading-none">
+                    {profile?.display_name?.charAt(0).toUpperCase()}
+                  </span>
+                </div>
+                <span className="text-xs font-medium text-text-secondary hidden sm:inline max-w-[120px] truncate">{profile?.display_name}</span>
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="p-0.5 rounded-full text-text-muted hover:text-text-primary transition-colors"
+                  aria-label="Sign out"
+                >
+                  <LogOut className="w-3 h-3" />
+                </button>
+              </div>
             </div>
           </div>
         </div>
       </header>
 
-      <nav className="sticky top-14 sm:top-16 z-40 bg-surface-0/70 backdrop-blur-xl border-b border-white/10">
+      <div className="sticky top-14 sm:top-16 z-40 bg-surface-0/70 backdrop-blur-xl border-b border-white/10">
         <div className="max-w-5xl mx-auto px-4 sm:px-6">
+          <p className="text-xs sm:text-sm text-text-secondary py-3 sm:py-2 text-center sm:text-left font-medium">
+            The operating system for workplace wellness. Built for teams who compete, improve, and win together.
+          </p>
           <div className="flex items-center gap-1 py-2 overflow-x-auto">
             {TABS.map((tab) => (
               <button
@@ -289,21 +309,22 @@ export default function Home() {
             ))}
           </div>
         </div>
-      </nav>
+      </div>
 
       <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
-        {activeTab === 'dashboard' && <DashboardTab profile={profile!} onRefresh={loadUser} />}
+        {activeTab === 'dashboard' && <DashboardTab profile={profile!} onRefresh={loadUser} refreshTrigger={entryRefresh} />}
         {activeTab === 'log' && <LogEntryTab profile={profile!} onSuccess={loadUser} refreshTrigger={entryRefresh} />}
         {activeTab === 'leaderboard' && <LeaderboardTab />}
         {activeTab === 'me' && <MyStatsTab profile={profile!} onSuccess={loadUser} />}
+        {activeTab === 'connected' && <ConnectedAccountsTab />}
       </main>
 
       <footer className="border-t border-white/10 mt-12">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6">
-          <p className="text-xs text-text-muted text-center">
-            Office Health Tracker — Points for health, not logging. Every field optional.
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
+          <p className="text-sm text-text-secondary text-center max-w-2xl mx-auto leading-relaxed">
+            Superjoin Health OS turns health into a shared mission. Every step, workout, and healthy habit counts toward your team&apos;s success — fair scoring, real results.
           </p>
-          <p className="text-xs text-text-muted text-center mt-2">
+          <p className="text-xs text-text-muted text-center mt-4">
             Powered by <span className="font-semibold text-accent-superjoin-orange">Superjoin</span>
           </p>
         </div>

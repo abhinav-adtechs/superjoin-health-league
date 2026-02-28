@@ -63,7 +63,9 @@ interface LogEntryModalProps {
 }
 
 export function LogEntryModal({ entryType, profile, onClose, onSuccess }: LogEntryModalProps) {
-  const today = new Date().toISOString().slice(0, 10);
+  // Use local date (not UTC) so users in non-UTC timezones don't open on "yesterday"
+  const _now = new Date();
+  const today = `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, '0')}-${String(_now.getDate()).padStart(2, '0')}`;
   const [date, setDate] = useState(today);
   const [wizardStep, setWizardStep] = useState(0);
 

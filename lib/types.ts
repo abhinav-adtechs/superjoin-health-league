@@ -90,15 +90,23 @@ export type LeaderboardView = 'weekly' | 'monthly' | 'alltime';
 
 export interface LeaderboardRanking {
   rank: number;
+  /** Previous period rank (weekly only) */
+  prev_rank?: number | null;
+  /** Positive = moved up (rank improved), negative = moved down */
+  rank_change?: number | null;
   user: {
+    id: string;
     display_name: string;
+    avatar_url: string | null;
     streak_days: number;
     days_active: number;
   };
   score: {
     total_points: number;
     normalized_score: number;
-    breakdown?: { exercise: number; nutrition: number; sleep: number; steps: number };
+    /** % of theoretical max points achieved (weekly: points / days_elapsed / 98 * 100) */
+    goals_pct?: number;
+    breakdown?: { workout: number; nutrition: number; sleep: number; steps: number };
     breakdown_pct?: { exercise: string; nutrition: string; sleep: string; steps: string };
   };
   insights?: {
@@ -111,6 +119,8 @@ export interface LeaderboardRanking {
 export interface LeaderboardResponse {
   view: LeaderboardView;
   period: string;
+  week_start?: string;
+  current_user_id?: string | null;
   rankings: LeaderboardRanking[];
   category_leaders?: Record<string, { display_name: string; points?: number; days?: number }>;
   team_stats?: {
@@ -119,4 +129,59 @@ export interface LeaderboardResponse {
     pct_workout_days?: number;
     avg_steps?: number;
   };
+}
+
+// ============================================
+// Connected Accounts / Integrations
+// ============================================
+
+export type IntegrationPlatform = 'fitbit' | 'apple_health' | 'google_health';
+
+/** fill_nulls: only fills empty daily_entry fields; always_override: connected data wins */
+export type SyncPreference = 'fill_nulls' | 'always_override';
+
+export interface ConnectedAccount {
+  id: string;
+  user_id: string;
+  platform: IntegrationPlatform;
+  access_token: string | null;
+  refresh_token: string | null;
+  token_expires_at: string | null;
+  scopes: string[] | null;
+  platform_user_id: string | null;
+  connected_at: string;
+  last_synced_at: string | null;
+  sync_enabled: boolean;
+  sync_preference: SyncPreference;
+}
+
+/** Subset of DailyEntry fields that integrations can populate */
+export interface IntegrationSyncPayload {
+  date: string;
+  steps?: number | null;
+  workout_done?: boolean | null;
+  workout_duration?: number | null;
+  workout_types?: WorkoutOption[] | null;
+  cardio_done?: boolean | null;
+  cardio_duration?: number | null;
+  cardio_type?: CardioType | null;
+  water_liters?: number | null;
+  protein_qty?: number | null;
+  protein_meal?: boolean | null;
+  sleep_hours?: number | null;
+  sleep_quality?: number | null;
+  weight_kg?: number | null;
+}
+
+/** Status response for a single platform */
+export interface IntegrationStatus {
+  platform: IntegrationPlatform;
+  connected: boolean;
+  sync_enabled: boolean;
+  sync_preference: SyncPreference;
+  connected_at: string | null;
+  last_synced_at: string | null;
+  platform_user_id: string | null;
+  /** Fields that were populated during last sync */
+  last_sync_fields?: string[];
 }

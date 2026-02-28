@@ -2,7 +2,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'ai.superjoin.officehealth',
-  appName: 'Office Health Tracker',
+  appName: 'Superjoin Health OS',
   webDir: 'public',
   server: {
     // iOS WebView loads the deployed app (API routes work same-origin).
