@@ -146,7 +146,7 @@ export async function POST(request: Request) {
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('age_bracket, goal_steps_day, goal_water_liters, goal_sleep_hours_min, goal_sleep_hours_max')
+    .select('age_bracket, goal_steps_day, goal_water_liters, goal_sleep_hours, goal_sleep_hours_min, goal_sleep_hours_max')
     .eq('id', user.id)
     .single();
   const ageBracket: AgeBracket = (profile?.age_bracket as AgeBracket) ?? '25_to_35';

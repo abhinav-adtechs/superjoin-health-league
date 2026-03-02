@@ -24,6 +24,7 @@ export interface EntryForPoints {
 export interface ProfileDailyGoals {
   goal_steps_day?: number | null;
   goal_water_liters?: number | null;
+  goal_sleep_hours?: number | null;
   goal_sleep_hours_min?: number | null;
   goal_sleep_hours_max?: number | null;
 }
@@ -161,8 +162,9 @@ export function isGoalCrushDay(
   profile: ProfileDailyGoals,
   dailyPoints: number,
 ): boolean {
-  const { goal_steps_day, goal_water_liters, goal_sleep_hours_min, goal_sleep_hours_max } = profile;
-  const hasDailyGoals = goal_steps_day || goal_water_liters || (goal_sleep_hours_min && goal_sleep_hours_max);
+  const { goal_steps_day, goal_water_liters, goal_sleep_hours, goal_sleep_hours_min, goal_sleep_hours_max } = profile;
+  const hasSleepGoal = goal_sleep_hours != null || (goal_sleep_hours_min != null && goal_sleep_hours_max != null);
+  const hasDailyGoals = goal_steps_day || goal_water_liters || hasSleepGoal;
 
   if (!hasDailyGoals) {
     return dailyPoints >= 60;
@@ -170,7 +172,9 @@ export function isGoalCrushDay(
 
   if (goal_steps_day && (!entry.steps || entry.steps < goal_steps_day)) return false;
   if (goal_water_liters && (!entry.water_liters || entry.water_liters < goal_water_liters)) return false;
-  if (goal_sleep_hours_min && goal_sleep_hours_max) {
+  if (goal_sleep_hours != null) {
+    if (entry.sleep_hours == null || entry.sleep_hours < goal_sleep_hours) return false;
+  } else if (goal_sleep_hours_min != null && goal_sleep_hours_max != null) {
     if (
       entry.sleep_hours == null ||
       entry.sleep_hours < goal_sleep_hours_min ||
