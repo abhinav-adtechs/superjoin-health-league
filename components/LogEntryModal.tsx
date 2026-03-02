@@ -19,14 +19,14 @@ export type EntryType = 'full' | 'movement' | 'meal_recovery' | 'sleep' | 'weigh
 
 const ENTRY_TITLES: Record<EntryType, string> = {
   full: 'Log full day',
-  movement: 'Strength',
+  movement: 'Workout',
   meal_recovery: 'Food',
   sleep: 'Sleep',
   weight: 'Weight',
 };
 
 const CTA_TEXT: Record<EntryType, string> = {
-  movement: 'Log Strength 💪',
+  movement: 'Log Workout 💪',
   meal_recovery: 'Log Food 🥗',
   sleep: 'Log Sleep 😴',
   weight: 'Save Weight',
@@ -41,7 +41,7 @@ const SUCCESS_MSG: Record<EntryType, (pts: number) => string> = {
   full: (pts) => `🏆 Full day locked in! +${pts} pts`,
 };
 
-const WIZARD_STEPS = ['date', 'movement', 'food', 'sleep', 'weight'] as const;
+const WIZARD_STEPS = ['date', 'movement', 'food', 'sleep'] as const;
 type WizardStep = (typeof WIZARD_STEPS)[number];
 
 function isWithinAllowedPastRange(dateStr: string): boolean {
@@ -95,13 +95,32 @@ export function LogEntryModal({ entryType, profile, onClose, onSuccess }: LogEnt
   const proteinTarget = getProteinTargetGrams(profile);
   const proteinMax = Math.max(150, proteinTarget + 30);
 
+  const isWizard = entryType === 'full';
+  const currentStep = WIZARD_STEPS[wizardStep];
+
+  const triggerDurationError = () => {
+    setDurationError(true);
+    setDurationErrorKey((k) => k + 1);
+  };
+
+  const handleWorkoutDurationChange = (v: number) => {
+    setWorkoutDuration(v);
+    if (v > 0) setDurationError(false);
+  };
+
+  /** True when the user has selected strength types but hasn't set a duration. */
+  const needsDuration = (): boolean => {
+    const onMovementStep = entryType === 'movement' || (isWizard && currentStep === 'movement');
+    return onMovementStep && workout_types.length > 0 && workout_duration === 0;
+  };
+
 
   const buildPayload = (): Record<string, unknown> => {
     const payload: Record<string, unknown> = { date };
     const includeMovement = entryType === 'full' || entryType === 'movement';
     const includeFood = entryType === 'full' || entryType === 'meal_recovery';
     const includeSleep = entryType === 'full' || entryType === 'sleep';
-    const includeWeight = entryType === 'full' || entryType === 'weight';
+    const includeWeight = entryType === 'weight';
 
     if (includeMovement) {
       if (workout_types.length > 0 || workout_duration > 0) {
@@ -144,6 +163,10 @@ export function LogEntryModal({ entryType, profile, onClose, onSuccess }: LogEnt
       setMessage({ type: 'error', text: 'Date must be today or up to 7 days in the past.' });
       return;
     }
+    if (needsDuration()) {
+      triggerDurationError();
+      return;
+    }
     setSaving(true);
     setMessage(null);
     const res = await fetch(apiUrl('/api/entries'), getApiFetchOptions({
@@ -163,8 +186,6 @@ export function LogEntryModal({ entryType, profile, onClose, onSuccess }: LogEnt
     setTimeout(onClose, 1200);
   };
 
-  const isWizard = entryType === 'full';
-  const currentStep = WIZARD_STEPS[wizardStep];
   const isLastStep = isWizard && wizardStep === WIZARD_STEPS.length - 1;
 
   const renderStepContent = () => {
@@ -183,7 +204,7 @@ export function LogEntryModal({ entryType, profile, onClose, onSuccess }: LogEnt
           selected={workout_types}
           onChangeSelected={setWorkoutTypes}
           workoutDuration={workout_duration}
-          onWorkoutDuration={setWorkoutDuration}
+          onWorkoutDuration={handleWorkoutDurationChange}
           cardioType={cardio_type}
           onCardioType={setCardioType}
           cardioDuration={cardio_duration}
@@ -191,6 +212,8 @@ export function LogEntryModal({ entryType, profile, onClose, onSuccess }: LogEnt
           steps={steps}
           onSteps={setSteps}
           className="py-2"
+          durationError={durationError}
+          durationErrorKey={durationErrorKey}
         />
       );
     }
@@ -282,7 +305,7 @@ export function LogEntryModal({ entryType, profile, onClose, onSuccess }: LogEnt
 
   const WIZARD_LABELS: Record<WizardStep, string> = {
     date: 'Date',
-    movement: 'Strength',
+    movement: 'Workout',
     food: 'Food',
     sleep: 'Sleep',
     weight: 'Weight',
@@ -335,7 +358,10 @@ export function LogEntryModal({ entryType, profile, onClose, onSuccess }: LogEnt
           {!isLastStep ? (
             <button
               type="button"
-              onClick={() => setWizardStep((s) => Math.min(WIZARD_STEPS.length - 1, s + 1))}
+              onClick={() => {
+                if (needsDuration()) { triggerDurationError(); return; }
+                setWizardStep((s) => Math.min(WIZARD_STEPS.length - 1, s + 1));
+              }}
               className="btn-primary min-h-[52px] flex-1 flex items-center justify-center gap-1 font-bold"
             >
               Next <ChevronRight className="w-4 h-4" />

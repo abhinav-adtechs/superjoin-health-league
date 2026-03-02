@@ -4,14 +4,17 @@ import { useMemo } from 'react';
 
 const MAX_DAYS_BACK = 7;
 
+function localDateStr(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 function getDateStrings(): { date: string; label: string; sublabel: string }[] {
   const today = new Date();
-  today.setHours(12, 0, 0, 0);
   const out: { date: string; label: string; sublabel: string }[] = [];
   for (let i = 0; i <= MAX_DAYS_BACK; i++) {
     const d = new Date(today);
     d.setDate(d.getDate() - i);
-    const dateStr = d.toISOString().slice(0, 10);
+    const dateStr = localDateStr(d);
     const label =
       i === 0 ? 'Today' : i === 1 ? 'Yesterday' : `${i} days ago`;
     const sublabel = d.toLocaleDateString(undefined, {
@@ -33,17 +36,7 @@ interface DateCarouselProps {
 export function DateCarousel({ value, onChange, className = '' }: DateCarouselProps) {
   const DATE_OPTIONS = useMemo(() => getDateStrings(), []);
   
-  // Normalize the value date to YYYY-MM-DD format for comparison
-  const normalizeDate = (dateStr: string): string => {
-    try {
-      const d = new Date(dateStr + 'T12:00:00');
-      return d.toISOString().slice(0, 10);
-    } catch {
-      return dateStr;
-    }
-  };
-  
-  const normalizedValue = normalizeDate(value);
+  const normalizedValue = value.slice(0, 10);
   const index = DATE_OPTIONS.findIndex((o) => o.date === normalizedValue);
   const currentIndex = index >= 0 ? index : 0;
   const selected = DATE_OPTIONS[currentIndex];

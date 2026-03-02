@@ -176,9 +176,13 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
     const end = new Date();
     const start = new Date();
     start.setDate(start.getDate() - 365);
-    const from = start.toISOString().slice(0, 10);
-    const to = end.toISOString().slice(0, 10);
-    fetch(apiUrl(`/api/entries/history?from=${from}&to=${to}`), getApiFetchOptions())
+    // Use local-date strings (not UTC) so entries logged after midnight in UTC+
+    // timezones are included — entries are stored with the local date on the client.
+    const localDate = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const from = localDate(start);
+    const to = localDate(end);
+    fetch(apiUrl(`/api/entries/history?from=${from}&to=${to}`), { ...getApiFetchOptions(), cache: 'no-store' })
       .then((r) => r.json())
       .then((data) => {
         const list = Array.isArray(data) ? data : [];
