@@ -10,6 +10,9 @@ interface SliderFieldProps {
   unit?: string;
   suffix?: string;
   className?: string;
+  error?: boolean;
+  errorKey?: number;
+  errorMessage?: string;
 }
 
 export function SliderField({
@@ -22,27 +25,40 @@ export function SliderField({
   unit = '',
   suffix = '',
   className = '',
+  error = false,
+  errorKey = 0,
+  errorMessage,
 }: SliderFieldProps) {
   return (
-    <div className={`space-y-2 ${className}`}>
+    <div className={`space-y-1.5 ${className}`}>
       <div className="flex items-center justify-between">
-        <label className="text-sm font-medium text-text-secondary">{label}</label>
-        <span className="text-sm font-semibold text-text-primary tabular-nums">
-          {value}
-          {unit}
-          {suffix}
+        <label className={`text-sm font-medium transition-colors ${error ? 'text-red-500' : 'text-text-secondary'}`}>
+          {label}
+          {error && <span className="ml-1 text-[11px] font-semibold">← required</span>}
+        </label>
+        <span className={`text-sm font-semibold tabular-nums transition-colors ${error ? 'text-red-500' : 'text-text-primary'}`}>
+          {value}{unit}{suffix}
         </span>
       </div>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-        className="w-full h-8 accent-[#FF6B35] touch-manipulation"
-        style={{ minHeight: 32 }}
-      />
+      {/* key forces remount so the animation replays on each error trigger */}
+      <div
+        key={errorKey}
+        className={`rounded-lg px-2 py-1 transition-colors ${error ? 'bg-red-50 border border-red-200 animate-shake' : ''}`}
+      >
+        <input
+          type="range"
+          min={min}
+          max={max}
+          step={step}
+          value={value}
+          onChange={(e) => onChange(Number(e.target.value))}
+          className={`w-full h-8 touch-manipulation transition-all ${error ? 'accent-red-500' : 'accent-[#FF6B35]'}`}
+          style={{ minHeight: 32 }}
+        />
+      </div>
+      {error && errorMessage && (
+        <p className="text-xs text-red-500 font-medium">{errorMessage}</p>
+      )}
     </div>
   );
 }

@@ -278,7 +278,7 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
 
   // 3-tier week goal map (keyed by week-start date)
   const weekGoalMap = useMemo(() => {
-    const map = new Map<string, WeekStatus>();
+    const map = new Map<string, { status: WeekStatus; metric: string | null }>();
     const goalDays = profile.goal_workout_days_week ?? 0;
     const goalMins = profile.goal_workout_mins_week ?? 0;
 
@@ -290,19 +290,26 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
     });
 
     byWeek.forEach((wEntries, weekStart) => {
+      // Weekly workout goal: count days with an actual workout or cardio session logged.
+      // workout goal is inherently weekly (not daily), so is_goal_crush_day is irrelevant here.
       const workoutCount = wEntries.filter((e) => e.workout_done === true || e.cardio_done === true).length;
 
       if (goalDays > 0) {
-        if (workoutCount >= goalDays) map.set(weekStart, 'green');
-        else if (workoutCount > 0) map.set(weekStart, 'yellow');
-        else map.set(weekStart, 'red');
+        const metric = `${workoutCount}/${goalDays} workout days`;
+        if (workoutCount >= goalDays) map.set(weekStart, { status: 'green', metric });
+        else if (workoutCount > 0) map.set(weekStart, { status: 'yellow', metric });
+        else map.set(weekStart, { status: 'red', metric });
       } else if (goalMins > 0) {
         const total = wEntries.reduce((s, e) => s + workoutMins(e), 0);
-        if (total >= goalMins) map.set(weekStart, 'green');
-        else if (total > 0) map.set(weekStart, 'yellow');
-        else map.set(weekStart, 'red');
+        const metric = `${total}/${goalMins} min`;
+        if (total >= goalMins) map.set(weekStart, { status: 'green', metric });
+        else if (total > 0) map.set(weekStart, { status: 'yellow', metric });
+        else map.set(weekStart, { status: 'red', metric });
       } else {
-        map.set(weekStart, workoutCount > 0 ? 'green' : 'red');
+        // No weekly workout goal set — fall back to whether any goal-crush days occurred
+        const goalHitCount = wEntries.filter((e) => isGoalCrushEntry(e)).length;
+        const status: WeekStatus = goalHitCount > 0 ? 'green' : workoutCount > 0 ? 'yellow' : 'red';
+        map.set(weekStart, { status, metric: null });
       }
     });
 
@@ -385,17 +392,17 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
 
   const weekStatusMeta: Record<WeekStatus, { label: string; cls: string; icon: ReactNode }> = {
     green: {
-      label: 'Perfect week',
+      label: hasWeeklyGoal ? 'Workout goal met' : 'Perfect week',
       cls: 'bg-emerald-500/10 text-emerald-500',
       icon: <Trophy className="w-3 h-3 text-accent-gold" />,
     },
     yellow: {
-      label: 'Partial week',
+      label: hasWeeklyGoal ? 'Workout goal partial' : 'Partial week',
       cls: 'bg-amber-400/10 text-amber-400',
       icon: <Activity className="w-3 h-3" />,
     },
     red: {
-      label: 'Week missed',
+      label: hasWeeklyGoal ? 'Workout goal missed' : 'Week missed',
       cls: 'bg-rose-500/10 text-rose-500',
       icon: <Frown className="w-3 h-3" />,
     },
@@ -633,8 +640,9 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
         ) : (
           <div className="space-y-6">
             {weekGroups.map(({ weekStart, entries: weekEntries }) => {
-              const wkStatus = weekGoalMap.get(weekStart);
-              const meta = wkStatus ? weekStatusMeta[wkStatus] : null;
+              const wkEntry = weekGoalMap.get(weekStart);
+              const meta = wkEntry ? weekStatusMeta[wkEntry.status] : null;
+              const wkMetric = wkEntry?.metric ?? null;
 
               return (
                 <div key={weekStart}>
@@ -649,6 +657,9 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
                       >
                         {meta.icon}
                         <span>{meta.label}</span>
+                        {wkMetric && (
+                          <span className="opacity-70">· {wkMetric}</span>
+                        )}
                       </span>
                     )}
                   </div>

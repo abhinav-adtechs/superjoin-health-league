@@ -3,7 +3,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { apiUrl, getApiFetchOptions } from '@/lib/api';
-import { Heart, Activity, Dumbbell, Trophy, Settings, LogOut, ChevronLeft, Search, User, Bell, Plug2 } from 'lucide-react';
+import { Heart, Activity, Dumbbell, Trophy, Settings, LogOut, ChevronLeft, Search, User, Bell, Plug2, BookOpen } from 'lucide-react';
+
 import { DashboardTab } from '@/components/DashboardTab';
 import { LogEntryTab } from '@/components/LogEntryTab';
 import { LeaderboardTab } from '@/components/LeaderboardTab';
@@ -12,6 +13,7 @@ import { NewEntryCTA } from '@/components/NewEntryCTA';
 import { LoginForm } from '@/components/LoginForm';
 import { OnboardingForm } from '@/components/OnboardingForm';
 import { SetPinForm } from '@/components/SetPinForm';
+import { PointSystemSheet } from '@/components/PointSystemPanel';
 import type { Profile } from '@/lib/types';
 
 type TabId = 'dashboard' | 'log' | 'leaderboard' | 'settings';
@@ -50,6 +52,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [entryRefresh, setEntryRefresh] = useState(0);
   const [sidebarPinned, setSidebarPinned] = useState(false);
+  const [pointsSheetOpen, setPointsSheetOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState('');
   const [paletteIdx, setPaletteIdx] = useState(0);
@@ -326,6 +329,18 @@ export default function Home() {
       },
       isActive: activeTab === 'settings' && settingsSection === s.id,
     })),
+    {
+      id: 'point-system',
+      label: 'Point System',
+      icon: BookOpen,
+      onSelect: () => {
+        setPointsSheetOpen(true);
+        setCommandPaletteOpen(false);
+        setPaletteQuery('');
+        setPaletteIdx(0);
+      },
+      isActive: pointsSheetOpen,
+    },
   ];
   const filteredPaletteItems = allPaletteItems.filter(
     (item) =>
@@ -387,6 +402,20 @@ export default function Home() {
             </div>
           ))}
         </nav>
+        {/* Point System trigger */}
+        <div className="border-t border-white/10 px-2 py-2 shrink-0">
+          <button
+            onClick={() => setPointsSheetOpen(true)}
+            className={`sidebar-nav-item ${pointsSheetOpen ? 'active' : ''}`}
+            title="Point System"
+          >
+            <BookOpen className="w-5 h-5 shrink-0" />
+            <span className={`ml-3 text-sm font-medium whitespace-nowrap transition-opacity duration-150 ${sidebarPinned ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+              Point System
+            </span>
+          </button>
+        </div>
+
         {/* Pin / collapse toggle */}
         <button
           onClick={() => setSidebarPinned((p) => !p)}
@@ -434,6 +463,15 @@ export default function Home() {
                   <span>Navigate</span>
                   <kbd className="ml-0.5 px-1.5 py-0.5 rounded text-[10px] bg-surface-0 border border-white/10 font-mono">Ctrl+/</kbd>
                 </button>
+                {/* Points button — mobile only (desktop uses left sidebar) */}
+                <button
+                  onClick={() => setPointsSheetOpen(true)}
+                  className="md:hidden flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-surface-1 border border-white/10 text-text-muted hover:text-text-secondary text-xs transition-colors"
+                  title="Point system"
+                  aria-label="Open point system"
+                >
+                  <BookOpen className="w-3.5 h-3.5" />
+                </button>
                 <NewEntryCTA profile={profile ?? null} onSuccess={() => { loadUser(); setEntryRefresh((r) => r + 1); }} />
                 <div className="flex items-center gap-1.5 pl-1 pr-2 py-1 rounded-full bg-surface-1 border border-white/10">
                   <button
@@ -477,6 +515,9 @@ export default function Home() {
             />
           )}
         </main>
+
+        {/* Point system slide-over — all screen sizes */}
+        <PointSystemSheet open={pointsSheetOpen} onClose={() => setPointsSheetOpen(false)} />
 
         <footer className="border-t border-white/10">
           <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8">

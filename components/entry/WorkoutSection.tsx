@@ -105,6 +105,8 @@ interface WorkoutSectionProps {
   steps: number | null;
   onSteps: (v: number | null) => void;
   className?: string;
+  durationError?: boolean;
+  durationErrorKey?: number;
 }
 
 export function WorkoutSection({
@@ -119,6 +121,8 @@ export function WorkoutSection({
   steps,
   onSteps,
   className = '',
+  durationError = false,
+  durationErrorKey = 0,
 }: WorkoutSectionProps) {
   const [openSection, setOpenSection] = useState<string>('push');
 
@@ -274,6 +278,9 @@ export function WorkoutSection({
           step={5}
           onChange={onWorkoutDuration}
           unit=" min"
+          error={durationError}
+          errorKey={durationErrorKey}
+          errorMessage="Set how long your session was to log this entry."
         />
       </div>
 

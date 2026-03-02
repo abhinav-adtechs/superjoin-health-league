@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { apiUrl, getApiFetchOptions } from '@/lib/api';
 import type { WorkoutOption, CardioType, Profile } from '@/lib/types';
 import { DateCarousel, MAX_DAYS_BACK } from '@/components/entry/DateCarousel';
 import { SliderField } from '@/components/entry/SliderField';
-import { MealsSlots, mealsToCounts, mealsFromExisting, EMPTY_MEALS_LOG, type MealsLog } from '@/components/entry/MealsSlots';
+import { MealsSlots, mealsToCounts, EMPTY_MEALS_LOG, type MealsLog } from '@/components/entry/MealsSlots';
 import { WorkoutSection } from '@/components/entry/WorkoutSection';
 
 export function getProteinTargetGrams(profile: Profile): number {
@@ -76,40 +76,27 @@ export function LogEntryModal({ entryType, profile, onClose, onSuccess }: LogEnt
   const [cardio_type, setCardioType] = useState<CardioType | ''>('');
   const [steps, setSteps] = useState<number | null>(null);
 
-  // Food / Sleep — load existing (last-value-wins totals for the day)
+  // Food / Sleep — start blank; only submit fields the user explicitly touches
   const [water_liters, setWaterLiters] = useState(0);
   const [mealsLog, setMealsLog] = useState<MealsLog>(EMPTY_MEALS_LOG);
+  const [mealsTouched, setMealsTouched] = useState(false);
   const [protein_qty, setProteinQty] = useState(0);
   const [sleep_hours, setSleepHours] = useState(7);
+  const [sleepTouched, setSleepTouched] = useState(false);
 
   // Weight — separate from workout step
   const [weight_kg, setWeightKg] = useState<number | null>(null);
 
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: 'ok' | 'error'; text: string } | null>(null);
+  const [durationError, setDurationError] = useState(false);
+  const [durationErrorKey, setDurationErrorKey] = useState(0);
 
   const proteinTarget = getProteinTargetGrams(profile);
   const proteinMax = Math.max(150, proteinTarget + 30);
 
-  // Load food/sleep from existing entry (pre-fill totals); workout always starts fresh
-  const loadExisting = async () => {
-    const res = await fetch(apiUrl(`/api/entries?date=${date}`), getApiFetchOptions());
-    const data = await res.json();
-    if (data?.id) {
-      setWaterLiters(Number(data.water_liters) || 0);
-      setMealsLog(mealsFromExisting(data.meals_log, Number(data.home_cooked_meals) || 0, Boolean(data.junk_food)));
-      setProteinQty(Number(data.protein_qty) || 0);
-      setSleepHours(Number(data.sleep_hours) || 7);
-      // Workout stays at default (0 / []) so each log is additive on the backend
-    }
-  };
-
-  useEffect(() => {
-    loadExisting();
-  }, [date]);
 
   const buildPayload = (): Record<string, unknown> => {
-    const { home_cooked_meals, junk_food, meals_log } = mealsToCounts(mealsLog);
     const payload: Record<string, unknown> = { date };
     const includeMovement = entryType === 'full' || entryType === 'movement';
     const includeFood = entryType === 'full' || entryType === 'meal_recovery';
@@ -117,11 +104,11 @@ export function LogEntryModal({ entryType, profile, onClose, onSuccess }: LogEnt
     const includeWeight = entryType === 'full' || entryType === 'weight';
 
     if (includeMovement) {
-      if (workout_types.length > 0) payload.workout_types = workout_types;
-      if (workout_duration > 0) {
+      if (workout_types.length > 0 || workout_duration > 0) {
         payload.workout_done = true;
-        payload.workout_duration = workout_duration;
       }
+      if (workout_types.length > 0) payload.workout_types = workout_types;
+      if (workout_duration > 0) payload.workout_duration = workout_duration;
       if (cardio_duration > 0 || cardio_type) {
         payload.cardio_done = true;
         if (cardio_duration > 0) payload.cardio_duration = cardio_duration;
@@ -131,16 +118,19 @@ export function LogEntryModal({ entryType, profile, onClose, onSuccess }: LogEnt
     }
     if (includeFood) {
       if (water_liters > 0) payload.water_liters = water_liters;
-      payload.home_cooked_meals = home_cooked_meals;
-      payload.junk_food = junk_food;
-      payload.meals_log = meals_log;
+      if (mealsTouched) {
+        const { home_cooked_meals, junk_food, meals_log } = mealsToCounts(mealsLog);
+        payload.home_cooked_meals = home_cooked_meals;
+        payload.junk_food = junk_food;
+        payload.meals_log = meals_log;
+      }
       if (protein_qty > 0) {
         payload.protein_meal = true;
         payload.protein_qty = protein_qty;
       }
     }
     if (includeSleep) {
-      if (sleep_hours > 0) payload.sleep_hours = sleep_hours;
+      if (sleepTouched && sleep_hours > 0) payload.sleep_hours = sleep_hours;
     }
     if (includeWeight && weight_kg != null && weight_kg > 0) {
       payload.weight_kg = weight_kg;
@@ -209,7 +199,7 @@ export function LogEntryModal({ entryType, profile, onClose, onSuccess }: LogEnt
       return (
         <div className="space-y-6 py-2">
           <SliderField label="Water" value={water_liters} min={0} max={5} step={0.25} onChange={setWaterLiters} unit=" L" />
-          <MealsSlots meals={mealsLog} onChange={setMealsLog} />
+          <MealsSlots meals={mealsLog} onChange={(m) => { setMealsLog(m); setMealsTouched(true); }} />
           <SliderField
             label={`Protein — target ~${proteinTarget}g/day`}
             value={protein_qty}
@@ -227,7 +217,7 @@ export function LogEntryModal({ entryType, profile, onClose, onSuccess }: LogEnt
     if ((isWizard && currentStep === 'sleep') || entryType === 'sleep') {
       return (
         <div className="py-2">
-          <SliderField label="Sleep hours" value={sleep_hours} min={4} max={12} step={0.5} onChange={setSleepHours} unit=" h" />
+          <SliderField label="Sleep hours" value={sleep_hours} min={4} max={12} step={0.5} onChange={(v) => { setSleepHours(v); setSleepTouched(true); }} unit=" h" />
         </div>
       );
     }
