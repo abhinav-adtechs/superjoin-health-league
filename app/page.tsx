@@ -419,7 +419,7 @@ export default function Home() {
         {/* Pin / collapse toggle */}
         <button
           onClick={() => setSidebarPinned((p) => !p)}
-          className="flex items-center px-3 h-10 border-t border-white/10 text-text-muted hover:text-text-secondary hover:bg-surface-1 transition-colors shrink-0"
+          className="flex items-center pl-5 pr-3 h-10 border-t border-white/10 text-text-muted hover:text-text-secondary hover:bg-surface-1 transition-colors shrink-0"
           title={sidebarPinned ? 'Collapse sidebar' : 'Pin sidebar open'}
         >
           <ChevronLeft className={`w-4 h-4 shrink-0 transition-transform duration-200 ${sidebarPinned ? '' : 'rotate-180'}`} />
