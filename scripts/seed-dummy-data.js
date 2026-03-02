@@ -106,7 +106,21 @@ const CARDIO_TYPES = [
   'running', 'cycling', 'walking', 'swimming', 'hiking', 'dance', 'football', 'cricket', 'basketball', 'badminton',
 ];
 
-function buildRandomEntry(userId, date, ageBracket) {
+// Mirrors isGoalCrushDay() in lib/points.ts.
+// Seeded profiles have no personal daily goals set, so falls back to dailyPoints >= 60.
+function calculateIsGoalCrushDay(entry, profile) {
+  const { goal_steps_day, goal_water_liters, goal_sleep_hours_min, goal_sleep_hours_max } = profile || {};
+  const hasDailyGoals = goal_steps_day || goal_water_liters || (goal_sleep_hours_min && goal_sleep_hours_max);
+  if (!hasDailyGoals) return entry.daily_points >= 60;
+  if (goal_steps_day && (!entry.steps || entry.steps < goal_steps_day)) return false;
+  if (goal_water_liters && (!entry.water_liters || entry.water_liters < goal_water_liters)) return false;
+  if (goal_sleep_hours_min && goal_sleep_hours_max) {
+    if (entry.sleep_hours == null || entry.sleep_hours < goal_sleep_hours_min || entry.sleep_hours > goal_sleep_hours_max) return false;
+  }
+  return true;
+}
+
+function buildRandomEntry(userId, date, ageBracket, profile) {
   const entry = {
     user_id: userId,
     date: date,
@@ -138,6 +152,7 @@ function buildRandomEntry(userId, date, ageBracket) {
     entry.protein_qty = randInt(60, 180);
   }
   entry.daily_points = calculateDailyPoints(entry, ageBracket);
+  entry.is_goal_crush_day = calculateIsGoalCrushDay(entry, profile);
   return entry;
 }
 
@@ -157,7 +172,7 @@ async function main() {
   console.log('Fetching existing profiles...');
   const { data: profiles, error: profileError } = await supabase
     .from('profiles')
-    .select('id, display_name, age, age_bracket, starting_weight, joined_at');
+    .select('id, display_name, age, age_bracket, starting_weight, joined_at, goal_steps_day, goal_water_liters, goal_sleep_hours_min, goal_sleep_hours_max');
   if (profileError) {
     console.error('Error fetching profiles:', profileError);
     process.exit(1);
@@ -197,7 +212,7 @@ async function main() {
       const prob = isCurrentWeek ? Math.max(SEED_ENTRY_PROB, 0.85) : SEED_ENTRY_PROB;
       if (!maybe(prob)) continue;
       
-      dailyEntries.push(buildRandomEntry(profile.id, dateStr, ageBracket));
+      dailyEntries.push(buildRandomEntry(profile.id, dateStr, ageBracket, profile));
       const key = `${profile.id}:${weekStart}`;
       if (!weekWeights.has(key)) {
         const wiggle = randFloat(-1.5, 1.5, 2);
@@ -217,7 +232,7 @@ async function main() {
         if (dateStr < dateToYMD(today) && getWeekStart(dateStr) === currentWeekStart) {
           const existing = dailyEntries.find(e => e.user_id === profile.id && e.date === dateStr);
           if (!existing) {
-            dailyEntries.push(buildRandomEntry(profile.id, dateStr, ageBracket));
+            dailyEntries.push(buildRandomEntry(profile.id, dateStr, ageBracket, profile));
             const weekStart = getWeekStart(dateStr);
             const key = `${profile.id}:${weekStart}`;
             if (!weekWeights.has(key)) {

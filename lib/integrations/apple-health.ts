@@ -5,6 +5,7 @@
  * On web/browser, all functions are no-ops that return null.
  */
 
+import { Capacitor } from '@capacitor/core';
 import type { IntegrationSyncPayload, WorkoutOption, CardioType } from '@/lib/types';
 import { HK_WORKOUT_NAME_TO_CARDIO, HK_WORKOUT_NAME_TO_STRENGTH } from './data-mapper';
 
@@ -54,6 +55,9 @@ interface HKSleepSample {
 /** Lazily loads the Capacitor HealthKit plugin (only available in iOS app) */
 async function getPlugin() {
   if (typeof window === 'undefined') return null;
+  // The web stub for this plugin throws "not implemented on web" for every
+  // method (including .then()), so we must bail out before importing it.
+  if (!Capacitor.isNativePlatform()) return null;
   try {
     const mod = await import('@perfood/capacitor-healthkit');
     return mod.CapacitorHealthkit ?? null;

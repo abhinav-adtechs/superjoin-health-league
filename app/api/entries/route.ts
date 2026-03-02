@@ -1,7 +1,15 @@
 import { createClient } from '@/lib/supabase/server';
+import { createServiceRoleClient } from '@/lib/supabase/admin';
 import { NextResponse } from 'next/server';
-import { calculateDailyPoints, getAgeBracket } from '@/lib/points';
+import { calculateDailyPoints, getAgeBracket, isGoalCrushDay } from '@/lib/points';
 import type { AgeBracket } from '@/lib/types';
+import {
+  detectEntryCategory,
+  buildEntryBlocks,
+  postToChannel,
+  sendDM,
+} from '@/lib/slack';
+import { sendPushToUser } from '@/lib/push';
 
 const ALLOWED_FIELDS = [
   'workout_done', 'workout_duration', 'workout_types', 'cardio_done', 'cardio_duration', 'cardio_type',
@@ -136,17 +144,43 @@ export async function POST(request: Request) {
     entry.workout_types = [];
   }
 
-  const { data: profile } = await supabase.from('profiles').select('age_bracket').eq('id', user.id).single();
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('age_bracket, goal_steps_day, goal_water_liters, goal_sleep_hours_min, goal_sleep_hours_max')
+    .eq('id', user.id)
+    .single();
   const ageBracket: AgeBracket = (profile?.age_bracket as AgeBracket) ?? '25_to_35';
   entry.daily_points = calculateDailyPoints(entry as Parameters<typeof calculateDailyPoints>[0], ageBracket);
+  entry.is_goal_crush_day = isGoalCrushDay(
+    entry as Parameters<typeof isGoalCrushDay>[0],
+    profile ?? {},
+    entry.daily_points as number,
+  );
 
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from('daily_entries')
     .upsert(entry, { onConflict: 'user_id,date', ignoreDuplicates: false })
     .select()
     .single();
 
+  // If the upsert failed because is_goal_crush_day column doesn't exist yet
+  // (migration 20260302_goal_crush_streak.sql not applied), retry without it.
+  if (error && 'is_goal_crush_day' in entry) {
+    const { is_goal_crush_day: _dropped, ...entryWithoutCrush } = entry as Record<string, unknown> & { is_goal_crush_day: unknown };
+    void _dropped;
+    const retry = await supabase
+      .from('daily_entries')
+      .upsert(entryWithoutCrush, { onConflict: 'user_id,date', ignoreDuplicates: false })
+      .select()
+      .single();
+    data = retry.data;
+    error = retry.error;
+  }
+
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // Fire-and-forget: send Slack + push notifications
+  fireEntryNotifications(user.id, body, data.daily_points).catch(() => {});
 
   // Optional weight: upsert weekly_weigh_ins for entry date's week and update profile
   const weight_kg = body.weight_kg != null ? Number(body.weight_kg) : undefined;
@@ -159,4 +193,73 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json(data);
+}
+
+// ── Notification dispatcher (fire-and-forget) ────────────────────────────────
+
+async function fireEntryNotifications(
+  userId: string,
+  body: Record<string, unknown>,
+  pointsToday: number,
+): Promise<void> {
+  try {
+    const admin = createServiceRoleClient();
+
+    const [prefRes, profileRes] = await Promise.all([
+      admin
+        .from('notification_preferences')
+        .select('*')
+        .eq('user_id', userId)
+        .maybeSingle(),
+      admin
+        .from('profiles')
+        .select('display_name, slack_user_id')
+        .eq('id', userId)
+        .single(),
+    ]);
+
+    if (prefRes.error || !prefRes.data) return;
+    if (profileRes.error || !profileRes.data) return;
+
+    const prefs = prefRes.data;
+    const { display_name: displayName, slack_user_id: slackUserId } = profileRes.data;
+
+    const category = detectEntryCategory(body);
+    const blocks = buildEntryBlocks({ displayName, category, body, pointsToday });
+
+    // Slack channel post
+    if (prefs.slack_enabled && prefs.slack_channel_post_enabled) {
+      await postToChannel(blocks);
+    }
+
+    // Slack DM
+    if (prefs.slack_enabled && prefs.slack_dm_enabled && slackUserId) {
+      await sendDM(
+        slackUserId,
+        `${displayName} just logged an activity — ${pointsToday} pts today!`,
+        blocks,
+      );
+    }
+
+    // Push notification
+    if (prefs.push_enabled && prefs.push_on_entry_enabled) {
+      const { data: tokens } = await admin
+        .from('device_tokens')
+        .select('token')
+        .eq('user_id', userId);
+
+      if (tokens && tokens.length > 0) {
+        await sendPushToUser(
+          tokens.map((t: { token: string }) => t.token),
+          {
+            title: '✅ Activity Logged!',
+            body: `${displayName} logged ${category} — ${pointsToday} pts today`,
+            data: { type: 'entry_logged', category },
+          },
+        );
+      }
+    }
+  } catch (e) {
+    console.error('[Notifications] fireEntryNotifications error:', e);
+  }
 }

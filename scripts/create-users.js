@@ -42,6 +42,8 @@ const users = [
   { name: 'Vinayak Jhunjhunwala', email: 'vinayak@superjoin.ai' },
   { name: 'Sagar Kotian', email: 'sagar@superjoin.ai' },
   { name: 'Tushar Anand', email: 'tushar@superjoin.ai' },
+  { name: 'Mukul', email: 'mukul@superjoin.ai' },
+  { name: 'Anshul', email: 'anshul@superjoin.ai' },
 ];
 
 // Generate random 6-digit PIN

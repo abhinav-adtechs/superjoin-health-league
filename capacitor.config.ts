@@ -10,6 +10,17 @@ const config: CapacitorConfig = {
     url: process.env.CAPACITOR_SERVER_URL || 'https://superjoin-health-league.vercel.app',
     cleartext: process.env.CAPACITOR_CLEARTEXT === 'true',
   },
+  plugins: {
+    PushNotifications: {
+      // Present push alerts, badges and sounds in foreground (iOS)
+      presentationOptions: ['badge', 'sound', 'alert'],
+    },
+    LocalNotifications: {
+      smallIcon: 'ic_stat_icon_config_sample',
+      iconColor: '#F97316',
+      sound: 'beep.wav',
+    },
+  },
 };
 
 export default config;

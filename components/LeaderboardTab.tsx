@@ -14,11 +14,22 @@ import {
   Utensils,
   Moon,
   Activity,
+  ChevronDown,
+  Info,
+  Footprints,
+  Zap,
 } from 'lucide-react';
 import { apiUrl, getApiFetchOptions } from '@/lib/api';
 import type { LeaderboardView, LeaderboardResponse } from '@/lib/types';
 
 // ─── Date helpers ─────────────────────────────────────────────────────────────
+
+function localISO(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dd}`;
+}
 
 function getCurrentWeekMonday(): string {
   const d = new Date();
@@ -26,18 +37,28 @@ function getCurrentWeekMonday(): string {
   const diff = d.getDate() - day + (day === 0 ? -6 : 1);
   const monday = new Date(d);
   monday.setDate(diff);
-  monday.setHours(0, 0, 0, 0);
-  return monday.toISOString().slice(0, 10);
+  return localISO(monday);
 }
 
 function addDaysToISO(iso: string, days: number): string {
   const d = new Date(iso + 'T12:00:00');
   d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
+  return localISO(d);
 }
 
 function toISO(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  return localISO(d);
+}
+
+function getCurrentMonthStr(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function addMonthsToStr(monthStr: string, delta: number): string {
+  const [year, month] = monthStr.split('-').map(Number);
+  const d = new Date(year, month - 1 + delta, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
 // ─── Avatar ───────────────────────────────────────────────────────────────────
@@ -321,18 +342,291 @@ function WeekCalendar({
   );
 }
 
+// ─── Month picker ─────────────────────────────────────────────────────────────
+
+function MonthPicker({
+  selectedMonth,
+  onSelect,
+  onClose,
+}: {
+  selectedMonth: string;
+  onSelect: (month: string) => void;
+  onClose: () => void;
+}) {
+  const [year] = selectedMonth.split('-').map(Number);
+  const [calYear, setCalYear] = useState(year);
+  const ref = useRef<HTMLDivElement>(null);
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1;
+
+  const handleOutsideClick = useCallback(
+    (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    },
+    [onClose],
+  );
+
+  useEffect(() => {
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, [handleOutsideClick]);
+
+  const canGoNextYear = calYear < currentYear;
+
+  return (
+    <div
+      ref={ref}
+      className="absolute top-full left-1/2 -translate-x-1/2 mt-2 z-50 bg-surface-1 border border-white/10 rounded-2xl shadow-2xl p-4 w-56"
+    >
+      {/* Year navigator */}
+      <div className="flex items-center justify-between mb-3">
+        <button
+          onClick={() => setCalYear((y) => y - 1)}
+          className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"
+        >
+          <ChevronLeft className="w-4 h-4 text-text-secondary" />
+        </button>
+        <span className="text-sm font-semibold text-text-primary">{calYear}</span>
+        <button
+          onClick={() => { if (canGoNextYear) setCalYear((y) => y + 1); }}
+          disabled={!canGoNextYear}
+          className={`p-1.5 rounded-lg transition-colors ${canGoNextYear ? 'hover:bg-white/10' : 'opacity-30 cursor-not-allowed'}`}
+        >
+          <ChevronRight className="w-4 h-4 text-text-secondary" />
+        </button>
+      </div>
+
+      {/* Month grid */}
+      <div className="grid grid-cols-3 gap-1">
+        {MONTH_NAMES.map((name, i) => {
+          const m = i + 1;
+          const monthStr = `${calYear}-${String(m).padStart(2, '0')}`;
+          const isSelected = monthStr === selectedMonth;
+          const isFuture = calYear > currentYear || (calYear === currentYear && m > currentMonth);
+          return (
+            <button
+              key={m}
+              disabled={isFuture}
+              onClick={() => { onSelect(monthStr); onClose(); }}
+              className={`py-2 rounded-xl text-xs font-medium transition-colors ${
+                isSelected
+                  ? 'bg-primary-orange/20 ring-1 ring-primary-orange/40 text-primary-orange'
+                  : isFuture
+                  ? 'opacity-25 cursor-not-allowed text-text-muted'
+                  : 'hover:bg-white/8 text-text-primary cursor-pointer'
+              }`}
+            >
+              {name}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── Scoring Guide ────────────────────────────────────────────────────────────
+
+type ScoringRuleStatic = {
+  id: number;
+  action_label: string;
+  condition_desc: string;
+  points: number;
+  is_bonus: boolean;
+  age_note?: string;
+};
+
+type CategoryConfig = {
+  label: string;
+  icon: React.ElementType;
+  color: string;
+  bgColor: string;
+  max?: number;
+  streakNote?: boolean;
+  rules: ScoringRuleStatic[];
+};
+
+// Static scoring rules — mirrors lib/points.ts exactly.
+// When you update the scoring engine, update this list too.
+const SCORING_CATEGORIES: CategoryConfig[] = [
+  {
+    label: 'Workout', icon: Dumbbell, color: 'text-blue-400', bgColor: 'bg-blue-400/10', max: 20,
+    rules: [
+      { id: 1,  action_label: 'Complete any workout',        condition_desc: 'Log at least one workout session',          points: 10, is_bonus: false },
+      { id: 2,  action_label: 'Workout for 45+ minutes',     condition_desc: 'Session duration is 45 minutes or more',   points: 5,  is_bonus: true  },
+      { id: 3,  action_label: 'Workout for 60+ minutes',     condition_desc: 'Session duration is 60 minutes or more',   points: 5,  is_bonus: true  },
+    ],
+  },
+  {
+    label: 'Cardio', icon: Activity, color: 'text-rose-400', bgColor: 'bg-rose-400/10', max: 15,
+    rules: [
+      { id: 4,  action_label: 'Complete any cardio session', condition_desc: 'Log at least one cardio session',          points: 10, is_bonus: false },
+      { id: 5,  action_label: 'Cardio for 30+ minutes',      condition_desc: 'Session duration is 30 minutes or more',  points: 5,  is_bonus: true, age_note: 'Over 35: 25.5 minutes counts (85% threshold)' },
+    ],
+  },
+  {
+    label: 'Sleep', icon: Moon, color: 'text-indigo-400', bgColor: 'bg-indigo-400/10', max: 15,
+    rules: [
+      { id: 6,  action_label: 'Sleep 7 to 9 hours',          condition_desc: 'Sweet spot — not too little, not too much', points: 10, is_bonus: false },
+      { id: 7,  action_label: 'Sleep 6 to 7 hours',          condition_desc: 'Decent rest, just under the ideal range',   points: 5,  is_bonus: false },
+      { id: 8,  action_label: 'Rate sleep quality 4 or 5',   condition_desc: 'Self-reported quality score out of 5',      points: 5,  is_bonus: true  },
+    ],
+  },
+  {
+    label: 'Nutrition', icon: Utensils, color: 'text-emerald-400', bgColor: 'bg-emerald-400/10', max: 33,
+    rules: [
+      { id: 9,  action_label: 'Drink 3 or more litres of water',     condition_desc: 'Fully hydrated for the day',                       points: 10, is_bonus: false },
+      { id: 10, action_label: 'Drink between 2 and 3 litres',        condition_desc: 'Good hydration, just shy of the top tier',         points: 5,  is_bonus: false },
+      { id: 11, action_label: 'Eat 2 or more home-cooked meals',     condition_desc: 'Meals prepared at home count',                     points: 5,  is_bonus: false },
+      { id: 12, action_label: 'Have a protein-focused meal',         condition_desc: 'Log a meal where protein is the main focus',       points: 5,  is_bonus: false },
+      { id: 13, action_label: 'Hit 100g or more of protein',         condition_desc: 'Total protein intake for the day reaches 100g',   points: 3,  is_bonus: true  },
+      { id: 14, action_label: 'Skip junk food entirely',             condition_desc: 'No junk food consumed during the day',             points: 5,  is_bonus: false },
+      { id: 15, action_label: 'No alcohol',                          condition_desc: 'Alcohol-free day',                                 points: 5,  is_bonus: false },
+    ],
+  },
+  {
+    label: 'Steps', icon: Footprints, color: 'text-amber-400', bgColor: 'bg-amber-400/10', max: 15,
+    rules: [
+      { id: 16, action_label: '10,000 or more steps', condition_desc: 'Full active day', points: 15, is_bonus: false, age_note: 'Over 35: 8,500 steps counts' },
+      { id: 17, action_label: '7,500 or more steps',  condition_desc: 'Solid movement',  points: 10, is_bonus: false, age_note: 'Over 35: 6,375 steps counts' },
+      { id: 18, action_label: '5,000 or more steps',  condition_desc: 'Getting there',   points: 5,  is_bonus: false, age_note: 'Over 35: 4,250 steps counts' },
+    ],
+  },
+  {
+    label: 'Log Streak', icon: Flame, color: 'text-orange-400', bgColor: 'bg-orange-400/10', streakNote: true,
+    rules: [
+      { id: 19, action_label: '7-day logging streak',          condition_desc: 'Log anything every day for a week',                  points: 10,  is_bonus: false },
+      { id: 20, action_label: '14-day logging streak',         condition_desc: 'Two full weeks of showing up',                       points: 20,  is_bonus: false },
+      { id: 21, action_label: '30-day logging streak',         condition_desc: 'A full month of logging',                            points: 40,  is_bonus: false },
+      { id: 22, action_label: '60-day logging streak',         condition_desc: 'Two months without missing a day',                   points: 75,  is_bonus: false },
+      { id: 23, action_label: '90-day logging streak',         condition_desc: 'Three months — identity-level habit',                points: 100, is_bonus: false },
+      { id: 24, action_label: 'Every 30 days beyond 90',       condition_desc: 'Repeating bonus for every additional 30-day block',  points: 50,  is_bonus: false },
+    ],
+  },
+  {
+    label: 'Weekly Goals', icon: TrendingUp, color: 'text-green-400', bgColor: 'bg-green-400/10', streakNote: true,
+    rules: [
+      { id: 25, action_label: 'Hit some weekly goals (partial)', condition_desc: 'Met some of: workout days, workout mins, home-cooked meals goals', points: 20, is_bonus: false },
+      { id: 26, action_label: 'Hit all weekly goals (full)',      condition_desc: 'All set weekly profile goals met this week',                       points: 50, is_bonus: false },
+    ],
+  },
+  {
+    label: 'Goal Crush', icon: Zap, color: 'text-amber-400', bgColor: 'bg-amber-400/10', streakNote: true,
+    rules: [
+      { id: 27, action_label: '3-day goal crush streak',  condition_desc: 'Hit personal daily goals 3 days running',                     points: 15,  is_bonus: false },
+      { id: 28, action_label: '7-day goal crush streak',  condition_desc: 'A full week of crushing daily goals',                         points: 50,  is_bonus: false },
+      { id: 29, action_label: '14-day goal crush streak', condition_desc: 'Two weeks of daily goal performance',                          points: 100, is_bonus: false },
+      { id: 30, action_label: '30-day goal crush streak', condition_desc: 'A full month hitting every daily target',                      points: 200, is_bonus: false },
+      { id: 31, action_label: 'Every 30 days beyond 30',  condition_desc: 'Repeating bonus for sustained daily goal performance',         points: 200, is_bonus: false },
+    ],
+  },
+];
+
+function ScoringGuide() {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="glass-card overflow-hidden">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-white/5 transition-colors"
+        aria-expanded={open}
+      >
+        <div className="flex items-center gap-2">
+          <Info className="w-4 h-4 text-text-muted flex-shrink-0" />
+          <span className="text-sm font-semibold text-text-primary">How points are scored</span>
+          <span className="text-[11px] text-text-muted bg-surface-2 px-2 py-0.5 rounded-full">98 pts / day max</span>
+        </div>
+        <ChevronDown
+          className={`w-4 h-4 text-text-muted transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+        />
+      </button>
+
+      {open && (
+        <div className="border-t border-white/10 divide-y divide-white/10">
+          {SCORING_CATEGORIES.map((cat) => {
+            const Icon = cat.icon;
+            return (
+              <div key={cat.label} className="px-4 py-3">
+                {/* Category header */}
+                <div className="flex items-center gap-2 mb-2">
+                  <div className={`w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0 ${cat.bgColor}`}>
+                    <Icon className={`w-3.5 h-3.5 ${cat.color}`} />
+                  </div>
+                  <span className={`text-xs font-bold uppercase tracking-wider ${cat.color}`}>{cat.label}</span>
+                  {cat.max != null && (
+                    <span className="ml-auto text-[11px] text-text-muted tabular-nums">max {cat.max} pts</span>
+                  )}
+                  {cat.streakNote && (
+                    <span className="ml-auto text-[11px] text-text-muted">one-time bonus per milestone</span>
+                  )}
+                </div>
+
+                {/* Rules table */}
+                <table className="w-full text-xs">
+                  <tbody className="divide-y divide-white/5">
+                    {cat.rules.map((rule) => (
+                      <tr key={rule.id}>
+                        <td className="py-1.5 pr-3">
+                          <div className="flex items-start gap-1.5">
+                            {rule.is_bonus && (
+                              <span className="mt-0.5 flex-shrink-0 text-[9px] font-bold text-text-muted bg-white/8 px-1 rounded">+</span>
+                            )}
+                            <div>
+                              <p className="text-text-primary font-medium leading-snug">{rule.action_label}</p>
+                              <p className="text-text-muted leading-snug mt-0.5 text-[11px]">{rule.condition_desc}</p>
+                              {rule.age_note && (
+                                <p className="leading-snug mt-0.5 flex items-center gap-1">
+                                  <span className="text-[9px] font-bold bg-amber-400/10 text-amber-400 px-1 py-0.5 rounded">35+</span>
+                                  <span className="text-amber-400/80 text-[10px]">{rule.age_note}</span>
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-1.5 text-right align-top whitespace-nowrap">
+                          <span className={`font-bold tabular-nums ${cat.color}`}>
+                            {rule.is_bonus ? `+${rule.points}` : rule.points}
+                          </span>
+                          <span className="text-text-muted ml-0.5">pts</span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })}
+
+          <div className="px-4 py-3 bg-surface-2/50">
+            <p className="text-[11px] text-text-muted leading-relaxed">
+              <span className="font-semibold text-text-secondary">Age bracket:</span> Members over 35 have 85% thresholds for steps and cardio for fair comparison.
+              Streak bonuses are one-time awards per milestone and do not count toward the 98 pts/day cap.
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function LeaderboardTab() {
   const [view, setView] = useState<LeaderboardView>('weekly');
   const [weekStart, setWeekStart] = useState<string>(getCurrentWeekMonday);
   const [calendarOpen, setCalendarOpen] = useState(false);
+  const [selectedMonth, setSelectedMonth] = useState<string>(getCurrentMonthStr);
+  const [monthCalendarOpen, setMonthCalendarOpen] = useState(false);
   const [data, setData] = useState<LeaderboardResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const currentWeekMonday = getCurrentWeekMonday();
   const isCurrentWeek = weekStart === currentWeekMonday;
+  const currentMonthStr = getCurrentMonthStr();
+  const isCurrentMonth = selectedMonth === currentMonthStr;
 
   useEffect(() => {
     let cancelled = false;
@@ -341,7 +635,9 @@ export function LeaderboardTab() {
     const url =
       view === 'weekly'
         ? apiUrl(`/api/leaderboard?view=weekly&week_start=${weekStart}`)
-        : apiUrl(`/api/leaderboard?view=${view}`);
+        : view === 'monthly'
+        ? apiUrl(`/api/leaderboard?view=monthly&month=${selectedMonth}`)
+        : apiUrl(`/api/leaderboard?view=alltime`);
     fetch(url, getApiFetchOptions())
       .then((res) => {
         if (!res.ok && res.status === 503)
@@ -354,7 +650,7 @@ export function LeaderboardTab() {
       })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [view, weekStart]);
+  }, [view, weekStart, selectedMonth]);
 
   if (loading) return <div className="animate-pulse text-text-muted">Loading leaderboard…</div>;
 
@@ -442,7 +738,48 @@ export function LeaderboardTab() {
           </div>
         )}
 
-        {view !== 'weekly' && (
+        {/* Month navigator */}
+        {view === 'monthly' && (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setSelectedMonth((m) => addMonthsToStr(m, -1))}
+              className="p-1.5 hover:bg-white/10 rounded-lg transition-colors flex-shrink-0"
+              aria-label="Previous month"
+            >
+              <ChevronLeft className="w-4 h-4 text-text-secondary" />
+            </button>
+
+            <div className="relative flex-1 flex justify-center">
+              <button
+                onClick={() => setMonthCalendarOpen((o) => !o)}
+                className="flex items-center gap-2 px-3 py-1.5 bg-surface-2 hover:bg-white/10 rounded-xl text-sm font-medium text-text-primary transition-colors w-full justify-center"
+              >
+                <CalendarDays className="w-3.5 h-3.5 text-text-muted flex-shrink-0" />
+                <span className="truncate">{data.period}</span>
+              </button>
+              {monthCalendarOpen && (
+                <MonthPicker
+                  selectedMonth={selectedMonth}
+                  onSelect={(m) => { setSelectedMonth(m); }}
+                  onClose={() => setMonthCalendarOpen(false)}
+                />
+              )}
+            </div>
+
+            <button
+              onClick={() => { if (!isCurrentMonth) setSelectedMonth((m) => addMonthsToStr(m, 1)); }}
+              disabled={isCurrentMonth}
+              className={`p-1.5 rounded-lg transition-colors flex-shrink-0 ${
+                isCurrentMonth ? 'opacity-30 cursor-not-allowed' : 'hover:bg-white/10'
+              }`}
+              aria-label="Next month"
+            >
+              <ChevronRight className="w-4 h-4 text-text-secondary" />
+            </button>
+          </div>
+        )}
+
+        {view === 'alltime' && (
           <p className="text-sm text-text-secondary">{data.period}</p>
         )}
       </div>
@@ -524,6 +861,12 @@ export function LeaderboardTab() {
                             {r.user.streak_days}d
                           </span>
                         )}
+                        {r.user.goal_crush_streak > 0 && (
+                          <span className="inline-flex items-center gap-0.5 text-amber-400 text-xs font-semibold">
+                            <Zap className="w-3 h-3" />
+                            {r.user.goal_crush_streak}d
+                          </span>
+                        )}
                         {r.score.goals_pct != null && (
                           <span
                             className="text-xs font-semibold"
@@ -564,6 +907,9 @@ export function LeaderboardTab() {
           joining) so newcomers can compete fairly.
         </p>
       )}
+
+      {/* ── Scoring guide ── */}
+      <ScoringGuide />
     </div>
   );
 }

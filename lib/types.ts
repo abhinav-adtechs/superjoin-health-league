@@ -67,6 +67,7 @@ export interface DailyEntry {
   sleep_hours: number | null;
   sleep_quality: number | null;
   daily_points: number;
+  is_goal_crush_day: boolean;
 }
 
 export interface WeeklyWeighIn {
@@ -99,6 +100,7 @@ export interface LeaderboardRanking {
     display_name: string;
     avatar_url: string | null;
     streak_days: number;
+    goal_crush_streak: number;
     days_active: number;
   };
   score: {

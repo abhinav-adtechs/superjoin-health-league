@@ -185,6 +185,79 @@ body {
   background: var(--primary-orange);
 }
 
+/* ── Sidebar navigation (desktop) ── */
+.sidebar-nav-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 10px 10px;
+  border-radius: 10px;
+  cursor: pointer;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  transition: background 0.15s ease, color 0.15s ease;
+  text-align: left;
+}
+.sidebar-nav-item:hover {
+  background: rgba(0, 0, 0, 0.04);
+  color: var(--text-secondary);
+}
+.sidebar-nav-item.active {
+  background: rgba(255, 107, 53, 0.08);
+  color: var(--primary-orange);
+}
+.sidebar-nav-item.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 60%;
+  border-radius: 0 3px 3px 0;
+  background: var(--primary-orange);
+}
+
+/* ── Bottom navigation (mobile) ── */
+.bottom-nav {
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.07), 0 -1px 0 rgba(0, 0, 0, 0.04);
+  /* Safe area inset for notched phones */
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.bottom-nav-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 10px 4px 10px;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.15s ease, transform 0.1s ease;
+  -webkit-tap-highlight-color: transparent;
+  letter-spacing: 0.01em;
+}
+.bottom-nav-item:active {
+  transform: scale(0.92);
+}
+.bottom-nav-item.active {
+  color: var(--primary-orange);
+}
+.bottom-nav-item.active svg {
+  filter: drop-shadow(0 2px 6px rgba(255, 107, 53, 0.4));
+}
+
 .rank-1 { background: linear-gradient(135deg, rgba(217, 119, 6, 0.15), rgba(217, 119, 6, 0.05)); border: 1px solid rgba(217, 119, 6, 0.3); color: #b45309; }
 .rank-2 { background: linear-gradient(135deg, rgba(100, 116, 139, 0.12), rgba(100, 116, 139, 0.04)); border: 1px solid rgba(100, 116, 139, 0.25); color: #475569; }
 .rank-3 { background: linear-gradient(135deg, rgba(180, 83, 9, 0.12), rgba(180, 83, 9, 0.04)); border: 1px solid rgba(180, 83, 9, 0.25); color: #92400e; }

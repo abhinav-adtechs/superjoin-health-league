@@ -3,26 +3,30 @@
 import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { apiUrl, getApiFetchOptions } from '@/lib/api';
-import { Heart, LayoutDashboard, PenLine, Trophy, User, LogOut, Link2 } from 'lucide-react';
+import { Heart, Activity, Dumbbell, Trophy, Settings, LogOut, ChevronLeft, Search, User, Bell, Plug2 } from 'lucide-react';
 import { DashboardTab } from '@/components/DashboardTab';
 import { LogEntryTab } from '@/components/LogEntryTab';
 import { LeaderboardTab } from '@/components/LeaderboardTab';
-import { MyStatsTab } from '@/components/MyStatsTab';
-import { ConnectedAccountsTab } from '@/components/ConnectedAccountsTab';
+import { SettingsTab, type SettingsSection } from '@/components/SettingsTab';
 import { NewEntryCTA } from '@/components/NewEntryCTA';
 import { LoginForm } from '@/components/LoginForm';
 import { OnboardingForm } from '@/components/OnboardingForm';
 import { SetPinForm } from '@/components/SetPinForm';
 import type { Profile } from '@/lib/types';
 
-type TabId = 'dashboard' | 'log' | 'leaderboard' | 'me' | 'connected';
+type TabId = 'dashboard' | 'log' | 'leaderboard' | 'settings';
 
-const TABS: { id: TabId; label: string; icon: typeof Heart }[] = [
-  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'log', label: 'Workout history', icon: PenLine },
-  { id: 'leaderboard', label: 'Leaderboard', icon: Trophy },
-  { id: 'me', label: 'Profile & Goals', icon: User },
-  { id: 'connected', label: 'Connected', icon: Link2 },
+const TABS: { id: TabId; label: string; shortLabel: string; icon: typeof Heart }[] = [
+  { id: 'dashboard', label: 'Dashboard', shortLabel: 'Home', icon: Activity },
+  { id: 'log', label: 'Workout history', shortLabel: 'History', icon: Dumbbell },
+  { id: 'leaderboard', label: 'Leaderboard', shortLabel: 'League', icon: Trophy },
+  { id: 'settings', label: 'Settings', shortLabel: 'Settings', icon: Settings },
+];
+
+const SETTINGS_SECTIONS: { id: SettingsSection; label: string; icon: typeof Heart }[] = [
+  { id: 'profile', label: 'Profile & Goals', icon: User },
+  { id: 'notifications', label: 'Notifications', icon: Bell },
+  { id: 'apps', label: 'Connected Apps', icon: Plug2 },
 ];
 
 export default function Home() {
@@ -31,12 +35,24 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState<TabId>(() => {
     if (typeof window !== 'undefined') {
       const tab = new URLSearchParams(window.location.search).get('tab');
-      if (tab === 'connected') return 'connected';
+      if (tab === 'connected' || tab === 'notifications' || tab === 'me') return 'settings';
     }
     return 'dashboard';
   });
+  const [settingsSection, setSettingsSection] = useState<SettingsSection>(() => {
+    if (typeof window !== 'undefined') {
+      const tab = new URLSearchParams(window.location.search).get('tab');
+      if (tab === 'notifications') return 'notifications';
+      if (tab === 'connected') return 'apps';
+    }
+    return 'profile';
+  });
   const [loading, setLoading] = useState(true);
   const [entryRefresh, setEntryRefresh] = useState(0);
+  const [sidebarPinned, setSidebarPinned] = useState(false);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [paletteQuery, setPaletteQuery] = useState('');
+  const [paletteIdx, setPaletteIdx] = useState(0);
 
   const loadUser = useCallback(async () => {
     console.log('loadUser called');
@@ -134,6 +150,26 @@ export default function Home() {
       }
     };
   }, [loadUser]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      const isInput = tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement)?.isContentEditable;
+      if (e.ctrlKey && e.key === '/' && !isInput) {
+        e.preventDefault();
+        setCommandPaletteOpen((prev) => !prev);
+        setPaletteQuery('');
+        setPaletteIdx(0);
+      }
+      if (e.key === 'Escape') {
+        setCommandPaletteOpen(false);
+        setPaletteQuery('');
+        setPaletteIdx(0);
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   const handleLogout = async () => {
     const supabase = createClient();
@@ -254,81 +290,297 @@ export default function Home() {
     );
   }
 
+  // ── Command palette items (tabs + settings sub-sections) ─────────────────
+  type PaletteItem = {
+    id: string;
+    label: string;
+    parentLabel?: string;
+    icon: typeof Heart;
+    onSelect: () => void;
+    isActive: boolean;
+  };
+  const allPaletteItems: PaletteItem[] = [
+    ...TABS.map((tab) => ({
+      id: `tab-${tab.id}`,
+      label: tab.label,
+      icon: tab.icon,
+      onSelect: () => {
+        setActiveTab(tab.id);
+        setCommandPaletteOpen(false);
+        setPaletteQuery('');
+        setPaletteIdx(0);
+      },
+      isActive: activeTab === tab.id && tab.id !== 'settings',
+    })),
+    ...SETTINGS_SECTIONS.map((s) => ({
+      id: `settings-${s.id}`,
+      label: s.label,
+      parentLabel: 'Settings',
+      icon: s.icon,
+      onSelect: () => {
+        setActiveTab('settings');
+        setSettingsSection(s.id);
+        setCommandPaletteOpen(false);
+        setPaletteQuery('');
+        setPaletteIdx(0);
+      },
+      isActive: activeTab === 'settings' && settingsSection === s.id,
+    })),
+  ];
+  const filteredPaletteItems = allPaletteItems.filter(
+    (item) =>
+      item.label.toLowerCase().includes(paletteQuery.toLowerCase()) ||
+      item.parentLabel?.toLowerCase().includes(paletteQuery.toLowerCase()),
+  );
+  const safePaletteIdx = filteredPaletteItems.length > 0
+    ? Math.min(paletteIdx, filteredPaletteItems.length - 1)
+    : 0;
+
   return (
     <>
-        <header className="sticky top-0 z-50 border-b border-white/20 bg-surface-0/80 backdrop-blur-xl">
-          <div className="max-w-5xl mx-auto px-4 sm:px-6">
-            <div className="h-14 sm:h-16 flex items-center justify-between">
-              <div className="flex items-center gap-2 sm:gap-3">
-                <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-accent-superjoin-orange/10 border border-accent-superjoin-orange/20 flex items-center justify-center flex-shrink-0">
-                  <Heart className="w-4 h-4 sm:w-5 sm:h-5 text-accent-superjoin-orange" />
+      {/* ── Desktop Sidebar — fixed left, hidden on mobile ── */}
+      <aside
+        className={`hidden md:flex flex-col fixed left-0 top-0 bottom-0 z-40 border-r border-white/10 bg-surface-0/95 backdrop-blur-xl transition-[width] duration-200 ease-in-out overflow-hidden group ${sidebarPinned ? 'w-56' : 'w-14 hover:w-56'}`}
+      >
+        {/* Sidebar logo */}
+        <div className="flex items-center h-14 sm:h-16 px-2.5 border-b border-white/10 shrink-0">
+          <div className="w-9 h-9 rounded-xl bg-accent-superjoin-orange/10 border border-accent-superjoin-orange/20 flex items-center justify-center shrink-0">
+            <Heart className="w-5 h-5 text-accent-superjoin-orange" />
+          </div>
+          <div className={`ml-3 whitespace-nowrap transition-opacity duration-150 ${sidebarPinned ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+            <span className="text-sm font-bold text-text-primary">Superjoin </span>
+            <span className="text-sm font-bold text-accent-superjoin-orange">Health OS</span>
+          </div>
+        </div>
+        {/* Nav items */}
+        <nav className="flex-1 py-3 flex flex-col gap-0.5 px-2 overflow-hidden">
+          {TABS.map((tab) => (
+            <div key={tab.id}>
+              <button
+                onClick={() => setActiveTab(tab.id)}
+                className={`sidebar-nav-item ${activeTab === tab.id ? 'active' : ''}`}
+              >
+                <tab.icon className="w-5 h-5 shrink-0" />
+                <span className={`ml-3 text-sm font-medium whitespace-nowrap transition-opacity duration-150 ${sidebarPinned ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+                  {tab.label}
+                </span>
+              </button>
+              {/* Settings sub-items — visible when sidebar is expanded */}
+              {tab.id === 'settings' && (
+                <div className={`mt-0.5 flex flex-col gap-0.5 transition-opacity duration-150 ${sidebarPinned ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+                  {SETTINGS_SECTIONS.map((s) => (
+                    <button
+                      key={s.id}
+                      onClick={() => { setActiveTab('settings'); setSettingsSection(s.id); }}
+                      className={`w-full flex items-center gap-2 pl-10 pr-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors ${
+                        activeTab === 'settings' && settingsSection === s.id
+                          ? 'text-accent-superjoin-orange bg-accent-superjoin-orange/10'
+                          : 'text-text-muted hover:text-text-secondary hover:bg-surface-1'
+                      }`}
+                    >
+                      <s.icon className="w-3.5 h-3.5 shrink-0" />
+                      <span>{s.label}</span>
+                    </button>
+                  ))}
                 </div>
-                <div className="flex items-center gap-1 sm:gap-2">
-                  <span className="text-sm sm:text-base font-bold text-text-primary">Superjoin</span>
-                  <span className="text-sm sm:text-base font-bold text-accent-superjoin-orange">Health OS</span>
+              )}
+            </div>
+          ))}
+        </nav>
+        {/* Pin / collapse toggle */}
+        <button
+          onClick={() => setSidebarPinned((p) => !p)}
+          className="flex items-center px-3 h-10 border-t border-white/10 text-text-muted hover:text-text-secondary hover:bg-surface-1 transition-colors shrink-0"
+          title={sidebarPinned ? 'Collapse sidebar' : 'Pin sidebar open'}
+        >
+          <ChevronLeft className={`w-4 h-4 shrink-0 transition-transform duration-200 ${sidebarPinned ? '' : 'rotate-180'}`} />
+          <span className={`ml-3 text-xs whitespace-nowrap font-medium transition-opacity duration-150 ${sidebarPinned ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+            Collapse
+          </span>
+        </button>
+      </aside>
+
+      {/* ── Everything else shifts right of the sidebar ── */}
+      <div className={`flex flex-col min-h-screen transition-[margin] duration-200 ${sidebarPinned ? 'md:ml-56' : 'md:ml-14'}`}>
+
+        {/* Header */}
+        <header className="sticky top-0 z-30 border-b border-white/20 bg-surface-0/80 backdrop-blur-xl">
+          <div className="max-w-5xl mx-auto px-4 sm:px-6">
+            <div className="h-14 sm:h-16 flex items-center justify-between gap-3">
+              {/* Logo — mobile only (desktop shows in sidebar) */}
+              <div className="flex items-center gap-2 md:hidden">
+                <div className="w-8 h-8 rounded-xl bg-accent-superjoin-orange/10 border border-accent-superjoin-orange/20 flex items-center justify-center shrink-0">
+                  <Heart className="w-4 h-4 text-accent-superjoin-orange" />
+                </div>
+                <div className="flex items-center gap-1">
+                  <span className="text-sm font-bold text-text-primary">Superjoin</span>
+                  <span className="text-sm font-bold text-accent-superjoin-orange">Health OS</span>
                 </div>
               </div>
-            <div className="flex items-center gap-2">
-              <NewEntryCTA profile={profile ?? null} onSuccess={() => { loadUser(); setEntryRefresh((r) => r + 1); }} />
-              <div className="flex items-center gap-1.5 pl-1 pr-2 py-1 rounded-full bg-surface-1 border border-white/10">
-                <div className="w-6 h-6 rounded-full bg-accent-superjoin-orange/20 border border-accent-superjoin-orange/30 flex items-center justify-center flex-shrink-0">
-                  <span className="text-[10px] font-semibold text-accent-superjoin-orange leading-none">
-                    {profile?.display_name?.charAt(0).toUpperCase()}
-                  </span>
-                </div>
-                <span className="text-xs font-medium text-text-secondary hidden sm:inline max-w-[120px] truncate">{profile?.display_name}</span>
+              {/* Desktop header left — current section label */}
+              <div className="hidden md:flex items-center">
+                <span className="text-sm font-semibold text-text-primary">
+                  {TABS.find((t) => t.id === activeTab)?.label}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                {/* Command palette trigger — desktop only */}
                 <button
-                  type="button"
-                  onClick={handleLogout}
-                  className="p-0.5 rounded-full text-text-muted hover:text-text-primary transition-colors"
-                  aria-label="Sign out"
+                  onClick={() => { setCommandPaletteOpen(true); setPaletteQuery(''); }}
+                  className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-surface-1 border border-white/10 text-text-muted hover:text-text-secondary text-xs transition-colors"
+                  title="Open navigation palette"
                 >
-                  <LogOut className="w-3 h-3" />
+                  <Search className="w-3.5 h-3.5" />
+                  <span>Navigate</span>
+                  <kbd className="ml-0.5 px-1.5 py-0.5 rounded text-[10px] bg-surface-0 border border-white/10 font-mono">Ctrl+/</kbd>
                 </button>
+                <NewEntryCTA profile={profile ?? null} onSuccess={() => { loadUser(); setEntryRefresh((r) => r + 1); }} />
+                <div className="flex items-center gap-1.5 pl-1 pr-2 py-1 rounded-full bg-surface-1 border border-white/10">
+                  <button
+                    type="button"
+                    onClick={() => { setActiveTab('settings'); setSettingsSection('profile'); }}
+                    className="flex items-center gap-1.5 hover:opacity-80 transition-opacity"
+                    aria-label="Profile & Settings"
+                  >
+                    <div className="w-6 h-6 rounded-full bg-accent-superjoin-orange/20 border border-accent-superjoin-orange/30 flex items-center justify-center shrink-0">
+                      <span className="text-[10px] font-semibold text-accent-superjoin-orange leading-none">
+                        {profile?.display_name?.charAt(0).toUpperCase()}
+                      </span>
+                    </div>
+                    <span className="text-xs font-medium text-text-secondary hidden sm:inline max-w-[120px] truncate">{profile?.display_name}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleLogout}
+                    className="p-0.5 rounded-full text-text-muted hover:text-text-primary transition-colors"
+                    aria-label="Sign out"
+                  >
+                    <LogOut className="w-3 h-3" />
+                  </button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      </header>
+        </header>
 
-      <div className="sticky top-14 sm:top-16 z-40 bg-surface-0/70 backdrop-blur-xl border-b border-white/10">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6">
-          <p className="text-xs sm:text-sm text-text-secondary py-3 sm:py-2 text-center sm:text-left font-medium">
-            The operating system for workplace wellness. Built for teams who compete, improve, and win together.
-          </p>
-          <div className="flex items-center gap-1 py-2 overflow-x-auto">
-            {TABS.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`tab-item relative ${activeTab === tab.id ? 'active' : ''}`}
-              >
-                <tab.icon className="w-4 h-4 shrink-0" />
-                <span>{tab.label}</span>
-              </button>
-            ))}
+        {/* Main content */}
+        <main className="flex-1 max-w-5xl mx-auto w-full px-4 sm:px-6 py-6 sm:py-10 pb-28 md:pb-10">
+          {activeTab === 'dashboard' && <DashboardTab profile={profile!} onRefresh={loadUser} refreshTrigger={entryRefresh} />}
+          {activeTab === 'log' && <LogEntryTab profile={profile!} onSuccess={loadUser} refreshTrigger={entryRefresh} />}
+          {activeTab === 'leaderboard' && <LeaderboardTab />}
+          {activeTab === 'settings' && (
+            <SettingsTab
+              profile={profile!}
+              onSuccess={loadUser}
+              section={settingsSection}
+              onSectionChange={setSettingsSection}
+            />
+          )}
+        </main>
+
+        <footer className="border-t border-white/10">
+          <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
+            <p className="text-sm text-text-secondary text-center max-w-2xl mx-auto leading-relaxed">
+              Superjoin Health OS turns health into a shared mission. Every step, workout, and healthy habit counts toward your team&apos;s success — fair scoring, real results.
+            </p>
+            <p className="text-xs text-text-muted text-center mt-4">
+              Powered by <span className="font-semibold text-accent-superjoin-orange">Superjoin</span>
+            </p>
           </div>
-        </div>
+        </footer>
       </div>
 
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
-        {activeTab === 'dashboard' && <DashboardTab profile={profile!} onRefresh={loadUser} refreshTrigger={entryRefresh} />}
-        {activeTab === 'log' && <LogEntryTab profile={profile!} onSuccess={loadUser} refreshTrigger={entryRefresh} />}
-        {activeTab === 'leaderboard' && <LeaderboardTab />}
-        {activeTab === 'me' && <MyStatsTab profile={profile!} onSuccess={loadUser} />}
-        {activeTab === 'connected' && <ConnectedAccountsTab />}
-      </main>
-
-      <footer className="border-t border-white/10 mt-12">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
-          <p className="text-sm text-text-secondary text-center max-w-2xl mx-auto leading-relaxed">
-            Superjoin Health OS turns health into a shared mission. Every step, workout, and healthy habit counts toward your team&apos;s success — fair scoring, real results.
-          </p>
-          <p className="text-xs text-text-muted text-center mt-4">
-            Powered by <span className="font-semibold text-accent-superjoin-orange">Superjoin</span>
-          </p>
+      {/* ── Mobile Bottom Navigation ── hidden on desktop */}
+      <nav className="bottom-nav md:hidden fixed bottom-0 left-0 right-0 z-40">
+        <div className="flex items-stretch">
+          {TABS.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`bottom-nav-item ${activeTab === tab.id ? 'active' : ''}`}
+            >
+              <tab.icon className="w-[22px] h-[22px]" />
+              <span>{tab.shortLabel}</span>
+            </button>
+          ))}
         </div>
-      </footer>
+      </nav>
+
+      {/* ── Command Palette — desktop only, Ctrl+/ ── */}
+      {commandPaletteOpen && (
+        <div
+          className="hidden md:flex fixed inset-0 z-[60] items-start justify-center pt-24 bg-black/20 backdrop-blur-sm"
+          onClick={() => { setCommandPaletteOpen(false); setPaletteQuery(''); setPaletteIdx(0); }}
+        >
+          <div
+            className="w-full max-w-md mx-4 bg-surface-0 border border-white/20 rounded-2xl shadow-2xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Search input */}
+            <div className="flex items-center gap-3 px-4 py-3.5 border-b border-white/10">
+              <Search className="w-4 h-4 text-text-muted shrink-0" />
+              <input
+                autoFocus
+                type="text"
+                value={paletteQuery}
+                onChange={(e) => { setPaletteQuery(e.target.value); setPaletteIdx(0); }}
+                onKeyDown={(e) => {
+                  if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    setPaletteIdx((i) => Math.min(i + 1, filteredPaletteItems.length - 1));
+                  } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    setPaletteIdx((i) => Math.max(i - 1, 0));
+                  } else if (e.key === 'Enter') {
+                    filteredPaletteItems[safePaletteIdx]?.onSelect();
+                  }
+                }}
+                placeholder="Navigate to..."
+                className="flex-1 bg-transparent outline-none text-sm text-text-primary placeholder:text-text-muted"
+              />
+              <kbd className="px-1.5 py-0.5 rounded text-[10px] bg-surface-1 border border-white/10 text-text-muted font-mono">Esc</kbd>
+            </div>
+            {/* Item list */}
+            <div className="py-1.5 max-h-80 overflow-y-auto">
+              {filteredPaletteItems.map((item, idx) => (
+                <button
+                  key={item.id}
+                  onClick={item.onSelect}
+                  onMouseEnter={() => setPaletteIdx(idx)}
+                  className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors text-left ${
+                    idx === safePaletteIdx ? 'bg-surface-1' : ''
+                  } ${item.isActive ? 'text-accent-superjoin-orange' : 'text-text-secondary'}`}
+                >
+                  {item.parentLabel && <span className="w-3 shrink-0" />}
+                  <item.icon className={`w-4 h-4 shrink-0 ${item.parentLabel ? 'text-text-muted' : ''}`} />
+                  <span className="flex-1 flex items-center gap-1.5">
+                    {item.parentLabel && (
+                      <span className="text-text-muted text-xs">{item.parentLabel} /</span>
+                    )}
+                    {item.label}
+                  </span>
+                  {item.isActive && (
+                    <span className="text-[10px] text-text-muted font-medium">current</span>
+                  )}
+                  {idx === safePaletteIdx && !item.isActive && (
+                    <kbd className="text-[10px] px-1 py-0.5 rounded bg-surface-0 border border-white/10 text-text-muted font-mono">↵</kbd>
+                  )}
+                </button>
+              ))}
+              {filteredPaletteItems.length === 0 && (
+                <p className="px-4 py-4 text-sm text-text-muted text-center">No sections found</p>
+              )}
+            </div>
+            {/* Footer hints */}
+            <div className="px-4 py-2.5 border-t border-white/10 flex items-center gap-4 text-[10px] text-text-muted">
+              <span><kbd className="px-1 py-0.5 rounded bg-surface-1 border border-white/10 font-mono">↵</kbd> Open</span>
+              <span><kbd className="px-1 py-0.5 rounded bg-surface-1 border border-white/10 font-mono">↑↓</kbd> Navigate</span>
+              <span><kbd className="px-1.5 py-0.5 rounded bg-surface-1 border border-white/10 font-mono">Esc</kbd> Close</span>
+              <span className="ml-auto"><kbd className="px-1.5 py-0.5 rounded bg-surface-1 border border-white/10 font-mono">Ctrl+/</kbd> Toggle</span>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

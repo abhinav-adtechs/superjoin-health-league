@@ -23,7 +23,7 @@ const supabase = createClient(supabaseUrl, serviceRoleKey, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 
-// Points calculation (mirrors lib/points.ts)
+// Points calculation (mirrors lib/points.ts — calculateDailyPoints)
 function calculateDailyPoints(entry, ageBracket) {
   let points = 0;
   const adj = ageBracket === 'over_35' ? 0.85 : 1.0;
@@ -70,11 +70,24 @@ function calculateDailyPoints(entry, ageBracket) {
   return Math.min(points, 98);
 }
 
+// Mirrors isGoalCrushDay() in lib/points.ts.
+function calculateIsGoalCrushDay(entry, profile, dailyPoints) {
+  const { goal_steps_day, goal_water_liters, goal_sleep_hours_min, goal_sleep_hours_max } = profile || {};
+  const hasDailyGoals = goal_steps_day || goal_water_liters || (goal_sleep_hours_min && goal_sleep_hours_max);
+  if (!hasDailyGoals) return dailyPoints >= 60;
+  if (goal_steps_day && (!entry.steps || entry.steps < goal_steps_day)) return false;
+  if (goal_water_liters && (!entry.water_liters || entry.water_liters < goal_water_liters)) return false;
+  if (goal_sleep_hours_min && goal_sleep_hours_max) {
+    if (entry.sleep_hours == null || entry.sleep_hours < goal_sleep_hours_min || entry.sleep_hours > goal_sleep_hours_max) return false;
+  }
+  return true;
+}
+
 async function main() {
   console.log('Fetching all profiles...');
   const { data: profiles, error: profileError } = await supabase
     .from('profiles')
-    .select('id, age_bracket');
+    .select('id, age_bracket, goal_steps_day, goal_water_liters, goal_sleep_hours_min, goal_sleep_hours_max');
   if (profileError) {
     console.error('Error fetching profiles:', profileError);
     process.exit(1);
@@ -84,9 +97,9 @@ async function main() {
     process.exit(0);
   }
 
-  const ageBracketMap = new Map();
+  const profileMap = new Map();
   for (const p of profiles) {
-    ageBracketMap.set(p.id, p.age_bracket || '25_to_35');
+    profileMap.set(p.id, p);
   }
   console.log(`Found ${profiles.length} profile(s).`);
 
@@ -104,20 +117,25 @@ async function main() {
   }
   console.log(`Found ${entries.length} daily entry/entries.`);
 
-  console.log('Recalculating points...');
+  console.log('Recalculating points and is_goal_crush_day...');
   const updates = [];
   for (const entry of entries) {
-    const ageBracket = ageBracketMap.get(entry.user_id) || '25_to_35';
+    const profile = profileMap.get(entry.user_id) || {};
+    const ageBracket = profile.age_bracket || '25_to_35';
     const newPoints = calculateDailyPoints(entry, ageBracket);
-    if (entry.daily_points !== newPoints) {
+    const newIsGoalCrushDay = calculateIsGoalCrushDay(entry, profile, newPoints);
+    const pointsChanged = entry.daily_points !== newPoints;
+    const crushChanged = entry.is_goal_crush_day !== newIsGoalCrushDay;
+    if (pointsChanged || crushChanged) {
       updates.push({
         id: entry.id,
         daily_points: newPoints,
+        is_goal_crush_day: newIsGoalCrushDay,
       });
     }
   }
 
-  console.log(`Updating ${updates.length} entries with recalculated points...`);
+  console.log(`Updating ${updates.length} entries with recalculated points and goal crush status...`);
   const BATCH = 100;
   let updated = 0;
   for (let i = 0; i < updates.length; i += BATCH) {
@@ -125,7 +143,7 @@ async function main() {
     for (const update of batch) {
       const { error } = await supabase
         .from('daily_entries')
-        .update({ daily_points: update.daily_points })
+        .update({ daily_points: update.daily_points, is_goal_crush_day: update.is_goal_crush_day })
         .eq('id', update.id);
       if (error) {
         console.error(`Error updating entry ${update.id}:`, error);
@@ -136,7 +154,7 @@ async function main() {
     console.log(`  Updated ${Math.min(i + BATCH, updates.length)}/${updates.length} entries...`);
   }
 
-  console.log(`\n✅ Successfully recalculated points for ${updated} entries.`);
+  console.log(`\n✅ Successfully recalculated points + goal crush status for ${updated} entries.`);
 }
 
 main().catch((err) => {

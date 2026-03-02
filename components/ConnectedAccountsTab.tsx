@@ -93,42 +93,83 @@ const GOOGLE_FIELDS: DataFieldMeta[] = [
 
 // ── Platform logo SVGs (inline, no external deps) ────────────────────────────
 
-function FitbitLogo({ size = 28 }: { size?: number }) {
+function AppleHealthLogo({ size = 28 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 32 32" fill="none">
-      <circle cx="16" cy="16" r="16" fill="#00B0B9" />
-      <circle cx="9" cy="16" r="2.2" fill="white" />
-      <circle cx="16" cy="16" r="2.2" fill="white" />
-      <circle cx="23" cy="16" r="2.2" fill="white" />
-      <circle cx="9" cy="10" r="1.6" fill="white" opacity="0.7" />
-      <circle cx="16" cy="10" r="1.6" fill="white" opacity="0.7" />
-      <circle cx="23" cy="10" r="1.6" fill="white" opacity="0.7" />
-      <circle cx="9" cy="22" r="1.6" fill="white" opacity="0.7" />
-      <circle cx="16" cy="22" r="1.6" fill="white" opacity="0.7" />
-      <circle cx="23" cy="22" r="1.6" fill="white" opacity="0.7" />
+      {/* White rounded rect background */}
+      <rect width="32" height="32" rx="7" fill="white" />
+      {/* Heart shape */}
+      <path
+        d="M16 25.5C15.6 25.1 5 18.2 5 11.8C5 8.1 7.8 5.5 11 5.5C13.2 5.5 15.1 6.7 16 8.5C16.9 6.7 18.8 5.5 21 5.5C24.2 5.5 27 8.1 27 11.8C27 18.2 16.4 25.1 16 25.5Z"
+        fill="url(#ah-heart)"
+      />
+      {/* White medical cross */}
+      <rect x="14.5" y="11" width="3" height="8" rx="1.5" fill="white" />
+      <rect x="11" y="14.5" width="10" height="3" rx="1.5" fill="white" />
+      <defs>
+        <linearGradient id="ah-heart" x1="16" y1="5" x2="16" y2="26" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#FF2D55" />
+          <stop offset="100%" stopColor="#FF6B81" />
+        </linearGradient>
+      </defs>
     </svg>
   );
 }
 
-function AppleHealthLogo({ size = 28 }: { size?: number }) {
+function AppleFitnessLogo({ size = 28 }: { size?: number }) {
+  // Three activity rings using precise SVG arc paths — much cleaner than dasharray at small sizes
+  // Ring radii: Move r=12, Exercise r=8.5, Stand r=5
+  // Arc start: top of each circle (16, cy-r). Arc angles: 300°, 240°, 190° clockwise
+  // Endpoints calculated: end_x = 16 + r·cos(θ), end_y = 16 + r·sin(θ) where θ = -90 + degrees
   return (
     <svg width={size} height={size} viewBox="0 0 32 32" fill="none">
-      <rect width="32" height="32" rx="8" fill="#FF375F" />
-      <path
-        d="M16 8C16 8 12 10.5 12 14C12 16.5 13.5 18 16 18C18.5 18 20 16.5 20 14C20 10.5 16 8 16 8Z"
-        fill="white"
-      />
-      <path d="M16 18V26" stroke="white" strokeWidth="2.5" strokeLinecap="round" />
-      <path d="M12 22H20" stroke="white" strokeWidth="2.5" strokeLinecap="round" />
+      {/* No background rect — the card container provides the translucent fill */}
+      {/* Dim ghost rings so the arcs read as "almost complete circles" */}
+      <circle cx="16" cy="16" r="12"  stroke="#FF375F" strokeWidth="2.8" opacity="0.22" />
+      <circle cx="16" cy="16" r="8.5" stroke="#30D158" strokeWidth="2.8" opacity="0.22" />
+      <circle cx="16" cy="16" r="5"   stroke="#64D2FF" strokeWidth="2.8" opacity="0.22" />
+      {/* Move ring — red, 300° arc. End: (5.61, 10) */}
+      <path d="M16 4 A12 12 0 1 1 5.61 10" stroke="#FF375F" strokeWidth="2.8" strokeLinecap="round" />
+      {/* Exercise ring — green, 240° arc. End: (8.64, 20.25) */}
+      <path d="M16 7.5 A8.5 8.5 0 1 1 8.64 20.25" stroke="#30D158" strokeWidth="2.8" strokeLinecap="round" />
+      {/* Stand ring — cyan, 190° arc. End: (15.13, 20.92) */}
+      <path d="M16 11 A5 5 0 1 1 15.13 20.92" stroke="#64D2FF" strokeWidth="2.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function FitbitLogo({ size = 28 }: { size?: number }) {
+  // 3×3 grid of dots, middle row larger — Fitbit's iconic mark
+  return (
+    <svg width={size} height={size} viewBox="0 0 32 32" fill="none">
+      <rect width="32" height="32" rx="7" fill="#00B0B9" />
+      {/* Top row — small */}
+      <circle cx="9.5" cy="9.5" r="1.8" fill="white" opacity="0.6" />
+      <circle cx="16" cy="9.5" r="1.8" fill="white" opacity="0.6" />
+      <circle cx="22.5" cy="9.5" r="1.8" fill="white" opacity="0.6" />
+      {/* Middle row — large (primary) */}
+      <circle cx="9.5" cy="16" r="2.5" fill="white" />
+      <circle cx="16" cy="16" r="2.5" fill="white" />
+      <circle cx="22.5" cy="16" r="2.5" fill="white" />
+      {/* Bottom row — small */}
+      <circle cx="9.5" cy="22.5" r="1.8" fill="white" opacity="0.6" />
+      <circle cx="16" cy="22.5" r="1.8" fill="white" opacity="0.6" />
+      <circle cx="22.5" cy="22.5" r="1.8" fill="white" opacity="0.6" />
     </svg>
   );
 }
 
 function GoogleHealthLogo({ size = 28 }: { size?: number }) {
+  // Two-tone heart: Google Blue (left lobe) + Google Red (right lobe)
+  // Clean split at x=16 — immediately readable as Google at any size
   return (
     <svg width={size} height={size} viewBox="0 0 32 32" fill="none">
-      <rect width="32" height="32" rx="8" fill="#4285F4" />
-      <path d="M16 7L18.5 12.5H24L19.5 15.8L21.5 21.5L16 18L10.5 21.5L12.5 15.8L8 12.5H13.5L16 7Z" fill="white" />
+      <rect width="32" height="32" rx="7" fill="white" />
+      <rect x="0.5" y="0.5" width="31" height="31" rx="6.5" stroke="#E0E0E0" strokeWidth="0.5" />
+      {/* Left lobe — Google Blue. Sweeps from bottom tip up-left, over top, and back to center V */}
+      <path d="M16 25 C10 21.5 4.5 17.5 4.5 12.5 C4.5 8.5 7.5 6 11 6 C13.7 6 15.5 7.8 16 9.5 Z" fill="#4285F4" />
+      {/* Right lobe — Google Red. Mirror of left */}
+      <path d="M16 25 C22 21.5 27.5 17.5 27.5 12.5 C27.5 8.5 24.5 6 21 6 C18.3 6 16.5 7.8 16 9.5 Z" fill="#EA4335" />
     </svg>
   );
 }
@@ -164,6 +205,8 @@ interface PlatformCardProps {
   onToggleSync: (id: PlatformMeta['id'], enabled: boolean) => void;
   syncing: boolean;
   connecting: boolean;
+  /** When set, card is shown as a child integration — no connect/disconnect buttons */
+  parentName?: string;
 }
 
 function PlatformCard({
@@ -176,9 +219,11 @@ function PlatformCard({
   onToggleSync,
   syncing,
   connecting,
+  parentName,
 }: PlatformCardProps) {
   const [expanded, setExpanded] = useState(false);
   const connected = status?.connected ?? false;
+  const isChild = !!parentName;
 
   return (
     <div
@@ -205,7 +250,22 @@ function PlatformCard({
                   Coming soon
                 </span>
               )}
-              {!platform.comingSoon && (
+              {!platform.comingSoon && isChild && (
+                <span
+                  className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border flex items-center gap-1 ${
+                    connected
+                      ? 'bg-accent-green/10 text-accent-green border-accent-green/20'
+                      : 'bg-surface-1 text-text-muted border-white/10'
+                  }`}
+                >
+                  {connected ? (
+                    <><CheckCircle2 className="w-2.5 h-2.5" /> Included with {parentName}</>
+                  ) : (
+                    <><XCircle className="w-2.5 h-2.5" /> Connect {parentName} above</>
+                  )}
+                </span>
+              )}
+              {!platform.comingSoon && !isChild && (
                 <span
                   className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border flex items-center gap-1 ${
                     connected
@@ -223,7 +283,7 @@ function PlatformCard({
             </div>
             <p className="text-xs text-text-muted mt-0.5">{platform.tagline}</p>
 
-            {connected && status && (
+            {connected && status && !isChild && (
               <div className="flex items-center gap-3 mt-2 flex-wrap">
                 <span className="flex items-center gap-1 text-xs text-text-secondary">
                   <Clock className="w-3 h-3" />
@@ -238,8 +298,8 @@ function PlatformCard({
             )}
           </div>
 
-          {/* Action buttons */}
-          {!platform.comingSoon && (
+          {/* Action buttons — hidden for child integrations */}
+          {!platform.comingSoon && !isChild && (
             <div className="flex items-center gap-2 flex-shrink-0">
               {connected && (
                 <button
@@ -277,8 +337,8 @@ function PlatformCard({
           )}
         </div>
 
-        {/* Sync preference (when connected) */}
-        {connected && status && !platform.comingSoon && (
+        {/* Sync preference — only for primary integrations */}
+        {connected && status && !platform.comingSoon && !isChild && (
           <div className="mt-4 pt-4 border-t border-white/5 flex flex-col sm:flex-row sm:items-center gap-3">
             <div className="flex items-center gap-2 flex-1">
               <span className="text-xs text-text-secondary font-medium">Sync mode</span>
@@ -598,12 +658,12 @@ export function ConnectedAccountsTab() {
     },
     {
       id: 'apple_health',
-      name: 'Apple Workout',
+      name: 'Apple Fitness',
       tagline: 'Workout sessions from the Fitness app — type, duration, calories',
-      icon: <AppleHealthLogo size={24} />,
-      color: 'bg-[#FF375F]',
-      bgColor: 'bg-[#FF375F]/10',
-      borderColor: 'border-[#FF375F]/20',
+      icon: <AppleFitnessLogo size={24} />,
+      color: 'bg-[#30D158]',
+      bgColor: 'bg-[#30D158]/10',
+      borderColor: 'border-[#30D158]/20',
       available: hkAvailable,
       authType: 'native',
       dataFields: APPLE_HEALTH_FIELDS.filter((f) =>
@@ -671,7 +731,7 @@ export function ConnectedAccountsTab() {
 
       {/* Header */}
       <div>
-        <h2 className="text-lg font-bold text-text-primary">Connected Accounts</h2>
+        <h2 className="text-lg font-bold text-text-primary">Integrations</h2>
         <p className="text-sm text-text-muted mt-1">
           Link your health devices and apps to auto-fill your daily entries. Only data you&apos;ve
           actually recorded on your device will sync — nothing is fabricated.
@@ -704,11 +764,11 @@ export function ConnectedAccountsTab() {
         </div>
       )}
 
-      {/* Apple Health + Workout — single connection, two info sections */}
+      {/* Apple — single connection, two cards (Health is primary, Fitness is child) */}
       <div className="space-y-3">
         <h3 className="text-xs font-semibold text-text-muted uppercase tracking-wider px-1">Apple</h3>
 
-        {/* Apple Health (main card — manages the actual connection) */}
+        {/* Apple Health — primary, manages the connection */}
         <PlatformCard
           platform={PLATFORMS[0]}
           status={appleStatus}
@@ -721,48 +781,21 @@ export function ConnectedAccountsTab() {
           connecting={connecting === 'apple_health'}
         />
 
-        {/* Apple Workout — informational only, shares the same connection */}
-        <div className="glass-card overflow-hidden">
-          <div className="p-5 sm:p-6">
-            <div className="flex items-start gap-4">
-              <div className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0 bg-[#FF375F]/10 border border-[#FF375F]/20">
-                <AppleHealthLogo size={24} />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h3 className="text-base font-bold text-text-primary">Apple Workout</h3>
-                  <span
-                    className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border flex items-center gap-1 ${
-                      appleStatus?.connected
-                        ? 'bg-accent-green/10 text-accent-green border-accent-green/20'
-                        : 'bg-surface-1 text-text-muted border-white/10'
-                    }`}
-                  >
-                    {appleStatus?.connected ? (
-                      <><CheckCircle2 className="w-2.5 h-2.5" /> Included in Apple Health</>
-                    ) : (
-                      <><XCircle className="w-2.5 h-2.5" /> Connect Apple Health above</>
-                    )}
-                  </span>
-                </div>
-                <p className="text-xs text-text-muted mt-0.5">
-                  Workout sessions from the Fitness app sync automatically when Apple Health is connected. Includes workout type, duration, and calories.
-                </p>
-              </div>
-            </div>
-          </div>
-          {/* Workout data fields */}
-          <div className="border-t border-white/5 px-5 sm:px-6 py-4">
-            <p className="text-[10px] font-semibold text-text-muted uppercase tracking-wider mb-3">Fields pulled from Fitness app workouts</p>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              {['Workout done', 'Workout duration', 'Workout type', 'Cardio done', 'Cardio duration', 'Cardio type'].map((f) => (
-                <div key={f} className="flex items-center gap-2 text-xs text-text-secondary">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-accent-green flex-shrink-0" />
-                  {f}
-                </div>
-              ))}
-            </div>
-          </div>
+        {/* Apple Fitness — child integration, same connection */}
+        <div className="ml-5 relative">
+          <div className="absolute left-0 top-3 bottom-3 w-px bg-white/10" />
+          <PlatformCard
+            platform={PLATFORMS[1]}
+            status={appleStatus}
+            onConnect={handleConnect}
+            onDisconnect={handleDisconnect}
+            onSync={handleSync}
+            onPreferenceChange={handlePreferenceChange}
+            onToggleSync={handleToggleSync}
+            syncing={false}
+            connecting={false}
+            parentName="Apple Health"
+          />
         </div>
       </div>
 

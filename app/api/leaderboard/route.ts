@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server';
 import { createServiceRoleClient } from '@/lib/supabase/admin';
 import { NextResponse } from 'next/server';
 import type { LeaderboardView, LeaderboardRanking } from '@/lib/types';
+import { isWeeklyGoalHit, WEEKLY_PERF_BONUS } from '@/lib/points';
 
 type ProfileRow = {
   id: string;
@@ -9,12 +10,16 @@ type ProfileRow = {
   avatar_url: string | null;
   age_bracket: string;
   joined_at: string;
+  goal_workout_days_week: number | null;
+  goal_workout_mins_week: number | null;
+  goal_home_cooked_per_week: number | null;
 };
 
 type FullEntry = {
   user_id: string;
   date: string;
   daily_points: number;
+  is_goal_crush_day?: boolean | null;
   workout_done: boolean | null;
   workout_duration: number | null;
   cardio_done: boolean | null;
@@ -37,7 +42,7 @@ function getMonday(d: Date): Date {
   const diff = d.getDate() - day + (day === 0 ? -6 : 1);
   const monday = new Date(d);
   monday.setDate(diff);
-  monday.setHours(0, 0, 0, 0);
+  monday.setHours(12, 0, 0, 0);
   return monday;
 }
 
@@ -52,7 +57,7 @@ function toISODate(d: Date): string {
 }
 
 function formatDateShort(dateStr: string): string {
-  const d = new Date(dateStr + 'T00:00:00');
+  const d = new Date(dateStr + 'T12:00:00');
   const day = d.getDate();
   const month = d.toLocaleString('en-GB', { month: 'short' });
   const year = String(d.getFullYear()).slice(2);
@@ -121,8 +126,34 @@ function computeStreak(allDates: string[], asOfDate: string): number {
   return streak;
 }
 
+/**
+ * Goal crush streak = consecutive days where the entry qualifies as a goal-crush day,
+ * counting backwards from asOfDate.
+ *
+ * Uses stored is_goal_crush_day when available (post-migration). Falls back to
+ * daily_points >= 60 for entries that pre-date the migration or haven't been backfilled.
+ */
+function computeGoalCrushStreak(entries: FullEntry[], asOfDate: string): number {
+  const crushDates = new Set(
+    entries
+      .filter((e) => e.is_goal_crush_day != null ? e.is_goal_crush_day : (e.daily_points ?? 0) >= 60)
+      .map((e) => e.date),
+  );
+  let streak = 0;
+  const cur = new Date(asOfDate + 'T12:00:00');
+  if (!crushDates.has(toISODate(cur))) cur.setDate(cur.getDate() - 1);
+  while (crushDates.has(toISODate(cur))) {
+    streak++;
+    cur.setDate(cur.getDate() - 1);
+  }
+  return streak;
+}
+
 // ─── Route handler ────────────────────────────────────────────────────────────
 
+// Note: is_goal_crush_day is NOT in this select because the column requires migration
+// 20260302_goal_crush_streak.sql to be applied first. Goal crush streak is computed
+// from daily_points >= 60 as a fallback until the migration runs.
 const FULL_ENTRY_SELECT =
   'user_id, date, daily_points, workout_done, workout_duration, cardio_done, cardio_duration, steps, water_liters, home_cooked_meals, protein_meal, protein_qty, junk_food, alcohol, sleep_hours, sleep_quality';
 
@@ -154,7 +185,7 @@ export async function GET(request: Request) {
     const weekStartParam = searchParams.get('week_start');
     let weekStart: Date;
     if (weekStartParam && /^\d{4}-\d{2}-\d{2}$/.test(weekStartParam)) {
-      weekStart = new Date(weekStartParam + 'T00:00:00');
+      weekStart = new Date(weekStartParam + 'T12:00:00');
     } else {
       weekStart = getMonday(now);
     }
@@ -163,8 +194,19 @@ export async function GET(request: Request) {
     period = `${formatDateShort(toISODate(weekStart))} – ${formatDateShort(toISODate(weekEnd))}`;
     dateFilter = { gte: toISODate(weekStart), lte: toISODate(weekEnd) };
   } else if (view === 'monthly') {
-    const start = monthStart(now);
-    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    const monthParam = searchParams.get('month');
+    let targetYear: number;
+    let targetMonth: number;
+    if (monthParam && /^\d{4}-\d{2}$/.test(monthParam)) {
+      const parts = monthParam.split('-').map(Number);
+      targetYear = parts[0];
+      targetMonth = parts[1] - 1;
+    } else {
+      targetYear = now.getFullYear();
+      targetMonth = now.getMonth();
+    }
+    const start = `${targetYear}-${String(targetMonth + 1).padStart(2, '0')}-01`;
+    const end = new Date(targetYear, targetMonth + 1, 0, 12, 0, 0);
     period = `${formatDateShort(start)} – ${formatDateShort(toISODate(end))}`;
     dateFilter = { gte: start, lte: toISODate(end) };
   } else {
@@ -173,7 +215,7 @@ export async function GET(request: Request) {
 
   const { data: profiles, error: profilesError } = await supabase
     .from('profiles')
-    .select('id, display_name, avatar_url, age_bracket, joined_at')
+    .select('id, display_name, avatar_url, age_bracket, joined_at, goal_workout_days_week, goal_workout_mins_week, goal_home_cooked_per_week')
     .eq('is_active', true);
 
   if (profilesError) {
@@ -294,6 +336,7 @@ export async function GET(request: Request) {
       const normalized = total / daysSinceJoin;
       const daysActive = new Set(userEntries.map((e) => e.date)).size;
       const streakDays = computeStreak(recentEntries.map((e) => e.date), todayStr);
+      const goalCrushStreak = computeGoalCrushStreak(recentEntries, todayStr);
       const breakdown = computeBreakdown(userEntries, p.age_bracket);
       return {
         rank: 0,
@@ -302,6 +345,7 @@ export async function GET(request: Request) {
           display_name: p.display_name,
           avatar_url: p.avatar_url,
           streak_days: streakDays,
+          goal_crush_streak: goalCrushStreak,
           days_active: daysActive,
         },
         score: {
@@ -316,13 +360,25 @@ export async function GET(request: Request) {
     rankings = (profiles as ProfileRow[]).map((p) => {
       const userEntries = currentByUser.get(p.id) ?? [];
       const recentEntries = recentByUser.get(p.id) ?? [];
-      const total = userEntries.reduce((sum, e) => sum + (e.daily_points ?? 0), 0);
+      const baseTotal = userEntries.reduce((sum, e) => sum + (e.daily_points ?? 0), 0);
       const daysActive = new Set(userEntries.map((e) => e.date)).size;
       const streakDays = computeStreak(recentEntries.map((e) => e.date), todayStr);
+      const goalCrushStreak = computeGoalCrushStreak(recentEntries, todayStr);
       const breakdown = computeBreakdown(userEntries, p.age_bracket);
+
+      // Weekly performance bonus: add to total if user hit their weekly profile goals
+      let weeklyBonus = 0;
+      if (view === 'weekly') {
+        const weekResult = isWeeklyGoalHit(userEntries, p);
+        if (weekResult === 'full') weeklyBonus = WEEKLY_PERF_BONUS.full;
+        else if (weekResult === 'partial') weeklyBonus = WEEKLY_PERF_BONUS.partial;
+      }
+
+      const total = baseTotal + weeklyBonus;
+
       const goalsPct =
         view === 'weekly'
-          ? Math.min(100, Math.round((total / (daysElapsed * 98)) * 100))
+          ? Math.min(100, Math.round((baseTotal / (daysElapsed * 98)) * 100))
           : undefined;
       const prevRank = view === 'weekly' ? (prevRankMap.get(p.id) ?? null) : undefined;
       return {
@@ -333,6 +389,7 @@ export async function GET(request: Request) {
           display_name: p.display_name,
           avatar_url: p.avatar_url,
           streak_days: streakDays,
+          goal_crush_streak: goalCrushStreak,
           days_active: daysActive,
         },
         score: {

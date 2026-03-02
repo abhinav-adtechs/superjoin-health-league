@@ -211,7 +211,10 @@ export function DashboardTab({
 }) {
   const [todayEntry, setTodayEntry] = useState<DailyEntry | null>(null);
   const [weeklyEntries, setWeeklyEntries] = useState<DailyEntry[]>([]);
-  const [streak, setStreak] = useState(0);
+  const [loggingStreak, setLoggingStreak] = useState(0);
+  const [goalCrushStreak, setGoalCrushStreak] = useState(0);
+  const [weekLogDays, setWeekLogDays] = useState(0);
+  const [weeklyGoalsHit, setWeeklyGoalsHit] = useState<'full' | 'partial' | 'none'>('none');
   const [weeklyPoints, setWeeklyPoints] = useState(0);
   const [rank, setRank] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -241,7 +244,10 @@ export function DashboardTab({
       ]);
       setTodayEntry(entryData?.id ? (entryData as DailyEntry) : null);
       setWeeklyEntries(Array.isArray(weeklyData) ? (weeklyData as DailyEntry[]) : []);
-      setStreak(streakData.current_streak_days ?? 0);
+      setLoggingStreak(streakData.logging_streak ?? 0);
+      setGoalCrushStreak(streakData.goal_crush_streak ?? 0);
+      setWeekLogDays(streakData.week_log_days ?? 0);
+      setWeeklyGoalsHit(streakData.weekly_goals_hit ?? 'none');
       const myEntry = lbData.rankings?.find(
         (r: { user: { display_name: string }; rank: number; score: { total_points: number } }) =>
           r.user.display_name === profile.display_name,
@@ -331,6 +337,13 @@ export function DashboardTab({
   }
 
   const allGoalsMet = hasGoals && remainingItems.length === 0;
+
+  // Streak status helpers
+  const loggingStreakAtRisk = !todayEntry && loggingStreak > 0;
+  const loggingStreakSafe = !!todayEntry && loggingStreak > 0;
+  // Goal crush at risk: streak is active, goals are set, and not all goals met today
+  const goalCrushAtRisk = goalCrushStreak > 0 && hasGoals && !allGoalsMet;
+  const goalCrushSafe = goalCrushStreak > 0 && allGoalsMet;
 
   // Weekly progress
   // workout_done is only set when duration > 0 in the modal; also check workout_types
@@ -426,6 +439,55 @@ export function DashboardTab({
               </div>
             </div>
 
+            {/* Streak status row */}
+            <div className="flex items-center justify-center gap-2.5 w-full flex-wrap">
+              {/* Logging streak */}
+              {loggingStreakAtRisk ? (
+                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-accent-red/10 border border-accent-red/20">
+                  <Flame className="w-3.5 h-3.5 text-accent-red" />
+                  <span className="text-xs font-semibold text-accent-red">
+                    {loggingStreak}d streak · log now!
+                  </span>
+                </div>
+              ) : loggingStreakSafe ? (
+                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-accent-orange/10 border border-accent-orange/20">
+                  <Flame className="w-3.5 h-3.5 text-accent-orange" />
+                  <span className="text-xs font-semibold text-accent-orange">
+                    {loggingStreak}d streak
+                  </span>
+                  <CheckCircle2 className="w-3 h-3 text-accent-green" />
+                </div>
+              ) : loggingStreak === 0 && !todayEntry ? (
+                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-surface-2 border border-surface-3">
+                  <Flame className="w-3.5 h-3.5 text-text-muted" />
+                  <span className="text-xs font-medium text-text-muted">Start a streak today</span>
+                </div>
+              ) : null}
+
+              {/* Goal crush streak */}
+              {goalCrushAtRisk ? (
+                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-accent-superjoin-orange/10 border border-accent-superjoin-orange/20">
+                  <Zap className="w-3.5 h-3.5 text-accent-superjoin-orange" />
+                  <span className="text-xs font-semibold text-accent-superjoin-orange">
+                    {goalCrushStreak}d crush · finish goals!
+                  </span>
+                </div>
+              ) : goalCrushSafe ? (
+                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-accent-gold/10 border border-accent-gold/20">
+                  <Zap className="w-3.5 h-3.5 text-accent-gold" />
+                  <span className="text-xs font-semibold text-accent-gold">
+                    {goalCrushStreak}d goal crush
+                  </span>
+                  <CheckCircle2 className="w-3 h-3 text-accent-green" />
+                </div>
+              ) : goalCrushStreak === 0 && allGoalsMet ? (
+                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-accent-gold/10 border border-accent-gold/20">
+                  <Zap className="w-3.5 h-3.5 text-accent-gold" />
+                  <span className="text-xs font-semibold text-accent-gold">Goal crush day!</span>
+                </div>
+              ) : null}
+            </div>
+
             {/* Category mini rings */}
             <div className="grid grid-cols-4 gap-3 w-full max-w-xs">
               {/* Steps */}
@@ -443,9 +505,16 @@ export function DashboardTab({
                   </div>
                 </div>
                 <span className="text-[11px] font-medium text-text-secondary">Steps</span>
-                <span className="text-[11px] text-text-muted">
-                  {profile.goal_steps_day ? `${stepsPct}%` : '–'}
-                </span>
+                {profile.goal_steps_day ? (
+                  <>
+                    <span className="text-[11px] font-semibold text-text-primary">{stepsPct}%</span>
+                    <span className="text-[10px] text-text-muted leading-tight text-center">
+                      {(todayEntry?.steps ?? 0).toLocaleString()} / {profile.goal_steps_day.toLocaleString()}
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-[11px] text-text-muted">–</span>
+                )}
               </div>
 
               {/* Water */}
@@ -463,9 +532,16 @@ export function DashboardTab({
                   </div>
                 </div>
                 <span className="text-[11px] font-medium text-text-secondary">Water</span>
-                <span className="text-[11px] text-text-muted">
-                  {profile.goal_water_liters ? `${waterPct}%` : '–'}
-                </span>
+                {profile.goal_water_liters ? (
+                  <>
+                    <span className="text-[11px] font-semibold text-text-primary">{waterPct}%</span>
+                    <span className="text-[10px] text-text-muted leading-tight text-center">
+                      {(todayEntry?.water_liters ?? 0).toFixed(1)} / {profile.goal_water_liters}L
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-[11px] text-text-muted">–</span>
+                )}
               </div>
 
               {/* Sleep */}
@@ -483,9 +559,16 @@ export function DashboardTab({
                   </div>
                 </div>
                 <span className="text-[11px] font-medium text-text-secondary">Sleep</span>
-                <span className="text-[11px] text-text-muted">
-                  {sleepGoal ? `${sleepPct}%` : '–'}
-                </span>
+                {sleepGoal ? (
+                  <>
+                    <span className="text-[11px] font-semibold text-text-primary">{sleepPct}%</span>
+                    <span className="text-[10px] text-text-muted leading-tight text-center">
+                      {(todayEntry?.sleep_hours ?? 0)}h / {sleepGoal}h
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-[11px] text-text-muted">–</span>
+                )}
               </div>
 
               {/* Workout */}
@@ -503,9 +586,16 @@ export function DashboardTab({
                   </div>
                 </div>
                 <span className="text-[11px] font-medium text-text-secondary">Workout</span>
-                <span className="text-[11px] text-text-muted">
-                  {profile.goal_workout_days_week ? (workoutDone ? 'Done' : '0%') : '–'}
-                </span>
+                {profile.goal_workout_days_week ? (
+                  <>
+                    <span className="text-[11px] font-semibold text-text-primary">{workoutDone ? '100%' : '0%'}</span>
+                    <span className="text-[10px] text-text-muted leading-tight text-center">
+                      {workoutDone ? '1' : '0'} / 1 today
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-[11px] text-text-muted">–</span>
+                )}
               </div>
             </div>
           </div>
@@ -645,22 +735,56 @@ export function DashboardTab({
           </div>
         </div>
 
-        {/* ── Section 5: Stat chips ────────────────────────────────────────────── */}
+        {/* ── Section 5: Streak tiles ──────────────────────────────────────────── */}
         <div className="grid grid-cols-3 gap-3">
-          <div className="glass-card p-4 flex flex-col items-center text-center gap-1">
-            <Target className="w-4 h-4 text-text-muted mb-0.5" />
-            <p className="text-xl font-bold text-text-primary">{todayEntry?.daily_points ?? 0}</p>
-            <p className="text-[11px] text-text-muted leading-tight">Today&apos;s pts</p>
-          </div>
+          {/* Logging Streak */}
           <div className="glass-card p-4 flex flex-col items-center text-center gap-1">
             <Flame className="w-4 h-4 text-accent-orange mb-0.5" />
-            <p className="text-xl font-bold text-text-primary">{streak}</p>
-            <p className="text-[11px] text-text-muted leading-tight">Day streak</p>
+            <p className="text-xl font-bold text-text-primary">{loggingStreak}</p>
+            <p className="text-[11px] text-text-muted leading-tight">Log streak</p>
+            <p className="text-[10px] text-text-muted leading-tight opacity-70">days</p>
           </div>
+
+          {/* This Week — shows weekly goal hit status if goals are set, otherwise days logged */}
           <div className="glass-card p-4 flex flex-col items-center text-center gap-1">
             <TrendingUp className="w-4 h-4 text-accent-green mb-0.5" />
-            <p className="text-xl font-bold text-text-primary">{rank != null ? `#${rank}` : '—'}</p>
-            <p className="text-[11px] text-text-muted leading-tight">This week</p>
+            {hasWeeklyGoals ? (
+              <>
+                <p className={`text-xl font-bold leading-none ${
+                  weeklyGoalsHit === 'full'
+                    ? 'text-accent-green'
+                    : weeklyGoalsHit === 'partial'
+                      ? 'text-accent-superjoin-orange'
+                      : 'text-text-muted'
+                }`}>
+                  {weeklyGoalsHit === 'full' ? '✓' : weekLogDays}
+                </p>
+                <p className="text-[11px] text-text-muted leading-tight">This week</p>
+                <p className="text-[10px] leading-tight opacity-70 truncate w-full text-center">
+                  {weeklyGoalsHit === 'full'
+                    ? 'All goals hit'
+                    : weeklyGoalsHit === 'partial'
+                      ? 'In progress'
+                      : `${weekLogDays}/7 days`}
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-xl font-bold text-text-primary">{weekLogDays}<span className="text-sm font-normal text-text-muted">/7</span></p>
+                <p className="text-[11px] text-text-muted leading-tight">This week</p>
+                <p className="text-[10px] text-text-muted leading-tight opacity-70">days logged</p>
+              </>
+            )}
+          </div>
+
+          {/* Goal Crush Streak */}
+          <div className={`glass-card p-4 flex flex-col items-center text-center gap-1 ${goalCrushStreak === 0 ? 'opacity-60' : ''}`}>
+            <Zap className={`w-4 h-4 mb-0.5 ${goalCrushStreak > 0 ? 'text-accent-gold' : 'text-text-muted'}`} />
+            <p className={`text-xl font-bold ${goalCrushStreak > 0 ? 'text-text-primary' : 'text-text-muted'}`}>
+              {goalCrushStreak}
+            </p>
+            <p className="text-[11px] text-text-muted leading-tight">Goal crush</p>
+            <p className="text-[10px] text-text-muted leading-tight opacity-70">days</p>
           </div>
         </div>
 

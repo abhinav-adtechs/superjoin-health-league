@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Plus, ChevronDown, Calendar, Dumbbell, Utensils, Moon, Scale } from 'lucide-react';
 import { LogEntryModal, type EntryType } from './LogEntryModal';
 import type { Profile } from '@/lib/types';
@@ -18,10 +19,38 @@ interface NewEntryCTAProps {
   onSuccess: () => void;
 }
 
+function useMobile() {
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const checkMobile = () => {
+      const isNative =
+        typeof window !== 'undefined' &&
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (window as any).Capacitor?.isNativePlatform?.() === true;
+      const isMobileViewport = window.matchMedia('(max-width: 639px)').matches;
+      setIsMobile(isNative || isMobileViewport);
+    };
+
+    checkMobile();
+    const mq = window.matchMedia('(max-width: 639px)');
+    mq.addEventListener('change', checkMobile);
+    return () => mq.removeEventListener('change', checkMobile);
+  }, []);
+
+  return isMobile;
+}
+
 export function NewEntryCTA({ profile, onSuccess }: NewEntryCTAProps) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [modalType, setModalType] = useState<EntryType | null>(null);
+  const [mounted, setMounted] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const isMobile = useMobile();
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -37,6 +66,54 @@ export function NewEntryCTA({ profile, onSuccess }: NewEntryCTAProps) {
     setDropdownOpen(false);
     setModalType(type);
   };
+
+  const modal = modalType && profile ? (
+    <LogEntryModal
+      entryType={modalType}
+      profile={profile}
+      onClose={() => setModalType(null)}
+      onSuccess={onSuccess}
+    />
+  ) : null;
+
+  if (isMobile && mounted) {
+    const fab = (
+      <>
+        <div className="fixed bottom-[5.5rem] right-5 z-50" ref={dropdownRef}>
+          {dropdownOpen && (
+            <div className="absolute bottom-full right-0 mb-3 min-w-[200px] rounded-xl border border-white/10 bg-white shadow-xl py-1 z-50 animate-fade-up">
+              {ENTRY_OPTIONS.map(({ type, label, icon: Icon }) => (
+                <button
+                  key={type}
+                  type="button"
+                  onClick={() => openModal(type)}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-left text-sm text-text-primary hover:bg-black/5 transition-colors first:rounded-t-xl last:rounded-b-xl"
+                >
+                  <Icon className="w-4 h-4 text-text-muted shrink-0" />
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={() => setDropdownOpen((o) => !o)}
+            className="w-14 h-14 rounded-full bg-accent-superjoin-orange flex items-center justify-center shadow-lg hover:shadow-xl active:scale-95 transition-all touch-manipulation"
+            aria-label="New Entry"
+            aria-expanded={dropdownOpen}
+            aria-haspopup="true"
+          >
+            <Plus
+              className={`w-6 h-6 text-white transition-transform duration-200 ${dropdownOpen ? 'rotate-45' : ''}`}
+            />
+          </button>
+        </div>
+        {modal}
+      </>
+    );
+
+    return createPortal(fab, document.body);
+  }
 
   return (
     <>
@@ -68,14 +145,7 @@ export function NewEntryCTA({ profile, onSuccess }: NewEntryCTAProps) {
           </div>
         )}
       </div>
-      {modalType && profile && (
-        <LogEntryModal
-          entryType={modalType}
-          profile={profile}
-          onClose={() => setModalType(null)}
-          onSuccess={onSuccess}
-        />
-      )}
+      {modal}
     </>
   );
 }

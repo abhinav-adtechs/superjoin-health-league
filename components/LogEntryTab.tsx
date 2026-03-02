@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { Activity, Target, Trophy } from 'lucide-react';
+import { Activity, Target, Trophy, Dumbbell, Flame, Frown } from 'lucide-react';
 import { apiUrl, getApiFetchOptions } from '@/lib/api';
 import { CalendarHistogram } from './CalendarHistogram';
+import { getLoggingStreakBonus } from '@/lib/points';
 import type { Profile } from '@/lib/types';
 
 type ProjectionResponse = {
@@ -24,7 +25,12 @@ type EntryRow = {
   cardio_type?: string | null;
   steps?: number | null;
   sleep_hours?: number | null;
+  daily_points?: number | null;
+  is_goal_crush_day?: boolean | null;
 };
+
+type HistoryRange = 'day' | 'week' | 'month' | 'all';
+type WorkoutFilter = 'all' | 'strength' | 'cardio' | 'steps';
 
 function hasWorkout(e: EntryRow): boolean {
   return e.workout_done === true || e.cardio_done === true || (e.steps != null && Number(e.steps) > 0);
@@ -44,14 +50,9 @@ const COLOR_WORKOUT = '#FF6B35';
 const COLOR_CARDIO = '#0d9488';
 const COLOR_STEPS = '#2563eb';
 
-function entryType(e: EntryRow): 'workout' | 'cardio' | 'steps' {
-  if (e.workout_done === true) return 'workout';
-  if (e.cardio_done === true) return 'cardio';
-  return 'steps';
-}
-
-function entryBorderColor(e: EntryRow): string {
-  return entryType(e) === 'workout' ? COLOR_WORKOUT : entryType(e) === 'cardio' ? COLOR_CARDIO : COLOR_STEPS;
+function isGoalCrushEntry(e: EntryRow): boolean {
+  if (e.is_goal_crush_day != null) return e.is_goal_crush_day === true;
+  return (e.daily_points ?? 0) >= 60;
 }
 
 function getThisWeekRange(): { from: string; to: string } {
@@ -67,10 +68,71 @@ function getThisMonthRange(): { from: string; to: string } {
   return { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10) };
 }
 
+function addDays(dateStr: string, delta: number): string {
+  const d = new Date(dateStr + 'T12:00:00');
+  d.setDate(d.getDate() + delta);
+  return d.toISOString().slice(0, 10);
+}
+
+function getHistoryBounds(range: HistoryRange, anchor: string): { from: string; to: string } | null {
+  if (range === 'all') return null;
+  const base = anchor || new Date().toISOString().slice(0, 10);
+  const d = new Date(base + 'T12:00:00');
+  if (range === 'day') {
+    const s = d.toISOString().slice(0, 10);
+    return { from: s, to: s };
+  }
+  if (range === 'week') {
+    const end = new Date(d);
+    const start = new Date(d);
+    start.setDate(end.getDate() - 6);
+    return { from: start.toISOString().slice(0, 10), to: end.toISOString().slice(0, 10) };
+  }
+  // month
+  const start = new Date(d.getFullYear(), d.getMonth(), 1);
+  const end = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+  return { from: start.toISOString().slice(0, 10), to: end.toISOString().slice(0, 10) };
+}
+
+function getWorkoutPoints(e: EntryRow, ageBracket: Profile['age_bracket']): number {
+  if (!e.workout_done) return 0;
+  let pts = 10;
+  if (e.workout_duration != null && e.workout_duration >= 45) pts += 5;
+  if (e.workout_duration != null && e.workout_duration >= 60) pts += 5;
+  return pts;
+}
+
+function getCardioPoints(e: EntryRow, ageBracket: Profile['age_bracket']): number {
+  if (!e.cardio_done) return 0;
+  let pts = 10;
+  const adj = ageBracket === 'over_35' ? 0.85 : 1.0;
+  const threshold = 30 * adj;
+  if (e.cardio_duration != null && e.cardio_duration >= threshold) pts += 5;
+  return pts;
+}
+
+function getStepsPoints(e: EntryRow, ageBracket: Profile['age_bracket']): number {
+  if (e.steps == null) return 0;
+  const adj = ageBracket === 'over_35' ? 0.85 : 1.0;
+  const thresholds: [number, number][] = [
+    [10000 * adj, 15],
+    [7500 * adj, 10],
+    [5000 * adj, 5],
+  ];
+  for (const [th, pts] of thresholds) {
+    if (e.steps >= th) return pts;
+  }
+  return 0;
+}
+
 export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profile: Profile; onSuccess: () => void; refreshTrigger?: number }) {
   const [entries, setEntries] = useState<EntryRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [projection, setProjection] = useState<ProjectionResponse | null>(null);
+  const [historyRange, setHistoryRange] = useState<HistoryRange>('all');
+  const [historyDate, setHistoryDate] = useState<string>(new Date().toISOString().slice(0, 10));
+  const [typeFilter, setTypeFilter] = useState<WorkoutFilter>('all');
+  const [visibleCount, setVisibleCount] = useState(30);
 
   const workoutEntries = useMemo(
     () => [...entries].filter(hasWorkout).sort((a, b) => b.date.localeCompare(a.date)),
@@ -81,7 +143,7 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
     let cancelled = false;
     const end = new Date();
     const start = new Date();
-    start.setDate(start.getDate() - 60);
+    start.setDate(start.getDate() - 365);
     const from = start.toISOString().slice(0, 10);
     const to = end.toISOString().slice(0, 10);
     fetch(apiUrl(`/api/entries/history?from=${from}&to=${to}`), getApiFetchOptions())
@@ -108,6 +170,67 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
     week: getThisWeekRange(),
     month: getThisMonthRange(),
   }), []);
+  const { streakBonusByDate, streakHighlightDates, streakLengthByDate } = useMemo(() => {
+    // Compute streak highlights and incremental bonuses per date using workout days only.
+    // Highlight any consecutive run of 7+ workout days as a continuous band; bonuses still land on milestone days.
+    const bonuses = new Map<string, number>();
+    const highlight = new Set<string>();
+    const lengths = new Map<string, number>();
+    if (!workoutEntries.length) return { streakBonusByDate: bonuses, streakHighlightDates: highlight, streakLengthByDate: lengths };
+
+    const uniqueDates = Array.from(new Set(workoutEntries.map((e) => e.date))).sort();
+    let currentStreak = 0;
+    let prevDate: string | null = null;
+    let run: string[] = [];
+
+    const flushRun = () => {
+      if (run.length >= 7) {
+        for (const d of run) highlight.add(d);
+      }
+      run = [];
+    };
+
+    for (const date of uniqueDates) {
+      if (prevDate && addDays(prevDate, 1) === date) {
+        currentStreak += 1;
+      } else {
+        // New run starts; flush previous
+        flushRun();
+        currentStreak = 1;
+      }
+
+      run.push(date);
+
+      const totalBefore = getLoggingStreakBonus(currentStreak - 1);
+      const totalNow = getLoggingStreakBonus(currentStreak);
+      const delta = totalNow - totalBefore;
+      if (delta > 0) bonuses.set(date, delta);
+      lengths.set(date, currentStreak);
+
+      prevDate = date;
+    }
+    flushRun();
+
+    return { streakBonusByDate: bonuses, streakHighlightDates: highlight, streakLengthByDate: lengths };
+  }, [entries]);
+
+  useEffect(() => {
+    setVisibleCount(30);
+  }, [historyRange, historyDate, typeFilter]);
+
+  const filteredWorkoutEntries = useMemo(() => {
+    const bounds = getHistoryBounds(historyRange, historyDate);
+    return workoutEntries.filter((e) => {
+      if (bounds && (e.date < bounds.from || e.date > bounds.to)) return false;
+      const hasStrength = e.workout_done === true && (e.workout_duration != null || (e.workout_types?.length ?? 0) > 0);
+      const hasCardio = e.cardio_done === true && (e.cardio_duration != null || !!e.cardio_type);
+      const hasSteps = !hasStrength && !hasCardio && e.steps != null && Number(e.steps) > 0;
+      if (typeFilter === 'all') return hasStrength || hasCardio || hasSteps;
+      if (typeFilter === 'strength') return hasStrength;
+      if (typeFilter === 'cardio') return hasCardio;
+      return hasSteps;
+    });
+  }, [workoutEntries, historyRange, historyDate, typeFilter]);
 
   const goalProgress = useMemo(() => {
     const weekEntries = entries.filter((e) => e.date >= weekRange.from && e.date <= weekRange.to);
@@ -170,22 +293,58 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
             {goalProgress.workout.hasGoal && (
               <div>
                 <div className="text-text-muted font-medium mb-1">Workout</div>
-                <p className="text-text-primary">This week: goal met on <strong>{goalProgress.workout.week.met}</strong> of {goalProgress.workout.week.total} days</p>
-                <p className="text-text-secondary text-xs mt-0.5">This month: goal met on <strong>{goalProgress.workout.month.met}</strong> of {goalProgress.workout.month.total} days</p>
+                <p
+                  className={
+                    goalProgress.workout.week.met >= goalProgress.workout.week.total / 2
+                      ? 'text-emerald-500'
+                      : 'text-rose-500'
+                  }
+                >
+                  This week: goal met on <strong>{goalProgress.workout.week.met}</strong> of{' '}
+                  {goalProgress.workout.week.total} days
+                </p>
+                <p className="text-text-secondary text-xs mt-0.5">
+                  This month: goal met on <strong>{goalProgress.workout.month.met}</strong> of{' '}
+                  {goalProgress.workout.month.total} days
+                </p>
               </div>
             )}
             {goalProgress.steps.hasGoal && (
               <div>
                 <div className="text-text-muted font-medium mb-1">Steps</div>
-                <p className="text-text-primary">This week: goal met on <strong>{goalProgress.steps.week.met}</strong> of {goalProgress.steps.week.total} days</p>
-                <p className="text-text-secondary text-xs mt-0.5">This month: goal met on <strong>{goalProgress.steps.month.met}</strong> of {goalProgress.steps.month.total} days</p>
+                <p
+                  className={
+                    goalProgress.steps.week.met >= goalProgress.steps.week.total / 2
+                      ? 'text-emerald-500'
+                      : 'text-rose-500'
+                  }
+                >
+                  This week: goal met on <strong>{goalProgress.steps.week.met}</strong> of{' '}
+                  {goalProgress.steps.week.total} days
+                </p>
+                <p className="text-text-secondary text-xs mt-0.5">
+                  This month: goal met on <strong>{goalProgress.steps.month.met}</strong> of{' '}
+                  {goalProgress.steps.month.total} days
+                </p>
               </div>
             )}
             {goalProgress.sleep.hasGoal && (
               <div>
                 <div className="text-text-muted font-medium mb-1">Sleep</div>
-                <p className="text-text-primary">This week: goal met on <strong>{goalProgress.sleep.week.met}</strong> of {goalProgress.sleep.week.total} days</p>
-                <p className="text-text-secondary text-xs mt-0.5">This month: goal met on <strong>{goalProgress.sleep.month.met}</strong> of {goalProgress.sleep.month.total} days</p>
+                <p
+                  className={
+                    goalProgress.sleep.week.met >= goalProgress.sleep.week.total / 2
+                      ? 'text-emerald-500'
+                      : 'text-rose-500'
+                  }
+                >
+                  This week: goal met on <strong>{goalProgress.sleep.week.met}</strong> of{' '}
+                  {goalProgress.sleep.week.total} days
+                </p>
+                <p className="text-text-secondary text-xs mt-0.5">
+                  This month: goal met on <strong>{goalProgress.sleep.month.met}</strong> of{' '}
+                  {goalProgress.sleep.month.total} days
+                </p>
               </div>
             )}
           </div>
@@ -231,47 +390,175 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
           <Activity className="w-4 h-4 text-[#FF6B35]" />
           Workout days
         </h3>
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+          <div className="inline-flex rounded-full border border-white/10 overflow-hidden text-xs">
+            {(['all', 'day', 'week', 'month'] as HistoryRange[]).map((r) => (
+              <button
+                key={r}
+                type="button"
+                onClick={() => setHistoryRange(r)}
+                className={`px-2.5 py-1 ${historyRange === r ? 'bg-primary-orange text-white' : 'bg-surface-0 text-text-muted'}`}
+              >
+                {r === 'all' ? 'All' : r === 'day' ? 'Day' : r === 'week' ? 'Week' : 'Month'}
+              </button>
+            ))}
+          </div>
+          {historyRange !== 'all' && (
+            <input
+              type="date"
+              value={historyDate}
+              onChange={(e) => setHistoryDate(e.target.value)}
+              className="input-field max-w-[150px] text-xs"
+            />
+          )}
+          <div className="inline-flex rounded-full border border-white/10 overflow-hidden text-xs">
+            {(['all', 'strength', 'cardio', 'steps'] as WorkoutFilter[]).map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setTypeFilter(t)}
+                className={`px-2.5 py-1 ${
+                  typeFilter === t ? 'bg-surface-2 text-text-primary' : 'bg-surface-0 text-text-muted'
+                }`}
+              >
+                {t === 'all' ? 'All types' : t[0].toUpperCase() + t.slice(1)}
+              </button>
+            ))}
+          </div>
+        </div>
         {loading ? (
           <div className="animate-pulse text-text-muted text-sm">Loading…</div>
-        ) : workoutEntries.length === 0 ? (
+        ) : filteredWorkoutEntries.length === 0 ? (
           <p className="text-sm text-text-muted">No workout or cardio logged in the last 60 days.</p>
         ) : (
-          <ul className="space-y-2">
-            {workoutEntries.slice(0, 30).map((e) => (
-              <li
-                key={e.date}
-                className="flex items-center justify-between text-sm py-2 pl-3 border-b border-white/10 last:border-0 rounded-r-lg border-l-4"
-                style={{ borderLeftColor: entryBorderColor(e) }}
-              >
-                <span className="text-text-primary font-medium">
-                  {new Date(e.date + 'Z').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
-                </span>
-                <span className="flex items-center gap-2 text-text-secondary">
-                  {e.workout_done === true && (
-                    <span className="inline-flex items-center gap-1">
-                      <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: COLOR_WORKOUT }} aria-hidden />
-                      Workout {e.workout_duration ? `${e.workout_duration} min` : ''} {e.workout_types?.length ? `(${e.workout_types.map(label).join(', ')})` : ''}
+          <ul className="divide-y divide-white/10">
+            {filteredWorkoutEntries.slice(0, visibleCount).map((e) => {
+              const hasStrength = e.workout_done === true && (e.workout_duration != null || (e.workout_types?.length ?? 0) > 0);
+              const hasCardio = e.cardio_done === true && (e.cardio_duration != null || !!e.cardio_type);
+              const hasSteps = !hasStrength && !hasCardio && e.steps != null && Number(e.steps) > 0;
+              const streakBonus = streakBonusByDate.get(e.date) ?? 0;
+              const isStreakDay = streakHighlightDates.has(e.date);
+              const goalHit = isGoalCrushEntry(e);
+              const showStrength = hasStrength && (typeFilter === 'all' || typeFilter === 'strength');
+              const showCardio = hasCardio && (typeFilter === 'all' || typeFilter === 'cardio');
+              const showSteps = hasSteps && (typeFilter === 'all' || typeFilter === 'steps');
+              if (!showStrength && !showCardio && !showSteps && streakBonus <= 0) {
+                return null;
+              }
+              const strengthPts = showStrength ? getWorkoutPoints(e, profile.age_bracket) : 0;
+              const cardioPts = showCardio ? getCardioPoints(e, profile.age_bracket) : 0;
+              const stepsPts = showSteps ? getStepsPoints(e, profile.age_bracket) : 0;
+              const movementPts = strengthPts + cardioPts + stepsPts;
+              const totalDayPoints = (e.daily_points ?? null) != null ? e.daily_points! : movementPts + streakBonus;
+              return (
+                <li
+                  key={e.date}
+                  className={`relative py-2 pl-2 ${
+                    isStreakDay
+                      ? 'before:absolute before:left-0 before:top-0 before:bottom-0 before:w-0.5 before:bg-accent-gold/80'
+                      : ''
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1 gap-3">
+                    <span className="text-text-primary font-medium">
+                      {new Date(e.date + 'Z').toLocaleDateString(undefined, {
+                        weekday: 'short',
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric',
+                      })}
                     </span>
-                  )}
-                  {e.cardio_done === true && (
-                    <span className="inline-flex items-center gap-1">
-                      <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: COLOR_CARDIO }} aria-hidden />
-                      Cardio {e.cardio_duration ? `${e.cardio_duration} min` : ''} {e.cardio_type ? label(e.cardio_type) : ''}
-                    </span>
-                  )}
-                  {!e.workout_done && !e.cardio_done && e.steps != null && Number(e.steps) > 0 && (
-                    <span className="inline-flex items-center gap-1">
-                      <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: COLOR_STEPS }} aria-hidden />
-                      {e.steps.toLocaleString()} steps
-                    </span>
-                  )}
-                </span>
-              </li>
-            ))}
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                          goalHit ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500'
+                        }`}
+                      >
+                        {goalHit ? (
+                          <Trophy className="w-3 h-3 text-accent-gold" />
+                        ) : (
+                          <Frown className="w-3 h-3" />
+                        )}
+                        <span>{goalHit ? 'Goal hit' : 'Goal missed'}</span>
+                      </span>
+                      <span className="text-[11px] font-semibold text-text-primary whitespace-nowrap">
+                        +{totalDayPoints} pts
+                      </span>
+                    </div>
+                  </div>
+                  <div className="space-y-1 pl-1">
+                    {showStrength && (
+                      <div className="flex items-center justify-between text-sm text-text-secondary">
+                        <div className="flex items-center gap-2">
+                          <Dumbbell className="w-3.5 h-3.5" style={{ color: COLOR_WORKOUT }} />
+                          <span className="font-medium text-text-primary">Strength</span>
+                          <span className="truncate">
+                            {e.workout_duration ? `${e.workout_duration} min` : ''}
+                            {e.workout_types?.length ? ` · ${e.workout_types.map(label).join(', ')}` : ''}
+                          </span>
+                        </div>
+                        {strengthPts > 0 && (
+                          <span className="text-xs font-semibold text-text-primary whitespace-nowrap">+{strengthPts} pts</span>
+                        )}
+                      </div>
+                    )}
+                    {showCardio && (
+                      <div className="flex items-center justify-between text-sm text-text-secondary">
+                        <div className="flex items-center gap-2">
+                          <Activity className="w-3.5 h-3.5" style={{ color: COLOR_CARDIO }} />
+                          <span className="font-medium text-text-primary">Cardio</span>
+                          <span className="truncate">
+                            {e.cardio_duration ? `${e.cardio_duration} min` : ''}
+                            {e.cardio_type ? ` · ${label(e.cardio_type)}` : ''}
+                          </span>
+                        </div>
+                        {cardioPts > 0 && (
+                          <span className="text-xs font-semibold text-text-primary whitespace-nowrap">+{cardioPts} pts</span>
+                        )}
+                      </div>
+                    )}
+                    {showSteps && (
+                      <div className="flex items-center justify-between text-sm text-text-secondary">
+                        <div className="flex items-center gap-2">
+                          <Activity className="w-3.5 h-3.5" style={{ color: COLOR_STEPS }} />
+                          <span className="font-medium text-text-primary">Steps</span>
+                          <span>{e.steps?.toLocaleString()} steps</span>
+                        </div>
+                        {stepsPts > 0 && (
+                          <span className="text-xs font-semibold text-text-primary whitespace-nowrap">+{stepsPts} pts</span>
+                        )}
+                      </div>
+                    )}
+                    {streakBonus > 0 && (
+                      <div className="flex items-center justify-between text-sm text-text-secondary">
+                        <div className="flex items-center gap-2">
+                          <Flame className="w-3.5 h-3.5 text-accent-gold" />
+                          <span className="font-medium text-text-primary">
+                            Logging streak{' '}
+                            {streakLengthByDate.get(e.date)
+                              ? `(${streakLengthByDate.get(e.date)} days)`
+                              : ''}
+                          </span>
+                        </div>
+                        <span className="text-xs font-semibold text-text-primary whitespace-nowrap">
+                          +{streakBonus} pts
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         )}
-        {workoutEntries.length > 30 && (
-          <p className="text-xs text-text-muted mt-2">Showing last 30 workout days.</p>
+        {filteredWorkoutEntries.length > visibleCount && (
+          <button
+            type="button"
+            onClick={() => setVisibleCount((c) => c + 30)}
+            className="mt-3 text-xs text-primary-orange underline"
+          >
+            Load more days
+          </button>
         )}
       </div>
     </div>
