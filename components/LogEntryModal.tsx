@@ -245,7 +245,7 @@ export function LogEntryModal({ entryType, profile, onClose, onSuccess }: LogEnt
       );
     }
 
-    if ((isWizard && currentStep === 'weight') || entryType === 'weight') {
+    if (entryType === 'weight') {
       const displayWeight = weight_kg ?? (profile.current_weight ?? 70);
       return (
         <div className="space-y-3 py-2">
@@ -308,7 +308,6 @@ export function LogEntryModal({ entryType, profile, onClose, onSuccess }: LogEnt
     movement: 'Workout',
     food: 'Food',
     sleep: 'Sleep',
-    weight: 'Weight',
   };
 
   const renderWizard = () => (

@@ -81,7 +81,7 @@ export async function GET() {
   // If the table doesn't exist yet (migration not applied), serve the
   // hardcoded fallback so the UI always works.
   const rules: ScoringRule[] = (!error && data && data.length > 0) ? data : FALLBACK_RULES;
-  const categories = [...new Set(rules.map((r) => r.category))];
+  const categories = Array.from(new Set(rules.map((r) => r.category)));
 
   if (error) {
     console.warn('scoring_rules table not found, using fallback data:', error.code);
