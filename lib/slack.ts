@@ -5,14 +5,12 @@
  * Required env vars:
  *   SLACK_BOT_TOKEN   — xoxb-... (scopes: chat:write, users:read, users:read.email, im:write)
  *   SLACK_WEBHOOK_URL — https://hooks.slack.com/services/... (for channel posts)
- *   NEXT_PUBLIC_APP_URL — e.g. https://superjoin-health-league.vercel.app
+ *   NEXT_PUBLIC_APP_URL — your deployed app URL (e.g. https://your-app.vercel.app)
  */
 
 const SLACK_BOT_TOKEN = process.env.SLACK_BOT_TOKEN;
 const SLACK_WEBHOOK_URL = process.env.SLACK_WEBHOOK_URL;
-const APP_URL =
-  process.env.NEXT_PUBLIC_APP_URL ||
-  'https://superjoin-health-league.vercel.app';
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || '';
 
 // ── Entry category detection ────────────────────────────────────────────────
 

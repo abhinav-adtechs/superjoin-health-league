@@ -1,7 +1,7 @@
 /**
  * GET /api/cron/daily-reminders
  *
- * Called by Vercel Cron every 5 minutes (see vercel.json).
+ * Called by a cron job (e.g. Vercel Cron) every 5 minutes. Add the cron in your deployment platform.
  * Finds users whose daily reminder time matches the current UTC time (within ±2 min window),
  * then sends a Slack DM and/or push notification reminder.
  *

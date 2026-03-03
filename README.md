@@ -11,7 +11,7 @@ Daily health tracking for your office team. Log in 30 seconds, earn points for h
 
 ## Tech stack
 
-- **Next.js 14** (App Router) — Vercel-ready
+- **Next.js 14** (App Router) — deployable to Vercel or any Node host
 - **Supabase** — Auth (email/password) + PostgreSQL (profiles, daily_entries, weekly_weigh_ins, streaks)
 - **Tailwind CSS** — UI
 
@@ -53,8 +53,8 @@ The same codebase runs as a web app and as an iOS app via [Capacitor](https://ca
 
 **Prerequisites:** Xcode, Node 18+
 
-1. **Deploy the web app** (e.g. Vercel) so you have a public URL. (Production app: [https://superjoin-health-league.vercel.app](https://superjoin-health-league.vercel.app/).)
-2. **Capacitor is already pointed at that URL** in `capacitor.config.ts`. To use a different URL (e.g. local dev), set:
+1. **Deploy the web app** (e.g. Vercel) so you have a public URL.
+2. **Point Capacitor at your URL** via `NEXT_PUBLIC_APP_URL` or `CAPACITOR_SERVER_URL` in `capacitor.config.ts`. For local dev, set:
    - Local dev: `CAPACITOR_SERVER_URL=http://localhost:3003` and `CAPACITOR_CLEARTEXT=true`
 3. **Add iOS and sync** (first time only):
    ```bash
@@ -75,10 +75,10 @@ The same codebase runs as a web app and as an iOS app via [Capacitor](https://ca
 **Auth and storage**  
 Supabase auth and cookies work in the WebView when the app loads from your server URL. No code changes needed. Optional: for a future fully bundled build you could add a small storage abstraction and use Capacitor Preferences on native.
 
-## Deploy on Vercel
+## Deploy
 
-1. Push the repo to GitHub and import the project in [Vercel](https://vercel.com).
-2. Add environment variables in the Vercel project:
+1. Push the repo to GitHub and import the project in [Vercel](https://vercel.com) (or deploy to any Node.js host).
+2. Add environment variables in your deployment platform:
    - `NEXT_PUBLIC_SUPABASE_URL`
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 3. Deploy. The app uses the Next.js framework preset; no extra config needed.

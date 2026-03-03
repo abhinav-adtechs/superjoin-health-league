@@ -7,7 +7,7 @@ const config: CapacitorConfig = {
   server: {
     // iOS WebView loads the deployed app (API routes work same-origin).
     // Override with CAPACITOR_SERVER_URL for local dev (e.g. http://localhost:3003) and set CAPACITOR_CLEARTEXT=true.
-    url: process.env.CAPACITOR_SERVER_URL || 'https://superjoin-health-league.vercel.app',
+    url: process.env.CAPACITOR_SERVER_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3003',
     cleartext: process.env.CAPACITOR_CLEARTEXT === 'true',
   },
   plugins: {

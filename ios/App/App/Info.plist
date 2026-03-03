@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-        <string>Superjoin Health OS</string>
+	<string>Superjoin Health OS</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -22,6 +22,10 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSHealthShareUsageDescription</key>
+	<string>Superjoin Health OS reads your steps, workouts, sleep, water, protein, and weight from Apple Health to automatically fill your daily health entries — so you log once and we keep your score up to date.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>Superjoin Health OS may write workout sessions back to Apple Health to keep your health data consistent across apps.</string>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
@@ -45,9 +49,5 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
-	<key>NSHealthShareUsageDescription</key>
-	<string>Superjoin Health OS reads your steps, workouts, sleep, water, protein, and weight from Apple Health to automatically fill your daily health entries — so you log once and we keep your score up to date.</string>
-	<key>NSHealthUpdateUsageDescription</key>
-	<string>Superjoin Health OS may write workout sessions back to Apple Health to keep your health data consistent across apps.</string>
 </dict>
 </plist>
