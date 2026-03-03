@@ -41,5 +41,5 @@ $$;
 -- Step 4: Grant permissions
 GRANT EXECUTE ON FUNCTION public.verify_admin_password(TEXT) TO anon, authenticated;
 
--- Step 5: Test the function (should return manan's record)
-SELECT * FROM public.verify_admin_password('football');
+-- Step 5: Test the function (optional - run with your test password)
+-- SELECT * FROM public.verify_admin_password('your_test_password');

@@ -77,7 +77,7 @@ async function verifyAdmin() {
     console.log('🎉 Admin setup complete!');
     console.log('\nLogin credentials:');
     console.log(`   Email: ${ADMIN_EMAIL}`);
-    console.log(`   Password: Admin@2024Temp`);
+    console.log('   Password: [set via ADMIN_PASSWORD when running create-admin.js]');
     console.log('\nYou can now log in to the app!');
 
   } catch (error) {

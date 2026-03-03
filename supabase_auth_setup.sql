@@ -28,13 +28,13 @@ CREATE TABLE IF NOT EXISTS admin_login_audit (
   user_agent TEXT
 );
 
--- Step 4: Insert 4 admin passwords with memorable 8-character passwords
--- These passwords are hashed using bcrypt
+-- Step 4: Insert admin passwords (REPLACE placeholders with secure passwords before running!)
+-- Each admin must have a unique password. Use crypt('your_secure_password', gen_salt('bf'))
 INSERT INTO admin_passwords (name, password_hash) VALUES
-  ('manan',   crypt('football', gen_salt('bf'))),
-  ('abhinav', crypt('champion', gen_salt('bf'))),
-  ('sagar',   crypt('defender', gen_salt('bf'))),
-  ('karan',   crypt('midfield', gen_salt('bf')));
+  ('admin1', crypt('CHANGE_ME_PASSWORD_1', gen_salt('bf'))),
+  ('admin2', crypt('CHANGE_ME_PASSWORD_2', gen_salt('bf'))),
+  ('admin3', crypt('CHANGE_ME_PASSWORD_3', gen_salt('bf'))),
+  ('admin4', crypt('CHANGE_ME_PASSWORD_4', gen_salt('bf')));
 
 -- Step 5: Create RPC function to verify password
 -- Drop function if it exists first
@@ -82,12 +82,6 @@ FROM admin_login_audit
 GROUP BY admin_name_snapshot;
 
 -- ============================================
--- PASSWORD REFERENCE (KEEP THIS SECURE!)
--- ============================================
--- manan:   football
--- abhinav: champion
--- sagar:   defender
--- karan:   midfield
--- ============================================
--- After running this script, DELETE or SECURE this file!
+-- IMPORTANT: Replace CHANGE_ME_PASSWORD_* above with secure passwords
+-- before running. Do NOT commit real passwords to version control.
 -- ============================================

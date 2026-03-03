@@ -81,8 +81,8 @@ SET is_admin = true, must_change_pin = false;
 
     console.log('✅ Admin profile created successfully!');
     console.log('\nAdmin login credentials:');
-    console.log('  Email: abhinav@superjoin.ai');
-    console.log('  Password: Admin@2024Temp (change this after first login)');
+    console.log('  Email: [set when creating auth user via create-admin.js]');
+    console.log('  Password: [set via ADMIN_PASSWORD when running create-admin.js]');
     console.log('\nYou can now log in to the app!');
 
   } catch (error) {
