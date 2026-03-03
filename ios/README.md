@@ -16,10 +16,10 @@ Native iOS wrapper for the Office Health League webapp using **Capacitor**. The 
 From the **project root** (not `ios/`):
 
 ```bash
-npm install --legacy-peer-deps
+npm install
 ```
 
-> `--legacy-peer-deps` is needed because `@perfood/capacitor-healthkit` declares a Capacitor 4 peer dependency while the project uses Capacitor 7.
+> The project uses `.npmrc` with `legacy-peer-deps=true` because `@perfood/capacitor-healthkit` declares a Capacitor 4 peer dependency while the project uses Capacitor 7. This allows both Vercel deployments and local iOS development to work.
 
 ### 2. Sync Capacitor to iOS
 
