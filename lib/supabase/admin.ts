@@ -2,8 +2,8 @@ import { createClient } from '@supabase/supabase-js';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
-const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.NEXT_PUBLIC_HEALTH_LEAGUE_SUPABASE_URL || process.env.SUPABASE_URL || process.env.HEALTH_LEAGUE_SUPABASE_URL;
+const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.HEALTH_LEAGUE_SUPABASE_SERVICE_ROLE_KEY;
 
 /**
  * Server Supabase client with SERVICE ROLE key — bypasses RLS.
@@ -13,7 +13,7 @@ const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
  */
 export function createServiceRoleClient() {
   if (!supabaseUrl || !serviceRoleKey) {
-    throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL (or SUPABASE_URL) or SUPABASE_SERVICE_ROLE_KEY');
+    throw new Error('Missing Supabase URL or SUPABASE_SERVICE_ROLE_KEY (or HEALTH_LEAGUE_SUPABASE_SERVICE_ROLE_KEY)');
   }
   return createClient(supabaseUrl, serviceRoleKey, {
     auth: {
@@ -30,10 +30,10 @@ export function createServiceRoleClient() {
  */
 export async function createAdminClient() {
   const cookieStore = await cookies();
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL!;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.NEXT_PUBLIC_HEALTH_LEAGUE_SUPABASE_URL || process.env.SUPABASE_URL || process.env.HEALTH_LEAGUE_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.HEALTH_LEAGUE_SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) {
-    throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL (or SUPABASE_URL) or SUPABASE_SERVICE_ROLE_KEY');
+    throw new Error('Missing Supabase URL or service role key');
   }
   return createServerClient(url, key, {
     cookies: {

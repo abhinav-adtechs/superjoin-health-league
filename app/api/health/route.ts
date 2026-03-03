@@ -7,14 +7,14 @@ import { NextResponse } from 'next/server';
  * so you can confirm the DB is connected and has users.
  */
 export async function GET() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.NEXT_PUBLIC_HEALTH_LEAGUE_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_HEALTH_LEAGUE_SUPABASE_ANON_KEY;
 
   if (!supabaseUrl || !supabaseAnonKey) {
     return NextResponse.json({
       ok: false,
       supabaseConfigured: false,
-      message: 'Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY in .env.local',
+      message: 'Missing Supabase env vars (NEXT_PUBLIC_SUPABASE_* or NEXT_PUBLIC_HEALTH_LEAGUE_SUPABASE_*)',
     }, { status: 503 });
   }
 
