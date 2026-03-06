@@ -176,6 +176,9 @@ export async function GET(request: Request) {
   const { data: { user: currentUser } } = await supabase.auth.getUser();
   const currentUserId = currentUser?.id ?? null;
 
+  // Use admin client for profiles and entries so leaderboard works for guests (unauthenticated)
+  const adminSupabase = createServiceRoleClient();
+
   const now = new Date();
   let period = '';
   let dateFilter: { gte: string; lte: string } | null = null;
@@ -213,7 +216,7 @@ export async function GET(request: Request) {
     period = 'All time';
   }
 
-  const { data: profiles, error: profilesError } = await supabase
+  const { data: profiles, error: profilesError } = await adminSupabase
     .from('profiles')
     .select('id, display_name, avatar_url, age_bracket, joined_at, goal_workout_days_week, goal_workout_mins_week, goal_home_cooked_per_week')
     .eq('is_active', true);
@@ -242,8 +245,6 @@ export async function GET(request: Request) {
   let recentAllEntries: FullEntry[] = [];
 
   try {
-    const adminSupabase = createServiceRoleClient();
-
     if (view === 'weekly' && dateFilter) {
       const lookbackStart = toISODate(addDays(new Date(dateFilter.gte + 'T00:00:00'), -53));
       const { data: recentData } = await adminSupabase

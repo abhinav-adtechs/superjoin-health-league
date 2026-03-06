@@ -220,6 +220,11 @@ body {
   background: var(--primary-orange);
 }
 
+/* ── Safe area for iOS notch/status bar (top bar) ── */
+.safe-area-top {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
 /* ── Bottom navigation (mobile) ── */
 .bottom-nav {
   background: rgba(255, 255, 255, 0.96);

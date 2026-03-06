@@ -61,6 +61,7 @@ Or open `ios/App/App.xcworkspace` in Xcode (use the workspace, not the `.xcodepr
 
 - **Web URL**: The app loads the URL from `NEXT_PUBLIC_APP_URL` or `CAPACITOR_SERVER_URL` (see `capacitor.config.ts`). Defaults to `http://localhost:3003` for local dev.
 - **Local dev**: Set `CAPACITOR_SERVER_URL=http://localhost:3003` and `CAPACITOR_CLEARTEXT=true`, then run `cap sync ios` and rebuild.
+- **Recovery gestures**: The iOS shell enables pull-to-refresh and the native swipe gesture for back/forward navigation in the WebView.
 
 ## Build & run
 

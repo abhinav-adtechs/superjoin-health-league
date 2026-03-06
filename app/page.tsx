@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { apiUrl, getApiFetchOptions } from '@/lib/api';
-import { Heart, Activity, Dumbbell, Trophy, Settings, LogOut, ChevronLeft, Search, User, Bell, Plug2, BookOpen } from 'lucide-react';
+import { Heart, Activity, Dumbbell, Trophy, Settings, LogOut, ChevronLeft, Search, User, Bell, Plug2, BookOpen, LogIn } from 'lucide-react';
 
 import { DashboardTab } from '@/components/DashboardTab';
 import { LogEntryTab } from '@/components/LogEntryTab';
@@ -34,6 +34,7 @@ const SETTINGS_SECTIONS: { id: SettingsSection; label: string; icon: typeof Hear
 export default function Home() {
   const [user, setUser] = useState<{ id: string; email?: string } | null>(null);
   const [profile, setProfile] = useState<Profile | null | undefined>(undefined);
+  const [isGuest, setIsGuest] = useState(false);
   const [activeTab, setActiveTab] = useState<TabId>(() => {
     if (typeof window !== 'undefined') {
       const tab = new URLSearchParams(window.location.search).get('tab');
@@ -53,6 +54,7 @@ export default function Home() {
   const [entryRefresh, setEntryRefresh] = useState(0);
   const [sidebarPinned, setSidebarPinned] = useState(false);
   const [pointsSheetOpen, setPointsSheetOpen] = useState(false);
+  const [guestPointsOpen, setGuestPointsOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState('');
   const [paletteIdx, setPaletteIdx] = useState(0);
@@ -189,10 +191,61 @@ export default function Home() {
     );
   }
 
+  // Guest mode: leaderboard + rules only
+  if (!user && isGuest) {
+    return (
+      <>
+        <header className="sticky top-0 z-50 safe-area-top border-b border-white/20 bg-surface-0/80 backdrop-blur-xl">
+          <div className="max-w-5xl mx-auto px-4 sm:px-6 py-3 sm:py-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 sm:gap-3">
+                <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-accent-superjoin-orange/10 border border-accent-superjoin-orange/20 flex items-center justify-center flex-shrink-0">
+                  <Heart className="w-4 h-4 sm:w-5 sm:h-5 text-accent-superjoin-orange" />
+                </div>
+                <div className="flex items-center gap-1 sm:gap-2">
+                  <span className="text-sm sm:text-base font-bold text-text-primary">Superjoin</span>
+                  <span className="text-sm sm:text-base font-bold text-accent-superjoin-orange">Health OS</span>
+                </div>
+                <span className="text-[10px] font-medium text-text-muted bg-surface-1 border border-white/10 rounded-md px-1.5 py-0.5 hidden sm:inline">Guest</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setGuestPointsOpen(true)}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-surface-1 border border-white/10 text-text-muted hover:text-text-secondary text-sm font-medium transition-colors"
+                >
+                  <BookOpen className="w-4 h-4" />
+                  Rules
+                </button>
+                <button
+                  onClick={() => { setIsGuest(false); }}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-accent-superjoin-orange/10 border border-accent-superjoin-orange/20 text-accent-superjoin-orange hover:bg-accent-superjoin-orange/20 text-sm font-medium transition-colors"
+                >
+                  <LogIn className="w-4 h-4" />
+                  Sign in
+                </button>
+              </div>
+            </div>
+          </div>
+        </header>
+        <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-10 min-h-[calc(100vh-80px)]">
+          <LeaderboardTab />
+          <PointSystemSheet open={guestPointsOpen} onClose={() => setGuestPointsOpen(false)} />
+        </main>
+        <footer className="border-t border-white/10 py-6">
+          <div className="max-w-5xl mx-auto px-4 sm:px-6 text-center">
+            <p className="text-xs text-text-muted">
+              Sign in to log your activity and compete on the leaderboard.
+            </p>
+          </div>
+        </footer>
+      </>
+    );
+  }
+
   if (!user) {
     return (
       <>
-        <header className="sticky top-0 z-50 border-b border-white/20 bg-surface-0/80 backdrop-blur-xl">
+        <header className="sticky top-0 z-50 safe-area-top border-b border-white/20 bg-surface-0/80 backdrop-blur-xl">
           <div className="max-w-5xl mx-auto px-4 sm:px-6 py-3 sm:py-4">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2 sm:gap-3">
@@ -223,6 +276,16 @@ export default function Home() {
                 <p className="text-xs sm:text-sm text-text-secondary text-center max-w-sm">Log your daily health in 30 seconds. Points for actions, not logging.</p>
               </div>
               <LoginForm onSuccess={loadUser} />
+              <div className="mt-4 pt-4 border-t border-white/10">
+                <button
+                  type="button"
+                  onClick={() => setIsGuest(true)}
+                  className="w-full py-2.5 rounded-xl text-sm font-medium text-text-muted hover:text-text-secondary hover:bg-surface-1 border border-white/10 transition-colors"
+                >
+                  Continue as guest
+                </button>
+                <p className="text-[11px] text-text-muted text-center mt-2">View leaderboard and rules without signing in</p>
+              </div>
             </div>
           </div>
           <footer className="mt-8 sm:mt-12 pb-6 sm:pb-8 text-center space-y-2">
@@ -241,7 +304,7 @@ export default function Home() {
   if (profile === null && user) {
     return (
       <>
-        <header className="sticky top-0 z-50 border-b border-white/20 bg-surface-0/80 backdrop-blur-xl">
+        <header className="sticky top-0 z-50 safe-area-top border-b border-white/20 bg-surface-0/80 backdrop-blur-xl">
           <div className="max-w-5xl mx-auto px-4 sm:px-6 py-3 sm:py-4">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2 sm:gap-3">
@@ -273,7 +336,7 @@ export default function Home() {
   if (user && profile && profile.must_change_pin) {
     return (
       <>
-        <header className="sticky top-0 z-50 border-b border-white/20 bg-surface-0/80 backdrop-blur-xl">
+        <header className="sticky top-0 z-50 safe-area-top border-b border-white/20 bg-surface-0/80 backdrop-blur-xl">
           <div className="max-w-5xl mx-auto px-4 sm:px-6 py-4">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-xl bg-accent-green/10 border border-accent-green/20 flex items-center justify-center">
@@ -358,7 +421,7 @@ export default function Home() {
         className={`hidden md:flex flex-col fixed left-0 top-0 bottom-0 z-40 border-r border-white/10 bg-surface-0/95 backdrop-blur-xl transition-[width] duration-200 ease-in-out overflow-hidden group ${sidebarPinned ? 'w-56' : 'w-14 hover:w-56'}`}
       >
         {/* Sidebar logo */}
-        <div className="flex items-center h-14 sm:h-16 px-2.5 border-b border-white/10 shrink-0">
+        <div className="flex items-center h-14 sm:h-16 px-2.5 border-b border-white/10 shrink-0 safe-area-top">
           <div className="w-9 h-9 rounded-xl bg-accent-superjoin-orange/10 border border-accent-superjoin-orange/20 flex items-center justify-center shrink-0">
             <Heart className="w-5 h-5 text-accent-superjoin-orange" />
           </div>
@@ -433,7 +496,7 @@ export default function Home() {
       <div className={`flex flex-col min-h-screen transition-[margin] duration-200 ${sidebarPinned ? 'md:ml-56' : 'md:ml-14'}`}>
 
         {/* Header */}
-        <header className="sticky top-0 z-30 border-b border-white/20 bg-surface-0/80 backdrop-blur-xl">
+        <header className="sticky top-0 z-30 safe-area-top border-b border-white/20 bg-surface-0/80 backdrop-blur-xl">
           <div className="max-w-5xl mx-auto px-4 sm:px-6">
             <div className="h-14 sm:h-16 flex items-center justify-between gap-3">
               {/* Logo — mobile only (desktop shows in sidebar) */}
