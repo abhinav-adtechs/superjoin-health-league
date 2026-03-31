@@ -10,6 +10,7 @@ import { CALORIE_MULTIPLIERS_PER_KG } from '@/lib/goal-defaults';
 import { DateCarousel, MAX_DAYS_BACK } from '@/components/entry/DateCarousel';
 import { SliderField } from '@/components/entry/SliderField';
 import { WorkoutSection } from '@/components/entry/WorkoutSection';
+import { parseGoalWorkoutTypes } from '@/lib/workout-goals';
 
 function safeFitnessGoal(profile: Profile): FitnessGoal {
   const g = profile.fitness_goal;
@@ -121,6 +122,7 @@ export function LogEntryModal({ entryType, profile, onClose, onSuccess }: LogEnt
   const foodMode = profile.food_tracking_mode ?? 'protein_only';
   const showProtein = foodMode === 'protein_only' || foodMode === 'both';
   const showCalories = foodMode === 'calories_only' || foodMode === 'both';
+  const stepsGoalActive = (profile.goal_steps_day ?? 0) > 0;
 
   const isWizard = entryType === 'full';
   const currentStep = WIZARD_STEPS[wizardStep];
@@ -142,7 +144,7 @@ export function LogEntryModal({ entryType, profile, onClose, onSuccess }: LogEnt
         if (cardio_duration > 0) payload.cardio_duration = cardio_duration;
         if (cardio_type) payload.cardio_type = cardio_type;
       }
-      if (steps != null && steps > 0) payload.steps = steps;
+      if (stepsGoalActive && steps != null && steps > 0) payload.steps = steps;
     }
     if (includeFood) {
       if (water_liters > 0) payload.water_liters = water_liters;
@@ -190,9 +192,15 @@ export function LogEntryModal({ entryType, profile, onClose, onSuccess }: LogEnt
 
   const isLastStep = isWizard && wizardStep === WIZARD_STEPS.length - 1;
 
-  const renderFoodStep = () => (
+  const renderFoodStep = () => {
+    const pt = Math.max(proteinTarget, 1);
+    return (
     <div className="space-y-6 py-2">
       <SliderField label="Water" value={water_liters} min={0} max={5} step={0.25} onChange={setWaterLiters} unit=" L" />
+      <p className="text-[11px] text-text-muted -mt-2">
+        Food fields follow your goal:{' '}
+        {foodMode === 'both' ? 'protein + calories' : foodMode === 'calories_only' ? 'calories only' : 'protein only'}.
+      </p>
       {showProtein && (
         <SliderField
           label={`Protein — target ~${proteinTarget}g/day`}
@@ -202,7 +210,7 @@ export function LogEntryModal({ entryType, profile, onClose, onSuccess }: LogEnt
           step={5}
           onChange={setProteinQty}
           unit=" g"
-          suffix={protein_qty > 0 ? ` (${Math.round((protein_qty / proteinTarget) * 100)}%)` : ''}
+          suffix={protein_qty > 0 ? ` (${Math.round((protein_qty / pt) * 100)}%)` : ''}
         />
       )}
       {showCalories && (
@@ -217,7 +225,8 @@ export function LogEntryModal({ entryType, profile, onClose, onSuccess }: LogEnt
         />
       )}
     </div>
-  );
+    );
+  };
 
   const renderStepContent = () => {
     if (isWizard && currentStep === 'date') {
@@ -230,8 +239,11 @@ export function LogEntryModal({ entryType, profile, onClose, onSuccess }: LogEnt
     }
 
     if ((isWizard && currentStep === 'movement') || entryType === 'movement') {
+      const goalTypesForMovement = parseGoalWorkoutTypes(profile.goal_workout_types);
       return (
         <WorkoutSection
+          goalWorkoutTypes={goalTypesForMovement}
+          stepsGoalActive={stepsGoalActive}
           workoutDuration={workout_duration}
           onWorkoutDuration={setWorkoutDuration}
           cardioType={cardio_type}

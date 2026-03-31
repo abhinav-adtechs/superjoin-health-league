@@ -39,6 +39,53 @@ export function parseGoalWorkoutTypes(input: unknown): WorkoutGoalType[] {
   return [];
 }
 
+/** Goal tags that map to the Training (workout minutes) logger. */
+const GOALS_FOR_TRAINING_LOG = new Set<WorkoutGoalType>(['strength', 'yoga', 'martial_arts']);
+
+/** Goal tags that map to the Cardio (type + duration) logger. */
+const GOALS_FOR_CARDIO_LOG = new Set<WorkoutGoalType>([
+  'running',
+  'walking',
+  'cycling',
+  'swimming',
+  'cardio_mix',
+  'team_sports',
+  'racket_sports',
+]);
+
+/**
+ * Which subsections to show in Log Movement, aligned with profile goal_workout_types.
+ * Empty goal list → show training + cardio pickers (legacy); steps only if `stepsGoalActive`.
+ * CrossFit uses both strength-style minutes and cardio-style minutes in scoring.
+ */
+export function getMovementLogSectionVisibility(
+  goalTypes: WorkoutGoalType[],
+  stepsGoalActive: boolean,
+): {
+  showTraining: boolean;
+  showCardio: boolean;
+  showSteps: boolean;
+} {
+  if (!goalTypes.length) {
+    return { showTraining: true, showCardio: true, showSteps: stepsGoalActive };
+  }
+  let showTraining = false;
+  let showCardio = false;
+  for (const g of goalTypes) {
+    if (g === 'crossfit') {
+      showTraining = true;
+      showCardio = true;
+      continue;
+    }
+    if (GOALS_FOR_TRAINING_LOG.has(g)) showTraining = true;
+    if (GOALS_FOR_CARDIO_LOG.has(g)) showCardio = true;
+  }
+  if (!showTraining && !showCardio) {
+    return { showTraining: true, showCardio: true, showSteps: stepsGoalActive };
+  }
+  return { showTraining, showCardio, showSteps: stepsGoalActive };
+}
+
 /** Short labels for history / calendar column headers. */
 export const WORKOUT_GOAL_SHORT_LABELS: Record<WorkoutGoalType, string> = {
   strength: 'Strength',
