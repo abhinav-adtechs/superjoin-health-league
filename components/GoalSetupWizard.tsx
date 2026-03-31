@@ -30,6 +30,7 @@ interface GoalSetupWizardProps {
     goal_water_liters?: number | null;
     goal_workout_mins_week?: number | null;
     goal_workout_days_week?: number | null;
+    goal_steps_day?: number | null;
     goal_workout_types?: WorkoutGoalType[] | null;
     /** @deprecated migrated to goal_workout_types */
     goal_workout_type?: WorkoutGoalType | null;
