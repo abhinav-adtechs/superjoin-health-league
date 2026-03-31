@@ -63,12 +63,18 @@ const CTA_TEXT: Record<EntryType, string> = {
   full: 'Smash it! 🎯',
 };
 
-const SUCCESS_MSG: Record<EntryType, (pts: number) => string> = {
-  movement: (pts) => `🔥 Crushed it! +${pts} pts`,
-  meal_recovery: (pts) => `🥗 Fuelled up! +${pts} pts`,
-  sleep: (pts) => `😴 Rest logged! +${pts} pts`,
-  weight: () => '⚖️ Weight saved!',
-  full: (pts) => `🏆 Full day locked in! +${pts} pts`,
+function pointsSuccessLine(delta: number, total: number): string {
+  if (delta === 0) return `${total} pts today (unchanged)`;
+  if (delta < total) return `+${delta} pts from this log · ${total} pts today`;
+  return `+${delta} pts`;
+}
+
+const SUCCESS_MSG: Record<EntryType, (delta: number, total: number) => string> = {
+  movement: (delta, total) => `🔥 Crushed it! ${pointsSuccessLine(delta, total)}`,
+  meal_recovery: (delta, total) => `🥗 Fuelled up! ${pointsSuccessLine(delta, total)}`,
+  sleep: (delta, total) => `😴 Rest logged! ${pointsSuccessLine(delta, total)}`,
+  weight: (_delta, _total) => '⚖️ Weight saved — not part of daily activity points',
+  full: (delta, total) => `🏆 Full day locked in! ${pointsSuccessLine(delta, total)}`,
 };
 
 const WIZARD_STEPS = ['date', 'movement', 'food', 'sleep'] as const;
@@ -184,8 +190,10 @@ export function LogEntryModal({ entryType, profile, onClose, onSuccess }: LogEnt
       setMessage({ type: 'error', text: data.error || 'Failed to save' });
       return;
     }
-    const pts = data.daily_points ?? 0;
-    setMessage({ type: 'ok', text: SUCCESS_MSG[entryType](pts) });
+    const total = data.daily_points ?? 0;
+    const delta =
+      typeof data.points_delta === 'number' ? data.points_delta : total;
+    setMessage({ type: 'ok', text: SUCCESS_MSG[entryType](delta, total) });
     onSuccess();
     setTimeout(onClose, 1200);
   };

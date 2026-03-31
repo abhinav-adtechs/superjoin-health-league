@@ -127,6 +127,10 @@ function buildFAQ(byCategory: RulesByCategory): Array<{ q: string; a: string }> 
       a: `Your daily activity points are capped at ${dailyMax || 85} pts, covering workout, movement (cardio + steps), sleep, and nutrition. Streak bonuses (logging streak, goal crush streak, weekly performance) are awarded separately on top of this cap — so a high-streak day can exceed ${dailyMax || 85} pts in total.`,
     },
     {
+      q: 'Does logging weight add to my daily points?',
+      a: 'No. Weight updates your profile and weekly weigh-in; it is not part of the daily activity score. The Point System categories are workout, movement, sleep, and nutrition only.',
+    },
+    {
       q: 'What counts as a "Goal hit" day vs "Goal missed"?',
       a: `A day is a "Goal hit" when ALL your active daily goals are met: water ≥ target, sleep within your target range, protein ≥ target (if tracking protein), and calories aligned with your fitness goal direction (if tracking calories). Workout is a weekly goal — missing a workout on a given day does not itself create a "Goal missed" day.`,
     },

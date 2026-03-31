@@ -154,18 +154,30 @@ export async function POST(request: Request) {
     .single();
   const ageBracket: AgeBracket = (profile?.age_bracket as AgeBracket) ?? '25_to_35';
 
+  const profileForPoints = profile
+    ? {
+        goal_protein_g_day: profile.goal_protein_g_day,
+        goal_calories_day: profile.goal_calories_day,
+        food_tracking_mode: profile.food_tracking_mode,
+        fitness_goal: profile.fitness_goal,
+      }
+    : undefined;
+
+  const prevDailyPoints = existing
+    ? calculateDailyPoints(
+        existing as Parameters<typeof calculateDailyPoints>[0],
+        ageBracket,
+        profileForPoints,
+      )
+    : 0;
+
   // Stamp scored_with_goal at time of entry creation/update
   entry.scored_with_goal = profile?.fitness_goal ?? null;
 
   entry.daily_points = calculateDailyPoints(
     entry as Parameters<typeof calculateDailyPoints>[0],
     ageBracket,
-    profile ? {
-      goal_protein_g_day: profile.goal_protein_g_day,
-      goal_calories_day: profile.goal_calories_day,
-      food_tracking_mode: profile.food_tracking_mode,
-      fitness_goal: profile.fitness_goal,
-    } : undefined,
+    profileForPoints,
   );
   entry.is_goal_crush_day = isGoalCrushDay(
     entry as Parameters<typeof isGoalCrushDay>[0],
@@ -195,6 +207,8 @@ export async function POST(request: Request) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
+  const pointsDelta = (data.daily_points as number) - prevDailyPoints;
+
   // Fire-and-forget: send Slack + push notifications
   fireEntryNotifications(user.id, body, data.daily_points).catch(() => {});
 
@@ -208,7 +222,7 @@ export async function POST(request: Request) {
     await supabase.from('profiles').update({ current_weight: weight_kg }).eq('id', user.id);
   }
 
-  return NextResponse.json(data);
+  return NextResponse.json({ ...data, points_delta: pointsDelta });
 }
 
 // ── Notification dispatcher (fire-and-forget) ────────────────────────────────
