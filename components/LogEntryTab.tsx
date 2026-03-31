@@ -1,7 +1,20 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { Activity, Target, Trophy, Dumbbell, Flame, Frown, TrendingUp } from 'lucide-react';
+import {
+  Activity,
+  Target,
+  Trophy,
+  Dumbbell,
+  Flame,
+  Frown,
+  TrendingUp,
+  Droplets,
+  Moon,
+  Scale,
+  UtensilsCrossed,
+  Gauge,
+} from 'lucide-react';
 import type { ReactNode } from 'react';
 import { apiUrl, getApiFetchOptions } from '@/lib/api';
 import { CalendarHistogram } from './CalendarHistogram';
@@ -36,17 +49,46 @@ type EntryRow = {
   cardio_duration?: number | null;
   cardio_type?: string | null;
   steps?: number | null;
+  water_liters?: number | null;
+  home_cooked_meals?: number | null;
+  protein_meal?: boolean | null;
+  protein_qty?: number | null;
+  junk_food?: boolean | null;
+  alcohol?: string | null;
   sleep_hours?: number | null;
+  calories_kcal?: number | null;
   daily_points?: number | null;
   is_goal_crush_day?: boolean | null;
 };
 
 type HistoryRange = 'week' | 'month' | 'all';
-type WorkoutFilter = 'all' | 'strength' | 'cardio' | 'steps';
+/** What to show in the daily log list (replaces strength / cardio / steps). */
+type LogCategoryFilter = 'all' | 'movement' | 'nutrition' | 'hydration' | 'sleep' | 'weight';
 type WeekStatus = 'green' | 'yellow' | 'red';
 
-function hasWorkout(e: EntryRow): boolean {
+function hasMovement(e: EntryRow): boolean {
   return e.workout_done === true || e.cardio_done === true || (e.steps != null && Number(e.steps) > 0);
+}
+
+function hasHydration(e: EntryRow): boolean {
+  return e.water_liters != null && e.water_liters > 0;
+}
+
+function hasSleepLog(e: EntryRow): boolean {
+  return e.sleep_hours != null && e.sleep_hours > 0;
+}
+
+function hasNutrition(e: EntryRow): boolean {
+  if ((e.protein_qty ?? 0) > 0 || e.protein_meal === true) return true;
+  if ((e.calories_kcal ?? 0) > 0) return true;
+  if (e.junk_food != null) return true;
+  if (e.alcohol != null) return true;
+  if ((e.home_cooked_meals ?? 0) > 0) return true;
+  return false;
+}
+
+function hasAnyLog(e: EntryRow): boolean {
+  return hasMovement(e) || hasNutrition(e) || hasHydration(e) || hasSleepLog(e);
 }
 
 function workoutMins(e: EntryRow): number {
@@ -62,6 +104,19 @@ function label(s: string): string {
 const COLOR_WORKOUT = '#FF6B35';
 const COLOR_CARDIO = '#0d9488';
 const COLOR_STEPS = '#2563eb';
+const COLOR_WATER = '#f59e0b';
+const COLOR_SLEEP = '#0ea5e9';
+const COLOR_NUTRITION = '#6366f1';
+const COLOR_WEIGHT = '#94a3b8';
+
+const LOG_FILTER_META: { id: LogCategoryFilter; label: string }[] = [
+  { id: 'all', label: 'All' },
+  { id: 'movement', label: 'Movement' },
+  { id: 'nutrition', label: 'Nutrition' },
+  { id: 'hydration', label: 'Water' },
+  { id: 'sleep', label: 'Sleep' },
+  { id: 'weight', label: 'Weight' },
+];
 
 function isGoalCrushEntry(e: EntryRow): boolean {
   if (e.is_goal_crush_day != null) return e.is_goal_crush_day === true;
@@ -157,19 +212,33 @@ function getStepsPoints(e: EntryRow, ageBracket: Profile['age_bracket']): number
 
 export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profile: Profile; onSuccess: () => void; refreshTrigger?: number }) {
   const [entries, setEntries] = useState<EntryRow[]>([]);
+  const [weightHistory, setWeightHistory] = useState<{ week_start: string; weight_kg: number }[]>([]);
   const [loading, setLoading] = useState(true);
   const [projection, setProjection] = useState<ProjectionResponse | null>(null);
   const [weeklyBoard, setWeeklyBoard] = useState<WeeklyLeaderboard | null>(null);
   const [historyRange, setHistoryRange] = useState<HistoryRange>('all');
   const [historyWeekOffset, setHistoryWeekOffset] = useState(0);
   const [historyMonthOffset, setHistoryMonthOffset] = useState(0);
-  const [typeFilter, setTypeFilter] = useState<WorkoutFilter>('all');
+  const [categoryFilter, setCategoryFilter] = useState<LogCategoryFilter>('all');
   const [visibleWeeks, setVisibleWeeks] = useState(8);
 
-  const workoutEntries = useMemo(
-    () => [...entries].filter(hasWorkout).sort((a, b) => b.date.localeCompare(a.date)),
+  const logEntries = useMemo(
+    () => [...entries].filter(hasAnyLog).sort((a, b) => b.date.localeCompare(a.date)),
     [entries]
   );
+
+  const movementEntries = useMemo(
+    () => [...entries].filter(hasMovement).sort((a, b) => b.date.localeCompare(a.date)),
+    [entries]
+  );
+
+  const weightByWeek = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const w of weightHistory) {
+      m.set(w.week_start, w.weight_kg);
+    }
+    return m;
+  }, [weightHistory]);
 
   useEffect(() => {
     let cancelled = false;
@@ -182,13 +251,27 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
       `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     const from = localDate(start);
     const to = localDate(end);
-    fetch(apiUrl(`/api/entries/history?from=${from}&to=${to}`), { ...getApiFetchOptions(), cache: 'no-store' })
-      .then((r) => r.json())
-      .then((data) => {
+    Promise.all([
+      fetch(apiUrl(`/api/entries/history?from=${from}&to=${to}`), { ...getApiFetchOptions(), cache: 'no-store' }).then((r) => r.json()),
+      fetch(apiUrl('/api/weight/history'), { ...getApiFetchOptions(), cache: 'no-store' }).then((r) => r.json()),
+    ])
+      .then(([data, wh]) => {
+        if (cancelled) return;
         const list = Array.isArray(data) ? data : [];
-        if (!cancelled) setEntries(list);
+        setEntries(list);
+        const weights = Array.isArray(wh) ? wh : [];
+        setWeightHistory(
+          weights
+            .filter((x: { week_start?: string; weight_kg?: number }) => x.week_start && typeof x.weight_kg === 'number')
+            .map((x: { week_start: string; weight_kg: number }) => ({ week_start: x.week_start, weight_kg: x.weight_kg }))
+        );
       })
-      .catch(() => { if (!cancelled) setEntries([]); })
+      .catch(() => {
+        if (!cancelled) {
+          setEntries([]);
+          setWeightHistory([]);
+        }
+      })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [refreshTrigger]);
@@ -215,9 +298,9 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
     const bonuses = new Map<string, number>();
     const highlight = new Set<string>();
     const lengths = new Map<string, number>();
-    if (!workoutEntries.length) return { streakBonusByDate: bonuses, streakHighlightDates: highlight, streakLengthByDate: lengths };
+    if (!logEntries.length) return { streakBonusByDate: bonuses, streakHighlightDates: highlight, streakLengthByDate: lengths };
 
-    const uniqueDates = Array.from(new Set(workoutEntries.map((e) => e.date))).sort();
+    const uniqueDates = Array.from(new Set(logEntries.map((e) => e.date))).sort();
     let currentStreak = 0;
     let prevDate: string | null = null;
     let run: string[] = [];
@@ -247,7 +330,7 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
     flushRun();
 
     return { streakBonusByDate: bonuses, streakHighlightDates: highlight, streakLengthByDate: lengths };
-  }, [entries]);
+  }, [logEntries]);
 
   // Reset pagination when filters change
   useEffect(() => {
@@ -258,7 +341,7 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
 
   useEffect(() => {
     setVisibleWeeks(8);
-  }, [typeFilter]);
+  }, [categoryFilter]);
 
   // Compute filter bounds from offset-based navigation
   const filterBounds = useMemo(() => {
@@ -267,18 +350,27 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
     return getMonthBounds(historyMonthOffset);
   }, [historyRange, historyWeekOffset, historyMonthOffset]);
 
-  const filteredWorkoutEntries = useMemo(() => {
-    return workoutEntries.filter((e) => {
+  const filteredLogEntries = useMemo(() => {
+    return logEntries.filter((e) => {
       if (filterBounds && (e.date < filterBounds.from || e.date > filterBounds.to)) return false;
-      const hasStrength = e.workout_done === true && (e.workout_duration != null || (e.workout_types?.length ?? 0) > 0);
-      const hasCardio = e.cardio_done === true && (e.cardio_duration != null || !!e.cardio_type);
-      const hasSteps = !hasStrength && !hasCardio && e.steps != null && Number(e.steps) > 0;
-      if (typeFilter === 'all') return hasStrength || hasCardio || hasSteps;
-      if (typeFilter === 'strength') return hasStrength;
-      if (typeFilter === 'cardio') return hasCardio;
-      return hasSteps;
+      switch (categoryFilter) {
+        case 'all':
+          return true;
+        case 'movement':
+          return hasMovement(e);
+        case 'nutrition':
+          return hasNutrition(e);
+        case 'hydration':
+          return hasHydration(e);
+        case 'sleep':
+          return hasSleepLog(e);
+        case 'weight':
+          return false;
+        default:
+          return true;
+      }
     });
-  }, [workoutEntries, filterBounds, typeFilter]);
+  }, [logEntries, filterBounds, categoryFilter]);
 
   // 3-tier week goal map (keyed by week-start date)
   const weekGoalMap = useMemo(() => {
@@ -287,7 +379,7 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
     const goalMins = profile.goal_workout_mins_week ?? 0;
 
     const byWeek = new Map<string, EntryRow[]>();
-    workoutEntries.forEach((e) => {
+    movementEntries.forEach((e) => {
       const ws = getWeekStart(e.date);
       if (!byWeek.has(ws)) byWeek.set(ws, []);
       byWeek.get(ws)!.push(e);
@@ -318,30 +410,51 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
     });
 
     return map;
-  }, [workoutEntries, profile]);
+  }, [movementEntries, profile]);
 
-  // Group filtered entries by week, respecting visibleWeeks
+  // Group filtered entries by week, merge weekly weigh-ins; respecting visibleWeeks
   const { weekGroups, totalWeekCount } = useMemo(() => {
     const byWeek = new Map<string, EntryRow[]>();
-    filteredWorkoutEntries.forEach((e) => {
+    filteredLogEntries.forEach((e) => {
       const ws = getWeekStart(e.date);
       if (!byWeek.has(ws)) byWeek.set(ws, []);
       byWeek.get(ws)!.push(e);
     });
 
-    const sorted = Array.from(byWeek.entries()).sort((a, b) => b[0].localeCompare(a[0]));
+    const includeWeightOnlyWeeks = categoryFilter === 'all' || categoryFilter === 'weight';
+    if (includeWeightOnlyWeeks) {
+      for (const w of weightHistory) {
+        if (filterBounds && (w.week_start < filterBounds.from || w.week_start > filterBounds.to)) continue;
+        if (!byWeek.has(w.week_start)) byWeek.set(w.week_start, []);
+      }
+    }
+
+    let pairs = Array.from(byWeek.entries());
+    pairs = pairs.filter(([ws, ent]) => {
+      const wkg = weightByWeek.get(ws);
+      if (categoryFilter === 'weight') return wkg != null;
+      if (categoryFilter === 'all') return ent.length > 0 || wkg != null;
+      return ent.length > 0;
+    });
+
+    pairs.forEach(([, ent]) => {
+      ent.sort((a, b) => b.date.localeCompare(a.date));
+    });
+
+    const sorted = pairs.sort((a, b) => b[0].localeCompare(a[0]));
     const totalWeekCount = sorted.length;
     const weekGroups = sorted.slice(0, visibleWeeks).map(([weekStart, entries]) => ({
       weekStart,
       entries,
+      weightKg: weightByWeek.get(weekStart) ?? null,
     }));
 
     return { weekGroups, totalWeekCount };
-  }, [filteredWorkoutEntries, visibleWeeks]);
+  }, [filteredLogEntries, weightHistory, weightByWeek, filterBounds, categoryFilter, visibleWeeks]);
 
   // Estimate daily points when hitting goals, based on past goal-crush day entries
   const goalDailyPts = useMemo(() => {
-    const goalDays = workoutEntries.filter((e) => e.is_goal_crush_day === true && (e.daily_points ?? 0) > 0);
+    const goalDays = logEntries.filter((e) => e.is_goal_crush_day === true && (e.daily_points ?? 0) > 0);
     if (goalDays.length === 0) {
       // Fall back: rough estimate based on which goals are set (new 85pt system)
       let est = 0;
@@ -354,7 +467,7 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
     }
     const avg = goalDays.reduce((s, e) => s + (e.daily_points ?? 0), 0) / goalDays.length;
     return Math.round(avg);
-  }, [workoutEntries, profile]);
+  }, [logEntries, profile]);
 
   // Weekly rank insights from live leaderboard
   const rankInsights = useMemo(() => {
@@ -416,9 +529,9 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
   return (
     <div className="space-y-8 animate-fade-up">
       <div>
-        <h2 className="text-lg font-semibold text-text-primary mb-1">Workout history</h2>
+        <h2 className="text-lg font-semibold text-text-primary mb-1">Health &amp; Activity Log</h2>
         <p className="text-sm text-text-secondary">
-          Calendar shows <strong>Workout</strong>, <strong>Food</strong>, and <strong>Sleep</strong> — the three pillars. Use <strong>New Entry</strong> in the header to log.
+          Calendar tracks <strong>Workout</strong>, <strong>Nutrition</strong>, <strong>Sleep</strong>, <strong>Hydration</strong> and more — all your daily goals in one view. Use <strong>New Entry</strong> in the header to log.
         </p>
       </div>
 
@@ -549,95 +662,99 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
         )}
       </div>
 
-      {/* Workout days */}
+      {/* Full daily log (movement, nutrition, water, sleep) + weekly weight */}
       <div className="glass-card p-5">
         <h3 className="font-medium text-text-primary flex items-center gap-2 mb-4">
-          <Activity className="w-4 h-4 text-[#FF6B35]" />
-          Workout days
+          <UtensilsCrossed className="w-4 h-4 text-primary-orange" />
+          Full log
         </h3>
 
         {/* Filters */}
-        <div className="flex flex-wrap items-center gap-3 mb-4">
-          {/* Range buttons */}
-          <div className="inline-flex rounded-full border border-white/10 overflow-hidden text-xs">
-            {(['all', 'week', 'month'] as HistoryRange[]).map((r) => (
-              <button
-                key={r}
-                type="button"
-                onClick={() => setHistoryRange(r)}
-                className={`px-2.5 py-1 ${historyRange === r ? 'bg-primary-orange text-white' : 'bg-surface-0 text-text-muted'}`}
-              >
-                {r === 'all' ? 'All' : r === 'week' ? 'Week' : 'Month'}
-              </button>
-            ))}
+        <div className="flex flex-col gap-3 mb-4">
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Range buttons */}
+            <div className="inline-flex rounded-full border border-white/10 overflow-hidden text-xs">
+              {(['all', 'week', 'month'] as HistoryRange[]).map((r) => (
+                <button
+                  key={r}
+                  type="button"
+                  onClick={() => setHistoryRange(r)}
+                  className={`px-2.5 py-1 ${historyRange === r ? 'bg-primary-orange text-white' : 'bg-surface-0 text-text-muted'}`}
+                >
+                  {r === 'all' ? 'All' : r === 'week' ? 'Week' : 'Month'}
+                </button>
+              ))}
+            </div>
+
+            {/* Week navigation */}
+            {historyRange === 'week' && (
+              <div className="flex items-center gap-1 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setHistoryWeekOffset((o) => o - 1)}
+                  className="p-1 rounded hover:bg-surface-2 text-text-muted"
+                  aria-label="Previous week"
+                >
+                  ←
+                </button>
+                <span className="text-text-secondary font-medium whitespace-nowrap px-0.5">
+                  {formatWeekNav(historyWeekOffset)}
+                </span>
+                {historyWeekOffset < 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setHistoryWeekOffset((o) => Math.min(0, o + 1))}
+                    className="p-1 rounded hover:bg-surface-2 text-text-muted"
+                    aria-label="Next week"
+                  >
+                    →
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Month navigation */}
+            {historyRange === 'month' && (
+              <div className="flex items-center gap-1 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setHistoryMonthOffset((o) => o - 1)}
+                  className="p-1 rounded hover:bg-surface-2 text-text-muted"
+                  aria-label="Previous month"
+                >
+                  ←
+                </button>
+                <span className="text-text-secondary font-medium whitespace-nowrap px-0.5">
+                  {formatMonthNav(historyMonthOffset)}
+                </span>
+                {historyMonthOffset < 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setHistoryMonthOffset((o) => Math.min(0, o + 1))}
+                    className="p-1 rounded hover:bg-surface-2 text-text-muted"
+                    aria-label="Next month"
+                  >
+                    →
+                  </button>
+                )}
+              </div>
+            )}
           </div>
 
-          {/* Week navigation */}
-          {historyRange === 'week' && (
-            <div className="flex items-center gap-1 text-xs">
+          {/* Category filter */}
+          <div className="flex flex-wrap gap-1.5">
+            {LOG_FILTER_META.map(({ id, label }) => (
               <button
+                key={id}
                 type="button"
-                onClick={() => setHistoryWeekOffset((o) => o - 1)}
-                className="p-1 rounded hover:bg-surface-2 text-text-muted"
-                aria-label="Previous week"
-              >
-                ←
-              </button>
-              <span className="text-text-secondary font-medium whitespace-nowrap px-0.5">
-                {formatWeekNav(historyWeekOffset)}
-              </span>
-              {historyWeekOffset < 0 && (
-                <button
-                  type="button"
-                  onClick={() => setHistoryWeekOffset((o) => Math.min(0, o + 1))}
-                  className="p-1 rounded hover:bg-surface-2 text-text-muted"
-                  aria-label="Next week"
-                >
-                  →
-                </button>
-              )}
-            </div>
-          )}
-
-          {/* Month navigation */}
-          {historyRange === 'month' && (
-            <div className="flex items-center gap-1 text-xs">
-              <button
-                type="button"
-                onClick={() => setHistoryMonthOffset((o) => o - 1)}
-                className="p-1 rounded hover:bg-surface-2 text-text-muted"
-                aria-label="Previous month"
-              >
-                ←
-              </button>
-              <span className="text-text-secondary font-medium whitespace-nowrap px-0.5">
-                {formatMonthNav(historyMonthOffset)}
-              </span>
-              {historyMonthOffset < 0 && (
-                <button
-                  type="button"
-                  onClick={() => setHistoryMonthOffset((o) => Math.min(0, o + 1))}
-                  className="p-1 rounded hover:bg-surface-2 text-text-muted"
-                  aria-label="Next month"
-                >
-                  →
-                </button>
-              )}
-            </div>
-          )}
-
-          {/* Type filter */}
-          <div className="inline-flex rounded-full border border-white/10 overflow-hidden text-xs ml-auto">
-            {(['all', 'strength', 'cardio', 'steps'] as WorkoutFilter[]).map((t) => (
-              <button
-                key={t}
-                type="button"
-                onClick={() => setTypeFilter(t)}
-                className={`px-2.5 py-1 ${
-                  typeFilter === t ? 'bg-surface-2 text-text-primary' : 'bg-surface-0 text-text-muted'
+                onClick={() => setCategoryFilter(id)}
+                className={`px-2.5 py-1 rounded-full text-xs font-medium border ${
+                  categoryFilter === id
+                    ? 'bg-surface-2 text-text-primary border-white/20'
+                    : 'bg-surface-0 text-text-muted border-white/10 hover:bg-surface-2/80'
                 }`}
               >
-                {t === 'all' ? 'All types' : t[0].toUpperCase() + t.slice(1)}
+                {label}
               </button>
             ))}
           </div>
@@ -646,14 +763,24 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
         {/* Week-grouped entries */}
         {loading ? (
           <div className="animate-pulse text-text-muted text-sm">Loading…</div>
-        ) : filteredWorkoutEntries.length === 0 ? (
-          <p className="text-sm text-text-muted">No workout or cardio logged in this period.</p>
+        ) : weekGroups.length === 0 ? (
+          <p className="text-sm text-text-muted">
+            {categoryFilter === 'weight'
+              ? 'No weigh-ins in this period.'
+              : 'Nothing logged in this period for this filter.'}
+          </p>
         ) : (
           <div className="space-y-6">
-            {weekGroups.map(({ weekStart, entries: weekEntries }) => {
+            {weekGroups.map(({ weekStart, entries: weekEntries, weightKg }) => {
               const wkEntry = weekGoalMap.get(weekStart);
               const meta = wkEntry ? weekStatusMeta[wkEntry.status] : null;
               const wkMetric = wkEntry?.metric ?? null;
+              const showWeightRow =
+                weightKg != null && (categoryFilter === 'all' || categoryFilter === 'weight');
+              const showM = categoryFilter === 'all' || categoryFilter === 'movement';
+              const showN = categoryFilter === 'all' || categoryFilter === 'nutrition';
+              const showH = categoryFilter === 'all' || categoryFilter === 'hydration';
+              const showSlp = categoryFilter === 'all' || categoryFilter === 'sleep';
 
               return (
                 <div key={weekStart}>
@@ -662,7 +789,7 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
                     <span className="text-xs font-semibold text-text-muted uppercase tracking-wide">
                       {formatWeekRange(weekStart)}
                     </span>
-                    {hasWeeklyGoal && meta && (
+                    {hasWeeklyGoal && meta && categoryFilter !== 'weight' && (
                       <span
                         className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${meta.cls}`}
                       >
@@ -675,8 +802,19 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
                     )}
                   </div>
 
-                  {/* Daily entries */}
                   <ul className="divide-y divide-white/10">
+                    {showWeightRow && (
+                      <li className="py-2 pl-3">
+                        <div className="flex items-center justify-between gap-3 text-sm text-text-secondary">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <Scale className="w-3.5 h-3.5 shrink-0" style={{ color: COLOR_WEIGHT }} />
+                            <span className="font-medium text-text-primary">Weekly weigh-in</span>
+                            <span className="text-text-secondary">{weightKg} kg</span>
+                          </div>
+                        </div>
+                      </li>
+                    )}
+
                     {weekEntries.map((e) => {
                       const hasStrength = e.workout_done === true && (e.workout_duration != null || (e.workout_types?.length ?? 0) > 0);
                       const hasCardio = e.cardio_done === true && (e.cardio_duration != null || !!e.cardio_type);
@@ -684,10 +822,35 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
                       const streakBonus = streakBonusByDate.get(e.date) ?? 0;
                       const isStreakDay = streakHighlightDates.has(e.date);
                       const goalHit = isGoalCrushEntry(e);
-                      const showStrength = hasStrength && (typeFilter === 'all' || typeFilter === 'strength');
-                      const showCardio = hasCardio && (typeFilter === 'all' || typeFilter === 'cardio');
-                      const showSteps = hasSteps && (typeFilter === 'all' || typeFilter === 'steps');
-                      if (!showStrength && !showCardio && !showSteps && streakBonus <= 0) return null;
+
+                      const showStrength = hasStrength && showM;
+                      const showCardio = hasCardio && showM;
+                      const showSteps = hasSteps && showM;
+                      const showWater = hasHydration(e) && showH;
+                      const showSleepRow = hasSleepLog(e) && showSlp;
+                      const showProtein =
+                        showN && ((e.protein_qty ?? 0) > 0 || e.protein_meal === true);
+                      const showCals = showN && (e.calories_kcal ?? 0) > 0;
+                      const showJunk = showN && e.junk_food != null;
+                      const showAlc = showN && e.alcohol != null;
+                      const showHome = showN && (e.home_cooked_meals ?? 0) > 0;
+                      const showStreak = streakBonus > 0 && showM;
+
+                      if (
+                        !showStrength &&
+                        !showCardio &&
+                        !showSteps &&
+                        !showWater &&
+                        !showSleepRow &&
+                        !showProtein &&
+                        !showCals &&
+                        !showJunk &&
+                        !showAlc &&
+                        !showHome &&
+                        !showStreak
+                      ) {
+                        return null;
+                      }
 
                       const strengthPts = showStrength ? getWorkoutPoints(e, profile.age_bracket) : 0;
                       const cardioPts = showCardio ? getCardioPoints(e, profile.age_bracket) : 0;
@@ -700,14 +863,14 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
                         <li
                           key={e.date}
                           className={`relative py-2 pl-3 ${
-                            isStreakDay
+                            isStreakDay && showM
                               ? 'before:absolute before:left-0 before:top-0 before:bottom-0 before:w-[3px] before:rounded-r before:bg-accent-gold/80'
                               : ''
                           }`}
                         >
                           <div className="flex items-center justify-between mb-1 gap-3">
                             <span className="text-text-primary font-medium flex items-center gap-1.5">
-                              {isStreakDay && (
+                              {isStreakDay && showM && (
                                 <Flame className="w-3 h-3 text-accent-gold flex-shrink-0" />
                               )}
                               {new Date(e.date + 'Z').toLocaleDateString(undefined, {
@@ -737,8 +900,8 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
                           <div className="space-y-1 pl-1">
                             {showStrength && (
                               <div className="flex items-center justify-between text-sm text-text-secondary">
-                                <div className="flex items-center gap-2">
-                                  <Dumbbell className="w-3.5 h-3.5" style={{ color: COLOR_WORKOUT }} />
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <Dumbbell className="w-3.5 h-3.5 shrink-0" style={{ color: COLOR_WORKOUT }} />
                                   <span className="font-medium text-text-primary">Strength</span>
                                   <span className="truncate">
                                     {e.workout_duration ? `${e.workout_duration} min` : ''}
@@ -754,8 +917,8 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
                             )}
                             {showCardio && (
                               <div className="flex items-center justify-between text-sm text-text-secondary">
-                                <div className="flex items-center gap-2">
-                                  <Activity className="w-3.5 h-3.5" style={{ color: COLOR_CARDIO }} />
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <Activity className="w-3.5 h-3.5 shrink-0" style={{ color: COLOR_CARDIO }} />
                                   <span className="font-medium text-text-primary">Cardio</span>
                                   <span className="truncate">
                                     {e.cardio_duration ? `${e.cardio_duration} min` : ''}
@@ -771,8 +934,8 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
                             )}
                             {showSteps && (
                               <div className="flex items-center justify-between text-sm text-text-secondary">
-                                <div className="flex items-center gap-2">
-                                  <Activity className="w-3.5 h-3.5" style={{ color: COLOR_STEPS }} />
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <Activity className="w-3.5 h-3.5 shrink-0" style={{ color: COLOR_STEPS }} />
                                   <span className="font-medium text-text-primary">Steps</span>
                                   <span>{e.steps?.toLocaleString()} steps</span>
                                 </div>
@@ -783,7 +946,70 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
                                 )}
                               </div>
                             )}
-                            {streakBonus > 0 && (
+                            {showWater && (
+                              <div className="flex items-center justify-between text-sm text-text-secondary">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <Droplets className="w-3.5 h-3.5 shrink-0" style={{ color: COLOR_WATER }} />
+                                  <span className="font-medium text-text-primary">Water</span>
+                                  <span>{e.water_liters} L</span>
+                                </div>
+                              </div>
+                            )}
+                            {showSleepRow && (
+                              <div className="flex items-center justify-between text-sm text-text-secondary">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <Moon className="w-3.5 h-3.5 shrink-0" style={{ color: COLOR_SLEEP }} />
+                                  <span className="font-medium text-text-primary">Sleep</span>
+                                  <span>{e.sleep_hours} h</span>
+                                </div>
+                              </div>
+                            )}
+                            {showProtein && (
+                              <div className="flex items-center justify-between text-sm text-text-secondary">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <UtensilsCrossed className="w-3.5 h-3.5 shrink-0" style={{ color: COLOR_NUTRITION }} />
+                                  <span className="font-medium text-text-primary">Protein</span>
+                                  <span>
+                                    {(e.protein_qty ?? 0) > 0 ? `${e.protein_qty} g` : 'Logged'}
+                                    {e.protein_meal === true ? ' · meal' : ''}
+                                  </span>
+                                </div>
+                              </div>
+                            )}
+                            {showCals && (
+                              <div className="flex items-center justify-between text-sm text-text-secondary">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <Gauge className="w-3.5 h-3.5 shrink-0 text-rose-400" />
+                                  <span className="font-medium text-text-primary">Calories</span>
+                                  <span>{e.calories_kcal?.toLocaleString()} kcal</span>
+                                </div>
+                              </div>
+                            )}
+                            {showJunk && (
+                              <div className="flex items-center justify-between text-sm text-text-secondary">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <span className="font-medium text-text-primary">Junk food</span>
+                                  <span>{e.junk_food ? 'Yes' : 'No'}</span>
+                                </div>
+                              </div>
+                            )}
+                            {showAlc && (
+                              <div className="flex items-center justify-between text-sm text-text-secondary">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <span className="font-medium text-text-primary">Alcohol</span>
+                                  <span>{label(e.alcohol!)}</span>
+                                </div>
+                              </div>
+                            )}
+                            {showHome && (
+                              <div className="flex items-center justify-between text-sm text-text-secondary">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <span className="font-medium text-text-primary">Home-cooked meals</span>
+                                  <span>{e.home_cooked_meals}</span>
+                                </div>
+                              </div>
+                            )}
+                            {showStreak && (
                               <div className="flex items-center justify-between text-sm text-text-secondary">
                                 <div className="flex items-center gap-2">
                                   <Flame className="w-3.5 h-3.5 text-accent-gold" />

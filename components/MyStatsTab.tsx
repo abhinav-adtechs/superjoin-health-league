@@ -183,7 +183,9 @@ export function MyStatsTab({ profile, onSuccess }: { profile: Profile; onSuccess
     goal_water_liters: profile.goal_water_liters ?? '',
     goal_protein_g_day: profile.goal_protein_g_day ?? '',
     goal_calories_day: profile.goal_calories_day ?? '',
+    goal_steps_day: profile.goal_steps_day ?? '',
   });
+  const [trackStepsOptIn, setTrackStepsOptIn] = useState(!!(profile.goal_steps_day));
   const [fitnessGoal, setFitnessGoal] = useState<FitnessGoal>(profile.fitness_goal ?? 'stay_active');
   const [foodMode, setFoodMode] = useState<FoodTrackingMode>(profile.food_tracking_mode ?? 'protein_only');
   const [workoutTypes, setWorkoutTypes] = useState<WorkoutGoalType[]>(() => {
@@ -192,7 +194,14 @@ export function MyStatsTab({ profile, onSuccess }: { profile: Profile; onSuccess
   });
 
   function toggleWorkoutType(t: WorkoutGoalType) {
-    setWorkoutTypes((prev) => (prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]));
+    setWorkoutTypes((prev) => {
+      const next = prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t];
+      // Auto-fill 8,000 steps when walking is added (if no step goal yet)
+      if (t === 'walking' && !prev.includes('walking') && !goals.goal_steps_day) {
+        setGoals((g) => ({ ...g, goal_steps_day: '8000' }));
+      }
+      return next;
+    });
   }
   const [goalChangeWarning, setGoalChangeWarning] = useState(false);
   const [goalsFieldError, setGoalsFieldError] = useState<string | null>(null);
@@ -217,6 +226,7 @@ export function MyStatsTab({ profile, onSuccess }: { profile: Profile; onSuccess
       goal_water_liters: profile.goal_water_liters ?? '',
       goal_protein_g_day: profile.goal_protein_g_day ?? '',
       goal_calories_day: profile.goal_calories_day ?? '',
+      goal_steps_day: profile.goal_steps_day ?? '',
     });
     setFitnessGoal(profile.fitness_goal ?? 'stay_active');
     setFoodMode(profile.food_tracking_mode ?? 'protein_only');
@@ -296,6 +306,7 @@ export function MyStatsTab({ profile, onSuccess }: { profile: Profile; onSuccess
       goal_water_liters: num(goals.goal_water_liters),
       goal_protein_g_day: foodMode !== 'calories_only' ? num(goals.goal_protein_g_day) : null,
       goal_calories_day: foodMode !== 'protein_only' ? num(goals.goal_calories_day) : null,
+      goal_steps_day: (workoutTypes.includes('walking') || trackStepsOptIn) ? num(goals.goal_steps_day) : null,
     };
     const res = await fetch(apiUrl('/api/users/me'), getApiFetchOptions({
       method: 'PUT',
@@ -675,6 +686,67 @@ export function MyStatsTab({ profile, onSuccess }: { profile: Profile; onSuccess
                 <p className="text-[11px] text-text-muted leading-relaxed rounded-lg bg-orange-50/50 border border-orange-100/80 px-3 py-2.5 mt-1">
                   {formatRecommendedWorkoutSummaryLine(fitnessGoal, goalBadgeLabel)}
                 </p>
+
+                {/* Steps goal — auto-shown for walkers, opt-in for others */}
+                {workoutTypes.includes('walking') ? (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-base">🚶</span>
+                      <p className="text-xs font-semibold text-amber-900">Daily step goal</p>
+                      <span className="text-[10px] font-bold bg-amber-200 text-amber-900 px-2 py-0.5 rounded-full">Walking</span>
+                    </div>
+                    <p className="text-[11px] text-amber-800/80">Steps are tracked as part of your walking goal. Progress shows on your dashboard.</p>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min="1000"
+                        max="30000"
+                        step="500"
+                        placeholder="8000"
+                        value={goals.goal_steps_day}
+                        onChange={(e) => setGoals((g) => ({ ...g, goal_steps_day: e.target.value }))}
+                        className={`w-28 ${GOALS_INPUT} tabular-nums`}
+                      />
+                      <span className="text-xs text-amber-800">steps / day</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-white/10 bg-surface-1/50 px-4 py-3">
+                    <label className="flex items-start gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={trackStepsOptIn}
+                        onChange={(e) => {
+                          setTrackStepsOptIn(e.target.checked);
+                          if (e.target.checked && !goals.goal_steps_day) {
+                            setGoals((g) => ({ ...g, goal_steps_day: '8000' }));
+                          }
+                          if (!e.target.checked) setGoals((g) => ({ ...g, goal_steps_day: '' }));
+                        }}
+                        className="mt-0.5 w-4 h-4 accent-orange-500 rounded shrink-0"
+                      />
+                      <div>
+                        <p className="text-xs font-semibold text-text-primary">Track daily steps</p>
+                        <p className="text-[11px] text-text-muted mt-0.5">Add a step count goal and see progress on your dashboard</p>
+                      </div>
+                    </label>
+                    {trackStepsOptIn && (
+                      <div className="mt-2.5 flex items-center gap-2 pl-7">
+                        <input
+                          type="number"
+                          min="1000"
+                          max="30000"
+                          step="500"
+                          placeholder="8000"
+                          value={goals.goal_steps_day}
+                          onChange={(e) => setGoals((g) => ({ ...g, goal_steps_day: e.target.value }))}
+                          className={`w-28 ${GOALS_INPUT} tabular-nums`}
+                        />
+                        <span className="text-xs text-text-muted">steps / day</span>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Food — hydration + nutrition tips */}
@@ -814,6 +886,11 @@ export function MyStatsTab({ profile, onSuccess }: { profile: Profile; onSuccess
                   )}
                   {profile.goal_workout_days_week != null && (
                     <li className="text-sm text-text-secondary">{profile.goal_workout_days_week} days/week</li>
+                  )}
+                  {profile.goal_steps_day != null && (
+                    <li className="text-sm text-text-secondary">
+                      🚶 {profile.goal_steps_day.toLocaleString()} steps/day
+                    </li>
                   )}
                   {!profile.goal_workout_mins_week &&
                     !profile.goal_workout_days_week &&

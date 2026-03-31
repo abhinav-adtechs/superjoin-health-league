@@ -2,18 +2,25 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { apiUrl, getApiFetchOptions } from '@/lib/api';
+import type { WorkoutGoalType } from '@/lib/types';
+import { parseGoalWorkoutTypes } from '@/lib/workout-goals';
 
 export type EntryRow = {
   date: string;
   workout_done?: boolean | null;
   workout_duration?: number | null;
+  workout_types?: string[] | null;
   cardio_done?: boolean | null;
   cardio_duration?: number | null;
+  cardio_type?: string | null;
   steps?: number | null;
   water_liters?: number | null;
   home_cooked_meals?: number | null;
   sleep_hours?: number | null;
   sleep_quality?: number | null;
+  protein_meal?: boolean | null;
+  protein_qty?: number | null;
+  calories_kcal?: number | null;
   daily_points?: number | null;
   is_goal_crush_day?: boolean | null;
 };
@@ -21,12 +28,16 @@ export type EntryRow = {
 export type ProfileGoals = {
   goal_workout_mins_week?: number | null;
   goal_workout_days_week?: number | null;
+  goal_workout_types?: WorkoutGoalType[] | null;
   goal_steps_day?: number | null;
   goal_sleep_hours?: number | null;
   goal_sleep_hours_min?: number | null;
   goal_sleep_hours_max?: number | null;
   goal_water_liters?: number | null;
   goal_home_cooked_per_week?: number | null;
+  goal_protein_g_day?: number | null;
+  goal_calories_day?: number | null;
+  fitness_goal?: string | null;
 };
 
 function workoutMins(e: EntryRow): number {
@@ -52,8 +63,9 @@ function dayGoalStatus(e: EntryRow, goals: ProfileGoals | null): boolean | null 
   const workoutGoal = (goals?.goal_workout_days_week ?? 0) > 0 || (goals?.goal_workout_mins_week ?? 0) > 0;
   const stepsGoal = (goals?.goal_steps_day ?? 0) > 0;
   const sleepGoal = (goals?.goal_sleep_hours ?? goals?.goal_sleep_hours_min ?? 0) > 0;
+  const waterGoal = (goals?.goal_water_liters ?? 0) > 0;
 
-  if (!workoutGoal && !stepsGoal && !sleepGoal) return null;
+  if (!workoutGoal && !stepsGoal && !sleepGoal && !waterGoal) return null;
 
   const workoutMet = !workoutGoal || (e.workout_done === true || e.cardio_done === true);
   const stepsMet = !stepsGoal || ((e.steps ?? 0) >= (goals?.goal_steps_day ?? 0));
@@ -63,8 +75,9 @@ function dayGoalStatus(e: EntryRow, goals: ProfileGoals | null): boolean | null 
       : e.sleep_hours >= (goals?.goal_sleep_hours_min ?? 0) &&
         (goals?.goal_sleep_hours_max == null || e.sleep_hours <= goals.goal_sleep_hours_max)
   ));
+  const waterMet = !waterGoal || ((e.water_liters ?? 0) >= (goals?.goal_water_liters ?? 0));
 
-  return workoutMet && stepsMet && sleepMet;
+  return workoutMet && stepsMet && sleepMet && waterMet;
 }
 
 // 3-tier week status: green = fully met, yellow = partial, red = missed
@@ -116,7 +129,47 @@ function computeWeekStatus(
   return 'red';
 }
 
-type CategoryKey = 'workout' | 'steps' | 'sleep' | 'water';
+type CategoryKey = 'workout' | 'steps' | 'sleep' | 'water' | 'protein' | 'calories';
+
+type WeekViewColumn =
+  | { kind: 'workout_agg' }
+  | { kind: 'steps' }
+  | { kind: 'sleep' }
+  | { kind: 'water' }
+  | { kind: 'protein' }
+  | { kind: 'calories' };
+
+/** One Workout column for any movement goal — goal_workout_types are focus tags, not separate daily columns. */
+function buildWeekViewColumns(goals: ProfileGoals | null): WeekViewColumn[] {
+  const g = goals ?? {};
+  const hasWorkoutGoal = (g.goal_workout_days_week ?? 0) > 0 || (g.goal_workout_mins_week ?? 0) > 0;
+  const types = parseGoalWorkoutTypes(g.goal_workout_types);
+  const cols: WeekViewColumn[] = [];
+  if (hasWorkoutGoal || types.length > 0) {
+    cols.push({ kind: 'workout_agg' });
+  }
+  if ((g.goal_steps_day ?? 0) > 0) cols.push({ kind: 'steps' });
+  if ((g.goal_sleep_hours ?? g.goal_sleep_hours_min ?? 0) > 0) cols.push({ kind: 'sleep' });
+  if ((g.goal_water_liters ?? 0) > 0) cols.push({ kind: 'water' });
+  if ((g.goal_protein_g_day ?? 0) > 0) cols.push({ kind: 'protein' });
+  if ((g.goal_calories_day ?? 0) > 0) cols.push({ kind: 'calories' });
+  return cols;
+}
+
+function weekColumnStatus(
+  e: EntryRow | undefined,
+  col: WeekViewColumn,
+  goals: ProfileGoals | null,
+  isPastNoEntry: boolean,
+  isPast: boolean
+): { met: boolean | null; value: string } {
+  if (col.kind === 'workout_agg') return categoryStatus(e, 'workout', goals, isPastNoEntry, isPast);
+  if (col.kind === 'steps') return categoryStatus(e, 'steps', goals, isPastNoEntry, isPast);
+  if (col.kind === 'sleep') return categoryStatus(e, 'sleep', goals, isPastNoEntry, isPast);
+  if (col.kind === 'protein') return categoryStatus(e, 'protein', goals, isPastNoEntry, isPast);
+  if (col.kind === 'calories') return categoryStatus(e, 'calories', goals, isPastNoEntry, isPast);
+  return categoryStatus(e, 'water', goals, isPastNoEntry, isPast);
+}
 
 function categoryStatus(
   e: EntryRow | undefined,
@@ -168,6 +221,27 @@ function categoryStatus(
       const goal = goals?.goal_water_liters ?? 0;
       const met = goal > 0 ? water >= goal : true;
       return { met, value: `${water}L` };
+    }
+    case 'protein': {
+      const qty = e.protein_qty ?? 0;
+      const hasMeal = e.protein_meal === true;
+      if (qty === 0 && !hasMeal) return { met: notLoggedAsMissed ? false : null, value: '—' };
+      const goal = goals?.goal_protein_g_day ?? 0;
+      const met = goal > 0 ? qty >= goal : true;
+      return { met, value: qty > 0 ? `${qty}g` : '✓' };
+    }
+    case 'calories': {
+      const cal = e.calories_kcal ?? 0;
+      if (cal === 0) return { met: notLoggedAsMissed ? false : null, value: '—' };
+      const goal = goals?.goal_calories_day ?? 0;
+      let met: boolean | null = null;
+      if (goal > 0) {
+        const isLoseWeight = goals?.fitness_goal === 'lose_weight';
+        met = isLoseWeight ? cal <= goal : cal >= goal;
+      } else {
+        met = true;
+      }
+      return { met, value: cal >= 1000 ? `${(cal / 1000).toFixed(1)}k` : `${cal}` };
     }
   }
 }
@@ -255,31 +329,59 @@ export function CalendarHistogram({
   }, [from, to, refreshTrigger]);
 
   const summary = useMemo(() => {
-    const totalWorkoutMins = entries.reduce((s, e) => s + workoutMins(e), 0);
-    const stepsEntries = entries.filter((e) => e.steps != null && e.steps > 0);
+    const g = goals ?? {};
+    const hasWorkoutGoal = (g.goal_workout_days_week ?? 0) > 0 || (g.goal_workout_mins_week ?? 0) > 0;
+    const workoutTypes = parseGoalWorkoutTypes(g.goal_workout_types);
+    const showWorkout = hasWorkoutGoal || workoutTypes.length > 0;
+    const showSteps = (g.goal_steps_day ?? 0) > 0;
+    const showSleep = (g.goal_sleep_hours ?? g.goal_sleep_hours_min ?? 0) > 0;
+    const showWater = (g.goal_water_liters ?? 0) > 0;
+    const showProtein = (g.goal_protein_g_day ?? 0) > 0;
+    const showCalories = (g.goal_calories_day ?? 0) > 0;
+
+    const totalWorkoutMins = showWorkout
+      ? entries.reduce((s, e) => s + workoutMins(e), 0)
+      : 0;
+    const stepsEntries = showSteps ? entries.filter((e) => e.steps != null && e.steps > 0) : [];
     const avgSteps = stepsEntries.length
       ? Math.round(stepsEntries.reduce((s, e) => s + (e.steps ?? 0), 0) / stepsEntries.length)
       : 0;
-    const sleepEntries = entries.filter((e) => e.sleep_hours != null);
+    const sleepEntries = showSleep ? entries.filter((e) => e.sleep_hours != null) : [];
     const avgSleep = sleepEntries.length
       ? sleepEntries.reduce((s, e) => s + (e.sleep_hours ?? 0), 0) / sleepEntries.length
       : 0;
-    const waterEntries = entries.filter((e) => e.water_liters != null && e.water_liters > 0);
+    const waterEntries = showWater ? entries.filter((e) => e.water_liters != null && e.water_liters > 0) : [];
     const avgWater = waterEntries.length
       ? waterEntries.reduce((s, e) => s + (e.water_liters ?? 0), 0) / waterEntries.length
+      : 0;
+    const proteinEntries = showProtein ? entries.filter((e) => (e.protein_qty ?? 0) > 0) : [];
+    const avgProtein = proteinEntries.length
+      ? Math.round(proteinEntries.reduce((s, e) => s + (e.protein_qty ?? 0), 0) / proteinEntries.length)
+      : 0;
+    const caloriesEntries = showCalories ? entries.filter((e) => (e.calories_kcal ?? 0) > 0) : [];
+    const avgCalories = caloriesEntries.length
+      ? Math.round(caloriesEntries.reduce((s, e) => s + (e.calories_kcal ?? 0), 0) / caloriesEntries.length)
       : 0;
     return {
       totalWorkoutMins,
       avgSteps,
       avgSleep: Math.round(avgSleep * 10) / 10,
       avgWater: Math.round(avgWater * 10) / 10,
+      avgProtein,
+      avgCalories,
+      showWorkout,
+      showSteps,
+      showSleep,
+      showWater,
+      showProtein,
+      showCalories,
     };
-  }, [entries]);
+  }, [entries, goals]);
 
   if (loading) return <div className="animate-pulse h-64 rounded-xl bg-surface-2/50" />;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 min-w-0 w-full">
       {/* W / M / 6M selector + navigation */}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex rounded-lg border border-white/10 overflow-hidden">
@@ -347,41 +449,102 @@ export function CalendarHistogram({
         )}
       </div>
 
-      {/* Period summary metrics */}
-      <div className="grid grid-cols-2 gap-2 text-xs">
-        <div className="flex items-center gap-1.5 rounded-lg bg-surface-2/40 px-3 py-2">
-          <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: COLOR_WORKOUT }} />
-          <span className="text-text-muted">Workout</span>
-          <span className="font-semibold text-text-primary ml-auto">{fmtMins(summary.totalWorkoutMins)}</span>
+      {/* Period summary metrics — only categories the user has goals for */}
+      {summary.showWorkout || summary.showSteps || summary.showSleep || summary.showWater || summary.showProtein || summary.showCalories ? (
+        <div className="grid grid-cols-2 gap-2 text-xs">
+          {summary.showWorkout && (
+            <div className="flex items-center gap-1.5 rounded-lg bg-surface-2/40 px-3 py-2">
+              <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: COLOR_WORKOUT }} />
+              <span className="text-text-muted">Workout</span>
+              <span className="font-semibold text-text-primary ml-auto">{fmtMins(summary.totalWorkoutMins)}</span>
+            </div>
+          )}
+          {summary.showSteps && (
+            <div className="flex items-center gap-1.5 rounded-lg bg-surface-2/40 px-3 py-2">
+              <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: COLOR_STEPS }} />
+              <span className="text-text-muted">Steps avg</span>
+              <span className="font-semibold text-text-primary ml-auto">
+                {summary.avgSteps > 0 ? `${(summary.avgSteps / 1000).toFixed(1)}k` : '—'}
+              </span>
+            </div>
+          )}
+          {summary.showSleep && (
+            <div className="flex items-center gap-1.5 rounded-lg bg-surface-2/40 px-3 py-2">
+              <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: COLOR_SLEEP }} />
+              <span className="text-text-muted">Sleep avg</span>
+              <span className="font-semibold text-text-primary ml-auto">
+                {summary.avgSleep ? `${summary.avgSleep}h` : '—'}
+              </span>
+            </div>
+          )}
+          {summary.showWater && (
+            <div className="flex items-center gap-1.5 rounded-lg bg-surface-2/40 px-3 py-2">
+              <span className="w-2 h-2 rounded-full flex-shrink-0 bg-amber-500/80" />
+              <span className="text-text-muted">Water avg</span>
+              <span className="font-semibold text-text-primary ml-auto">
+                {summary.avgWater ? `${summary.avgWater}L` : '—'}
+              </span>
+            </div>
+          )}
+          {summary.showProtein && (
+            <div className="flex items-center gap-1.5 rounded-lg bg-surface-2/40 px-3 py-2">
+              <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: COLOR_PROTEIN }} />
+              <span className="text-text-muted">Protein avg</span>
+              <span className="font-semibold text-text-primary ml-auto">
+                {summary.avgProtein > 0 ? `${summary.avgProtein}g` : '—'}
+              </span>
+            </div>
+          )}
+          {summary.showCalories && (
+            <div className="flex items-center gap-1.5 rounded-lg bg-surface-2/40 px-3 py-2">
+              <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: COLOR_CALORIES }} />
+              <span className="text-text-muted">Calories avg</span>
+              <span className="font-semibold text-text-primary ml-auto">
+                {summary.avgCalories > 0
+                  ? summary.avgCalories >= 1000
+                    ? `${(summary.avgCalories / 1000).toFixed(1)}k`
+                    : `${summary.avgCalories}`
+                  : '—'}
+              </span>
+            </div>
+          )}
         </div>
-        <div className="flex items-center gap-1.5 rounded-lg bg-surface-2/40 px-3 py-2">
-          <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: COLOR_STEPS }} />
-          <span className="text-text-muted">Steps avg</span>
-          <span className="font-semibold text-text-primary ml-auto">
-            {summary.avgSteps > 0 ? `${(summary.avgSteps / 1000).toFixed(1)}k` : '—'}
-          </span>
-        </div>
-        <div className="flex items-center gap-1.5 rounded-lg bg-surface-2/40 px-3 py-2">
-          <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: COLOR_SLEEP }} />
-          <span className="text-text-muted">Sleep avg</span>
-          <span className="font-semibold text-text-primary ml-auto">
-            {summary.avgSleep ? `${summary.avgSleep}h` : '—'}
-          </span>
-        </div>
-        <div className="flex items-center gap-1.5 rounded-lg bg-surface-2/40 px-3 py-2">
-          <span className="w-2 h-2 rounded-full flex-shrink-0 bg-amber-500/80" />
-          <span className="text-text-muted">Water avg</span>
-          <span className="font-semibold text-text-primary ml-auto">
-            {summary.avgWater ? `${summary.avgWater}L` : '—'}
-          </span>
-        </div>
-      </div>
+      ) : (
+        <p className="text-xs text-text-muted">
+          Set goals in <strong className="text-text-secondary">My stats</strong> to see period totals here.
+        </p>
+      )}
 
       {range === 'W' && <WeekView entries={entries} goals={goals} from={from} to={to} />}
       {range === 'M' && <MonthView entries={entries} goals={goals} monthOffset={monthOffset} />}
       {range === '6M' && <SixMonthView entries={entries} goals={goals} />}
     </div>
   );
+}
+
+const COLOR_PROTEIN = '#6366f1';
+const COLOR_CALORIES = '#f43f5e';
+
+function weekColumnColor(col: WeekViewColumn): string {
+  if (col.kind === 'workout_agg') return COLOR_WORKOUT;
+  if (col.kind === 'steps') return COLOR_STEPS;
+  if (col.kind === 'sleep') return COLOR_SLEEP;
+  if (col.kind === 'protein') return COLOR_PROTEIN;
+  if (col.kind === 'calories') return COLOR_CALORIES;
+  return '#f59e0b';
+}
+
+function weekColumnLabel(col: WeekViewColumn): string {
+  if (col.kind === 'workout_agg') return 'Workout';
+  if (col.kind === 'steps') return 'Steps';
+  if (col.kind === 'sleep') return 'Sleep';
+  if (col.kind === 'protein') return 'Protein';
+  if (col.kind === 'calories') return 'Calories';
+  return 'Water';
+}
+
+function weekColKey(col: WeekViewColumn): string {
+  return col.kind;
 }
 
 function WeekView({
@@ -404,26 +567,34 @@ function WeekView({
     d.setDate(d.getDate() + 1);
   }
 
-  const categories: { key: CategoryKey; label: string; color: string }[] = [
-    { key: 'workout', label: 'Workout', color: COLOR_WORKOUT },
-    { key: 'steps', label: 'Steps', color: COLOR_STEPS },
-    { key: 'sleep', label: 'Sleep', color: COLOR_SLEEP },
-    { key: 'water', label: 'Water', color: '#f59e0b' },
-  ];
-
+  const columns = buildWeekViewColumns(goals);
   const todayStr = new Date().toISOString().slice(0, 10);
+
+  const gridCols =
+    columns.length === 0
+      ? '4.5rem'
+      : `4.5rem repeat(${columns.length}, minmax(0, 1fr))`;
+
+  if (columns.length === 0) {
+    return (
+      <p className="text-sm text-text-muted py-2">
+        Set weekly or daily goals in <strong className="text-text-secondary">My stats</strong> to see how each day lines up
+        with your targets.
+      </p>
+    );
+  }
 
   return (
     <div className="space-y-1">
       {/* Column headers */}
       <div
-        className="grid text-[10px] font-medium text-text-muted pb-1.5 border-b border-white/10"
-        style={{ gridTemplateColumns: '4.5rem repeat(4, 1fr)' }}
+        className="grid text-[10px] font-medium text-text-muted pb-1.5 border-b border-white/10 gap-0.5"
+        style={{ gridTemplateColumns: gridCols }}
       >
         <span />
-        {categories.map((c) => (
-          <span key={c.key} className="text-center" style={{ color: c.color }}>
-            {c.label}
+        {columns.map((col) => (
+          <span key={weekColKey(col)} className="text-center truncate px-0.5" style={{ color: weekColumnColor(col) }}>
+            {weekColumnLabel(col)}
           </span>
         ))}
       </div>
@@ -441,16 +612,16 @@ function WeekView({
         return (
           <div
             key={date}
-            className={`grid items-center py-1.5 px-1 rounded-lg ${isToday ? 'bg-surface-2/50' : ''}`}
-            style={{ gridTemplateColumns: '4.5rem repeat(4, 1fr)' }}
+            className={`grid items-center py-1.5 px-1 rounded-lg gap-0.5 ${isToday ? 'bg-surface-2/50' : ''}`}
+            style={{ gridTemplateColumns: gridCols }}
           >
             <span className={`text-xs font-medium ${isToday ? 'text-primary-orange' : 'text-text-muted'}`}>
               {dayLabel}
             </span>
-            {categories.map((cat) => {
-              const { met, value } = categoryStatus(e, cat.key, goals, !e && isPast, isPast);
+            {columns.map((col) => {
+              const { met, value } = weekColumnStatus(e, col, goals, !e && isPast, isPast);
               return (
-                <div key={cat.key} className="flex flex-col items-center gap-0.5">
+                <div key={weekColKey(col)} className="flex flex-col items-center gap-0.5 min-w-0">
                   <div
                     className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold ${
                       met === true
@@ -462,7 +633,7 @@ function WeekView({
                   >
                     {met === true ? '✓' : met === false ? '✗' : '·'}
                   </div>
-                  <span className="text-[10px] text-text-muted leading-none">{value}</span>
+                  <span className="text-[10px] text-text-muted leading-none truncate max-w-full">{value}</span>
                 </div>
               );
             })}
@@ -522,22 +693,22 @@ function MonthView({
   const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
   return (
-    <>
+    <div className="w-full min-w-0 space-y-2">
       {/* Month + year heading */}
-      <div className="flex items-baseline gap-2 mb-1">
+      <div className="flex items-baseline gap-2">
         <span className="text-base font-semibold text-text-primary">{MONTH_NAMES[month]}</span>
         <span className="text-xs text-text-muted">{year}</span>
       </div>
 
       {/* Legend */}
-      <div className="flex gap-3 flex-wrap text-xs text-text-muted">
-        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-emerald-500/50" />Goal met</span>
-        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-rose-500/50" />Missed</span>
-        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm" style={{ background: 'rgba(249,115,22,0.5)' }} />Partial wk</span>
-        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-emerald-500/50" />Perfect wk</span>
+      <div className="flex gap-x-3 gap-y-1 flex-wrap text-xs text-text-muted">
+        <span className="flex items-center gap-1"><span className="w-3 h-3 shrink-0 rounded-sm bg-emerald-500/50" />Day: goal met</span>
+        <span className="flex items-center gap-1"><span className="w-3 h-3 shrink-0 rounded-sm bg-rose-500/50" />Day: missed</span>
+        <span className="flex items-center gap-1"><span className="w-3 h-3 shrink-0 rounded-sm" style={{ background: 'rgba(249,115,22,0.5)' }} />Week: partial</span>
+        <span className="flex items-center gap-1"><span className="w-3 h-3 shrink-0 rounded-sm bg-emerald-600/60" />Week: on track</span>
       </div>
-      <div className="overflow-x-auto">
-        <table className="w-full border-collapse" style={{ tableLayout: 'fixed', minWidth: 300 }}>
+      <div className="w-full overflow-x-auto overflow-y-visible overscroll-x-contain -mx-0.5 px-0.5 pb-1">
+        <table className="w-full border-collapse table-fixed" style={{ minWidth: 280 }}>
           <thead>
             <tr>
               {/* Week indicator column on LEFT */}
@@ -632,7 +803,7 @@ function MonthView({
           </tbody>
         </table>
       </div>
-    </>
+    </div>
   );
 }
 
@@ -690,7 +861,8 @@ function SixMonthView({ entries, goals }: { entries: EntryRow[]; goals: ProfileG
     (goals?.goal_workout_days_week ?? 0) > 0 ||
     (goals?.goal_workout_mins_week ?? 0) > 0 ||
     (goals?.goal_steps_day ?? 0) > 0 ||
-    (goals?.goal_sleep_hours ?? goals?.goal_sleep_hours_min ?? 0) > 0;
+    (goals?.goal_sleep_hours ?? goals?.goal_sleep_hours_min ?? 0) > 0 ||
+    (goals?.goal_water_liters ?? 0) > 0;
 
   const cellBg = (date: string): string => {
     if (date > todayStr) return 'transparent';

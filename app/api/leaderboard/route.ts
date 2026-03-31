@@ -1,8 +1,8 @@
 import { createClient } from '@/lib/supabase/server';
 import { createServiceRoleClient } from '@/lib/supabase/admin';
 import { NextResponse } from 'next/server';
-import type { LeaderboardView, LeaderboardRanking, FitnessGoal, FoodTrackingMode } from '@/lib/types';
-import { isWeeklyGoalHit, WEEKLY_PERF_BONUS, computeGoalAdherencePct } from '@/lib/points';
+import type { LeaderboardView, LeaderboardRanking, FitnessGoal, FoodTrackingMode, AgeBracket } from '@/lib/types';
+import { calculateDailyPoints, isWeeklyGoalHit, WEEKLY_PERF_BONUS, computeGoalAdherencePct } from '@/lib/points';
 import { parseGoalWorkoutTypes } from '@/lib/workout-goals';
 
 type ProfileRow = {
@@ -46,6 +46,24 @@ type FullEntry = {
   calories_kcal: number | null;
   scored_with_goal: FitnessGoal | null;
 };
+
+// ─── Points helper ────────────────────────────────────────────────────────────
+
+/**
+ * Returns the effective daily points for an entry.
+ * Uses the stored `daily_points` when it is > 0 (fast path).
+ * Falls back to a live recompute for old entries that were saved before
+ * the scoring engine ran (daily_points = 0 / null).
+ */
+function effectivePoints(entry: FullEntry, profile: ProfileRow): number {
+  if ((entry.daily_points ?? 0) > 0) return entry.daily_points;
+  return calculateDailyPoints(entry, profile.age_bracket as AgeBracket, {
+    goal_protein_g_day: profile.goal_protein_g_day,
+    goal_calories_day: profile.goal_calories_day,
+    food_tracking_mode: profile.food_tracking_mode,
+    fitness_goal: profile.fitness_goal,
+  });
+}
 
 // ─── Date helpers ─────────────────────────────────────────────────────────────
 
@@ -172,8 +190,11 @@ function computeGoalCrushStreak(entries: FullEntry[], asOfDate: string): number 
 
 // ─── Route handler ────────────────────────────────────────────────────────────
 
+// Note: is_goal_crush_day is intentionally omitted here — the computeGoalCrushStreak
+// helper falls back to daily_points >= 60 when the field is absent, so the leaderboard
+// keeps working even if the migration that adds that column hasn't run yet.
 const FULL_ENTRY_SELECT =
-  'user_id, date, daily_points, is_goal_crush_day, workout_done, workout_duration, cardio_done, cardio_duration, steps, water_liters, home_cooked_meals, protein_meal, protein_qty, junk_food, alcohol, sleep_hours, sleep_quality, calories_kcal, scored_with_goal';
+  'user_id, date, daily_points, workout_done, workout_duration, cardio_done, cardio_duration, steps, water_liters, home_cooked_meals, protein_meal, protein_qty, junk_food, alcohol, sleep_hours, sleep_quality, calories_kcal, scored_with_goal';
 
 export async function GET(request: Request) {
   let supabase;
@@ -271,11 +292,17 @@ export async function GET(request: Request) {
   try {
     if (view === 'weekly' && dateFilter) {
       const lookbackStart = toISODate(addDays(new Date(dateFilter.gte + 'T00:00:00'), -53));
-      const { data: recentData } = await adminSupabase
+      const { data: recentData, error: recentErr } = await adminSupabase
         .from('daily_entries')
         .select(FULL_ENTRY_SELECT)
         .gte('date', lookbackStart)
         .lte('date', dateFilter.lte);
+      if (recentErr) {
+        return NextResponse.json(
+          { error: recentErr.message, view, period, rankings: [], category_leaders: {}, team_stats: {} },
+          { status: 503 },
+        );
+      }
       recentAllEntries = (recentData ?? []) as FullEntry[];
       currentEntries = recentAllEntries.filter(
         (e) => e.date >= dateFilter!.gte && e.date <= dateFilter!.lte,
@@ -286,17 +313,31 @@ export async function GET(request: Request) {
         (e) => e.date >= prevWeekStart && e.date <= prevWeekEnd,
       );
     } else if (dateFilter) {
-      const { data } = await adminSupabase
+      const { data, error: entriesErr } = await adminSupabase
         .from('daily_entries')
         .select(FULL_ENTRY_SELECT)
         .gte('date', dateFilter.gte)
         .lte('date', dateFilter.lte);
+      if (entriesErr) {
+        return NextResponse.json(
+          { error: entriesErr.message, view, period, rankings: [], category_leaders: {}, team_stats: {} },
+          { status: 503 },
+        );
+      }
       currentEntries = (data ?? []) as FullEntry[];
       recentAllEntries = currentEntries;
     } else {
-      const { data } = await adminSupabase
+      // alltime: fetch all entries with an explicit high limit to avoid PostgREST default cap
+      const { data, error: entriesErr } = await adminSupabase
         .from('daily_entries')
-        .select(FULL_ENTRY_SELECT);
+        .select(FULL_ENTRY_SELECT)
+        .limit(50000);
+      if (entriesErr) {
+        return NextResponse.json(
+          { error: entriesErr.message, view, period, rankings: [], category_leaders: {}, team_stats: {} },
+          { status: 503 },
+        );
+      }
       currentEntries = (data ?? []) as FullEntry[];
       recentAllEntries = currentEntries;
     }
@@ -319,10 +360,17 @@ export async function GET(request: Request) {
     recentByUser.get(e.user_id)!.push(e);
   }
 
+  // Profile lookup map (used for on-the-fly point recomputation)
+  const profileById = new Map<string, ProfileRow>(
+    (profiles as ProfileRow[]).map((p) => [p.id, p]),
+  );
+
   // Compute previous-week rank map for rank_change
   const prevPointsByUser = new Map<string, number>();
   for (const e of prevWeekEntries) {
-    prevPointsByUser.set(e.user_id, (prevPointsByUser.get(e.user_id) ?? 0) + (e.daily_points ?? 0));
+    const prof = profileById.get(e.user_id);
+    const pts = prof ? effectivePoints(e, prof) : (e.daily_points ?? 0);
+    prevPointsByUser.set(e.user_id, (prevPointsByUser.get(e.user_id) ?? 0) + pts);
   }
   const prevSorted = [...(profiles as ProfileRow[])].sort(
     (a, b) => (prevPointsByUser.get(b.id) ?? 0) - (prevPointsByUser.get(a.id) ?? 0),
@@ -353,7 +401,7 @@ export async function GET(request: Request) {
     rankings = (profiles as ProfileRow[]).map((p) => {
       const userEntries = currentByUser.get(p.id) ?? [];
       const recentEntries = recentByUser.get(p.id) ?? [];
-      const total = userEntries.reduce((sum, e) => sum + (e.daily_points ?? 0), 0);
+      const total = userEntries.reduce((sum, e) => sum + effectivePoints(e, p), 0);
       const daysSinceJoin = Math.max(
         1,
         Math.floor((Date.now() - new Date(p.joined_at).getTime()) / (24 * 60 * 60 * 1000)),
@@ -396,7 +444,7 @@ export async function GET(request: Request) {
     rankings = (profiles as ProfileRow[]).map((p) => {
       const userEntries = currentByUser.get(p.id) ?? [];
       const recentEntries = recentByUser.get(p.id) ?? [];
-      const baseTotal = userEntries.reduce((sum, e) => sum + (e.daily_points ?? 0), 0);
+      const baseTotal = userEntries.reduce((sum, e) => sum + effectivePoints(e, p), 0);
       const daysActive = new Set(userEntries.map((e) => e.date)).size;
       const streakDays = computeStreak(recentEntries.map((e) => e.date), todayStr);
       const goalCrushStreak = computeGoalCrushStreak(recentEntries, todayStr);

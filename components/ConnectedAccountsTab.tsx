@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import {
+  BellOff,
   Link2,
   Link2Off,
   RefreshCw,
@@ -20,6 +21,7 @@ import {
   AlertCircle,
   Smartphone,
   Zap,
+  Plug2,
 } from 'lucide-react';
 import { apiUrl, getApiFetchOptions } from '@/lib/api';
 import type { IntegrationStatus, SyncPreference } from '@/lib/types';
@@ -433,7 +435,10 @@ function PlatformCard({
 
 // ── Main Component ─────────────────────────────────────────────────────────────
 
-export function ConnectedAccountsTab() {
+/** Set to false to restore the full integrations UI (Fitbit, Apple Health, etc.). */
+const CONNECTED_APPS_COMING_SOON = true;
+
+function ConnectedAccountsTabImpl() {
   const [statuses, setStatuses] = useState<IntegrationStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState<string | null>(null);
@@ -852,4 +857,41 @@ export function ConnectedAccountsTab() {
       </div>
     </div>
   );
+}
+
+function ConnectedAccountsComingSoon() {
+  return (
+    <div className="space-y-6 max-w-3xl mx-auto">
+      <div>
+        <h2 className="text-lg font-bold text-text-primary">Connected Apps</h2>
+        <p className="text-sm text-text-muted mt-1">
+          Link fitness trackers and health apps to auto-fill your daily entries. Only data you&apos;ve
+          actually recorded on your device will sync — nothing is fabricated.
+        </p>
+      </div>
+      <div className="glass-card p-6 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-11 h-11 rounded-xl bg-surface-1 border border-white/10 flex items-center justify-center shrink-0 opacity-60">
+            <Plug2 className="w-5 h-5 text-text-muted" />
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="text-sm font-semibold text-text-secondary">Integrations</h3>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-surface-2 border border-white/10 text-text-muted uppercase tracking-wide">
+                Coming Soon
+              </span>
+            </div>
+            <p className="text-xs text-text-muted mt-0.5">
+              Apple Health, Fitbit, Google Health Connect, and more.
+            </p>
+          </div>
+        </div>
+        <BellOff className="w-5 h-5 text-text-muted opacity-40 shrink-0 hidden sm:block" />
+      </div>
+    </div>
+  );
+}
+
+export function ConnectedAccountsTab() {
+  return CONNECTED_APPS_COMING_SOON ? <ConnectedAccountsComingSoon /> : <ConnectedAccountsTabImpl />;
 }

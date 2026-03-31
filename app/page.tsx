@@ -36,7 +36,7 @@ type TabId = 'dashboard' | 'log' | 'leaderboard' | 'settings';
 
 const TABS: { id: TabId; label: string; shortLabel: string; icon: typeof Heart }[] = [
   { id: 'dashboard', label: 'Dashboard', shortLabel: 'Home', icon: Activity },
-  { id: 'log', label: 'Workout history', shortLabel: 'History', icon: Dumbbell },
+  { id: 'log', label: 'Health & Activity Log', shortLabel: 'Log', icon: Dumbbell },
   { id: 'leaderboard', label: 'Leaderboard', shortLabel: 'League', icon: Trophy },
   { id: 'settings', label: 'Settings', shortLabel: 'Settings', icon: Settings },
 ];
@@ -635,6 +635,7 @@ export default function Home() {
               key={leaderboardOpenContext ? `lb-${leaderboardOpenContext.month}` : 'lb'}
               initialView={leaderboardOpenContext ? 'monthly' : undefined}
               initialMonth={leaderboardOpenContext?.month}
+              profile={profile ?? undefined}
             />
           )}
           {activeTab === 'settings' && (

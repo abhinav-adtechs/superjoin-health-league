@@ -10,7 +10,7 @@ import type { FoodTrackingMode, FitnessGoal } from '@/lib/types';
 import { apiUrl, getApiFetchOptions } from '@/lib/api';
 import { FITNESS_GOAL_THEMES } from '@/lib/fitness-goal-theme';
 
-type ProfileContext = {
+export type ProfileContext = {
   fitness_goal?: FitnessGoal | null;
   food_tracking_mode?: FoodTrackingMode | null;
   goal_protein_g_day?: number | null;
@@ -60,10 +60,17 @@ const CATEGORY_META: Record<string, {
 const CATEGORY_ORDER = ['workout', 'movement', 'sleep', 'nutrition', 'logging_streak', 'weekly_perf', 'goal_crush'];
 const DAILY_CATS     = ['workout', 'movement', 'sleep', 'nutrition'];
 
-type RulesByCategory = Map<string, ScoringRule[]>;
+export type RulesByCategory = Map<string, ScoringRule[]>;
+
+export function dailyActivityCap(byCategory: RulesByCategory): number {
+  return DAILY_CATS.reduce((sum, c) => {
+    const rules = byCategory.get(c);
+    return sum + (rules?.[0]?.category_max ?? 0);
+  }, 0);
+}
 
 // ─── Lazy fetch — only fires once when enabled becomes true ──────────────────
-function useScoringRules(enabled: boolean) {
+export function useScoringRules(enabled: boolean) {
   const [rules, setRules] = useState<ScoringRule[]>([]);
   const [loading, setLoading] = useState(false);
   const [fetched, setFetched] = useState(false);
@@ -137,7 +144,7 @@ function buildFAQ(byCategory: RulesByCategory): Array<{ q: string; a: string }> 
     },
     {
       q: 'What week does the system use — Monday or Sunday start?',
-      a: `All weekly calculations use Monday–Sunday (ISO week). A week always starts on Monday and ends on Sunday. This applies to the workout goal tracker, weekly performance bonuses, and the workout history grouped view.`,
+      a: `All weekly calculations use Monday–Sunday (ISO week). A week always starts on Monday and ends on Sunday. This applies to the workout goal tracker, weekly performance bonuses, and the Health & Activity Log grouped view.`,
     },
     {
       q: 'How is sleep scored?',
@@ -191,7 +198,15 @@ function buildFAQ(byCategory: RulesByCategory): Array<{ q: string; a: string }> 
 }
 
 // ─── Collapsible rules list ───────────────────────────────────────────────────
-function RulesSection({ byCategory, profile }: { byCategory: RulesByCategory; profile?: ProfileContext }) {
+export function ScoringRulesSection({
+  byCategory,
+  profile,
+  hideScoringRulesTitle = false,
+}: {
+  byCategory: RulesByCategory;
+  profile?: ProfileContext;
+  hideScoringRulesTitle?: boolean;
+}) {
   const [openCats, setOpenCats] = useState<Set<string>>(new Set(['workout', 'movement']));
 
   const toggle = (cat: string) =>
@@ -201,23 +216,22 @@ function RulesSection({ byCategory, profile }: { byCategory: RulesByCategory; pr
       return next;
     });
 
-  const dailyMax = DAILY_CATS.reduce((sum, c) => {
-    const rules = byCategory.get(c);
-    return sum + (rules?.[0]?.category_max ?? 0);
-  }, 0);
+  const dailyMax = dailyActivityCap(byCategory);
 
   const mode = profile?.food_tracking_mode;
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-3">
-        <p className="text-[11px] font-bold uppercase tracking-wider text-text-muted">Scoring rules</p>
-        {dailyMax > 0 && (
-          <span className="text-[10px] text-text-muted bg-surface-2 px-2 py-0.5 rounded-full tabular-nums">
-            {dailyMax} pts/day cap
-          </span>
-        )}
-      </div>
+      {!hideScoringRulesTitle && (
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-text-muted">Scoring rules</p>
+          {dailyMax > 0 && (
+            <span className="text-[10px] text-text-muted bg-surface-2 px-2 py-0.5 rounded-full tabular-nums">
+              {dailyMax} pts/day cap
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Personalised context card */}
       {profile?.fitness_goal && (
@@ -429,7 +443,7 @@ export function PointSystemSheet({ open, onClose, profile }: { open: boolean; on
             <p className="text-sm text-text-muted">Unable to load scoring rules.</p>
           ) : (
             <>
-              <RulesSection byCategory={byCategory} profile={profile} />
+              <ScoringRulesSection byCategory={byCategory} profile={profile} />
               <div className="h-px bg-white/8" />
               <FAQSection byCategory={byCategory} />
             </>

@@ -1,34 +1,30 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   Trophy,
   ChevronLeft,
   ChevronRight,
-  Flame,
-  TrendingUp,
-  TrendingDown,
-  Minus,
   CalendarDays,
-  Dumbbell,
-  Utensils,
-  Moon,
-  Activity,
   ChevronDown,
   Info,
-  Footprints,
-  Zap,
 } from 'lucide-react';
 import { apiUrl, getApiFetchOptions } from '@/lib/api';
 import type { LeaderboardView, LeaderboardResponse, FitnessGoal } from '@/lib/types';
 import { resolveAvatarUrl } from '@/lib/avatar-url';
-import { FITNESS_GOAL_THEMES } from '@/lib/fitness-goal-theme';
-
-const FITNESS_GOAL_BADGES: Record<FitnessGoal, { label: string; color: string }> = Object.fromEntries(
-  (Object.entries(FITNESS_GOAL_THEMES) as [FitnessGoal, { label: string; badgeDimClass: string }][]).map(
-    ([k, v]) => [k, { label: v.label, color: v.badgeDimClass }],
-  ),
-) as Record<FitnessGoal, { label: string; color: string }>;
+import {
+  ScoringRulesSection,
+  useScoringRules,
+  dailyActivityCap,
+  type ProfileContext,
+} from '@/components/PointSystemPanel';
+import { LeaderboardTopLadder } from '@/components/LeaderboardTopLadder';
+import {
+  FITNESS_GOAL_BADGES,
+  LeaderboardRowStats,
+  RankBadge,
+  RankChange,
+} from '@/components/LeaderboardRowStats';
 
 // ─── Date helpers ─────────────────────────────────────────────────────────────
 
@@ -61,6 +57,33 @@ function toISO(d: Date): string {
 function getCurrentMonthStr(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+/** Local calendar meta for the month-league hero (matches dashboard "This month's league" copy). */
+function monthLeagueMeta(selectedMonth: string) {
+  const [y, m] = selectedMonth.split('-').map(Number);
+  const monthStart = new Date(y, m - 1, 1);
+  const monthNameLong = monthStart.toLocaleDateString('en-US', { month: 'long' });
+  const daysInMonth = new Date(y, m, 0).getDate();
+  const now = new Date();
+  const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const isSelectedCurrentMonth = selectedMonth === currentMonthStr;
+  const dayOfMonth = now.getDate();
+  const daysRemainingInMonth = daysInMonth - dayOfMonth + 1;
+  const todayLabel = now.toLocaleDateString('en-US', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+  });
+  return {
+    monthNameLong,
+    year: y,
+    daysInMonth,
+    isSelectedCurrentMonth,
+    dayOfMonth,
+    daysRemainingInMonth,
+    todayLabel,
+  };
 }
 
 function addMonthsToStr(monthStr: string, delta: number): string {
@@ -110,73 +133,6 @@ function Avatar({ userId, name, url }: { userId: string; name: string; url: stri
       className="w-8 h-8 rounded-full object-cover flex-shrink-0 bg-surface-2"
       onError={() => setBroken(true)}
     />
-  );
-}
-
-// ─── Rank badge ───────────────────────────────────────────────────────────────
-
-function RankBadge({ rank }: { rank: number }) {
-  if (rank === 1)
-    return (
-      <div className="w-8 h-8 flex-shrink-0 flex flex-col items-center justify-center gap-0.5">
-        <Trophy className="w-3.5 h-3.5 text-yellow-400" />
-        <span className="text-[8px] font-bold text-yellow-400 leading-none">#1</span>
-      </div>
-    );
-  if (rank === 2)
-    return (
-      <div className="w-8 h-8 flex-shrink-0 flex flex-col items-center justify-center gap-0.5">
-        <Trophy className="w-3.5 h-3.5 text-slate-400" />
-        <span className="text-[8px] font-bold text-slate-400 leading-none">#2</span>
-      </div>
-    );
-  if (rank === 3)
-    return (
-      <div className="w-8 h-8 flex-shrink-0 flex flex-col items-center justify-center gap-0.5">
-        <Trophy className="w-3.5 h-3.5 text-amber-600" />
-        <span className="text-[8px] font-bold text-amber-600 leading-none">#3</span>
-      </div>
-    );
-  return (
-    <div className="w-8 h-8 flex-shrink-0 flex items-center justify-center">
-      <span className="text-xs font-bold text-text-muted">#{rank}</span>
-    </div>
-  );
-}
-
-// ─── Goal tier color ──────────────────────────────────────────────────────────
-
-function goalColor(pct: number): string {
-  if (pct >= 100) return '#a855f7';
-  if (pct >= 85)  return '#10b981';
-  if (pct >= 65)  return '#22d3ee';
-  if (pct >= 45)  return '#f59e0b';
-  if (pct >= 20)  return '#f97316';
-  return '#f43f5e';
-}
-
-// ─── Rank change indicator ────────────────────────────────────────────────────
-
-function RankChange({ change }: { change: number | null | undefined }) {
-  if (change == null) return null;
-  if (change > 0)
-    return (
-      <span className="inline-flex items-center gap-0.5 text-emerald-400 text-[10px] font-semibold">
-        <TrendingUp className="w-2.5 h-2.5" />
-        {change}
-      </span>
-    );
-  if (change < 0)
-    return (
-      <span className="inline-flex items-center gap-0.5 text-rose-400 text-[10px] font-semibold">
-        <TrendingDown className="w-2.5 h-2.5" />
-        {Math.abs(change)}
-      </span>
-    );
-  return (
-    <span className="inline-flex items-center text-text-muted text-[10px]">
-      <Minus className="w-2.5 h-2.5" />
-    </span>
   );
 }
 
@@ -434,105 +390,12 @@ function MonthPicker({
   );
 }
 
-// ─── Scoring Guide ────────────────────────────────────────────────────────────
+// ─── Scoring Guide (same dynamic rules + goal context as Point System sheet) ──
 
-type ScoringRuleStatic = {
-  id: number;
-  action_label: string;
-  condition_desc: string;
-  points: number;
-  is_bonus: boolean;
-  age_note?: string;
-};
-
-type CategoryConfig = {
-  label: string;
-  icon: React.ElementType;
-  color: string;
-  bgColor: string;
-  max?: number;
-  streakNote?: boolean;
-  rules: ScoringRuleStatic[];
-};
-
-// Static scoring rules — mirrors lib/points.ts exactly.
-// When you update the scoring engine, update this list too.
-const SCORING_CATEGORIES: CategoryConfig[] = [
-  {
-    label: 'Workout', icon: Dumbbell, color: 'text-blue-400', bgColor: 'bg-blue-400/10', max: 20,
-    rules: [
-      { id: 1,  action_label: 'Complete any workout',        condition_desc: 'Log at least one workout session',          points: 10, is_bonus: false },
-      { id: 2,  action_label: 'Workout for 45+ minutes',     condition_desc: 'Session duration is 45 minutes or more',   points: 5,  is_bonus: true  },
-      { id: 3,  action_label: 'Workout for 60+ minutes',     condition_desc: 'Session duration is 60 minutes or more',   points: 5,  is_bonus: true  },
-    ],
-  },
-  {
-    label: 'Cardio', icon: Activity, color: 'text-rose-400', bgColor: 'bg-rose-400/10', max: 15,
-    rules: [
-      { id: 4,  action_label: 'Complete any cardio session', condition_desc: 'Log at least one cardio session',          points: 10, is_bonus: false },
-      { id: 5,  action_label: 'Cardio for 30+ minutes',      condition_desc: 'Session duration is 30 minutes or more',  points: 5,  is_bonus: true, age_note: 'Over 35: 25.5 minutes counts (85% threshold)' },
-    ],
-  },
-  {
-    label: 'Sleep', icon: Moon, color: 'text-indigo-400', bgColor: 'bg-indigo-400/10', max: 15,
-    rules: [
-      { id: 6,  action_label: 'Sleep 7 to 9 hours',          condition_desc: 'Sweet spot — not too little, not too much', points: 10, is_bonus: false },
-      { id: 7,  action_label: 'Sleep 6 to 7 hours',          condition_desc: 'Decent rest, just under the ideal range',   points: 5,  is_bonus: false },
-      { id: 8,  action_label: 'Rate sleep quality 4 or 5',   condition_desc: 'Self-reported quality score out of 5',      points: 5,  is_bonus: true  },
-    ],
-  },
-  {
-    label: 'Nutrition', icon: Utensils, color: 'text-emerald-400', bgColor: 'bg-emerald-400/10', max: 33,
-    rules: [
-      { id: 9,  action_label: 'Drink 3 or more litres of water',     condition_desc: 'Fully hydrated for the day',                       points: 10, is_bonus: false },
-      { id: 10, action_label: 'Drink between 2 and 3 litres',        condition_desc: 'Good hydration, just shy of the top tier',         points: 5,  is_bonus: false },
-      { id: 11, action_label: 'Eat 2 or more home-cooked meals',     condition_desc: 'Meals prepared at home count',                     points: 5,  is_bonus: false },
-      { id: 12, action_label: 'Have a protein-focused meal',         condition_desc: 'Log a meal where protein is the main focus',       points: 5,  is_bonus: false },
-      { id: 13, action_label: 'Hit 100g or more of protein',         condition_desc: 'Total protein intake for the day reaches 100g',   points: 3,  is_bonus: true  },
-      { id: 14, action_label: 'Skip junk food entirely',             condition_desc: 'No junk food consumed during the day',             points: 5,  is_bonus: false },
-      { id: 15, action_label: 'No alcohol',                          condition_desc: 'Alcohol-free day',                                 points: 5,  is_bonus: false },
-    ],
-  },
-  {
-    label: 'Steps', icon: Footprints, color: 'text-amber-400', bgColor: 'bg-amber-400/10', max: 15,
-    rules: [
-      { id: 16, action_label: '10,000 or more steps', condition_desc: 'Full active day', points: 15, is_bonus: false, age_note: 'Over 35: 8,500 steps counts' },
-      { id: 17, action_label: '7,500 or more steps',  condition_desc: 'Solid movement',  points: 10, is_bonus: false, age_note: 'Over 35: 6,375 steps counts' },
-      { id: 18, action_label: '5,000 or more steps',  condition_desc: 'Getting there',   points: 5,  is_bonus: false, age_note: 'Over 35: 4,250 steps counts' },
-    ],
-  },
-  {
-    label: 'Log Streak', icon: Flame, color: 'text-orange-400', bgColor: 'bg-orange-400/10', streakNote: true,
-    rules: [
-      { id: 19, action_label: '7-day logging streak',          condition_desc: 'Log anything every day for a week',                  points: 10,  is_bonus: false },
-      { id: 20, action_label: '14-day logging streak',         condition_desc: 'Two full weeks of showing up',                       points: 20,  is_bonus: false },
-      { id: 21, action_label: '30-day logging streak',         condition_desc: 'A full month of logging',                            points: 40,  is_bonus: false },
-      { id: 22, action_label: '60-day logging streak',         condition_desc: 'Two months without missing a day',                   points: 75,  is_bonus: false },
-      { id: 23, action_label: '90-day logging streak',         condition_desc: 'Three months — identity-level habit',                points: 100, is_bonus: false },
-      { id: 24, action_label: 'Every 30 days beyond 90',       condition_desc: 'Repeating bonus for every additional 30-day block',  points: 50,  is_bonus: false },
-    ],
-  },
-  {
-    label: 'Weekly Goals', icon: TrendingUp, color: 'text-green-400', bgColor: 'bg-green-400/10', streakNote: true,
-    rules: [
-      { id: 25, action_label: 'Hit some weekly goals (partial)', condition_desc: 'Met some of: workout days, workout mins, home-cooked meals goals', points: 20, is_bonus: false },
-      { id: 26, action_label: 'Hit all weekly goals (full)',      condition_desc: 'All set weekly profile goals met this week',                       points: 50, is_bonus: false },
-    ],
-  },
-  {
-    label: 'Goal Crush', icon: Zap, color: 'text-amber-400', bgColor: 'bg-amber-400/10', streakNote: true,
-    rules: [
-      { id: 27, action_label: '3-day goal crush streak',  condition_desc: 'Hit personal daily goals 3 days running',                     points: 15,  is_bonus: false },
-      { id: 28, action_label: '7-day goal crush streak',  condition_desc: 'A full week of crushing daily goals',                         points: 50,  is_bonus: false },
-      { id: 29, action_label: '14-day goal crush streak', condition_desc: 'Two weeks of daily goal performance',                          points: 100, is_bonus: false },
-      { id: 30, action_label: '30-day goal crush streak', condition_desc: 'A full month hitting every daily target',                      points: 200, is_bonus: false },
-      { id: 31, action_label: 'Every 30 days beyond 30',  condition_desc: 'Repeating bonus for sustained daily goal performance',         points: 200, is_bonus: false },
-    ],
-  },
-];
-
-function ScoringGuide() {
+function ScoringGuide({ profile }: { profile?: ProfileContext }) {
   const [open, setOpen] = useState(false);
+  const { byCategory, loading } = useScoringRules(true);
+  const dailyMax = useMemo(() => dailyActivityCap(byCategory), [byCategory]);
 
   return (
     <div className="glass-card overflow-hidden">
@@ -541,79 +404,33 @@ function ScoringGuide() {
         className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-white/5 transition-colors"
         aria-expanded={open}
       >
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 min-w-0">
           <Info className="w-4 h-4 text-text-muted flex-shrink-0" />
           <span className="text-sm font-semibold text-text-primary">How points are scored</span>
-          <span className="text-[11px] text-text-muted bg-surface-2 px-2 py-0.5 rounded-full">85 pts / day max</span>
+          <span className="text-[11px] text-text-muted bg-surface-2 px-2 py-0.5 rounded-full tabular-nums shrink-0">
+            {loading ? '…' : `${dailyMax || 85} pts / day max`}
+          </span>
         </div>
         <ChevronDown
-          className={`w-4 h-4 text-text-muted transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+          className={`w-4 h-4 text-text-muted transition-transform duration-200 flex-shrink-0 ${open ? 'rotate-180' : ''}`}
         />
       </button>
 
       {open && (
-        <div className="border-t border-white/10 divide-y divide-white/10">
-          {SCORING_CATEGORIES.map((cat) => {
-            const Icon = cat.icon;
-            return (
-              <div key={cat.label} className="px-4 py-3">
-                {/* Category header */}
-                <div className="flex items-center gap-2 mb-2">
-                  <div className={`w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0 ${cat.bgColor}`}>
-                    <Icon className={`w-3.5 h-3.5 ${cat.color}`} />
-                  </div>
-                  <span className={`text-xs font-bold uppercase tracking-wider ${cat.color}`}>{cat.label}</span>
-                  {cat.max != null && (
-                    <span className="ml-auto text-[11px] text-text-muted tabular-nums">max {cat.max} pts</span>
-                  )}
-                  {cat.streakNote && (
-                    <span className="ml-auto text-[11px] text-text-muted">one-time bonus per milestone</span>
-                  )}
-                </div>
-
-                {/* Rules table */}
-                <table className="w-full text-xs">
-                  <tbody className="divide-y divide-white/5">
-                    {cat.rules.map((rule) => (
-                      <tr key={rule.id}>
-                        <td className="py-1.5 pr-3">
-                          <div className="flex items-start gap-1.5">
-                            {rule.is_bonus && (
-                              <span className="mt-0.5 flex-shrink-0 text-[9px] font-bold text-text-muted bg-white/8 px-1 rounded">+</span>
-                            )}
-                            <div>
-                              <p className="text-text-primary font-medium leading-snug">{rule.action_label}</p>
-                              <p className="text-text-muted leading-snug mt-0.5 text-[11px]">{rule.condition_desc}</p>
-                              {rule.age_note && (
-                                <p className="leading-snug mt-0.5 flex items-center gap-1">
-                                  <span className="text-[9px] font-bold bg-amber-400/10 text-amber-400 px-1 py-0.5 rounded">35+</span>
-                                  <span className="text-amber-400/80 text-[10px]">{rule.age_note}</span>
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                        </td>
-                        <td className="py-1.5 text-right align-top whitespace-nowrap">
-                          <span className={`font-bold tabular-nums ${cat.color}`}>
-                            {rule.is_bonus ? `+${rule.points}` : rule.points}
-                          </span>
-                          <span className="text-text-muted ml-0.5">pts</span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            );
-          })}
-
-          <div className="px-4 py-3 bg-surface-2/50">
-          <p className="text-[11px] text-text-muted leading-relaxed">
-            <span className="font-semibold text-text-secondary">Age bracket:</span> Members over 35 have 85% thresholds for steps and cardio for fair comparison.
-            Streak bonuses are one-time awards per milestone and do not count toward the 85 pts/day cap.
-            Food points depend on your fitness goal — cutting users score by staying under budget, bulking users by hitting their target.
-          </p>
-          </div>
+        <div className="border-t border-white/10">
+          {loading ? (
+            <div className="px-4 py-4 space-y-2 animate-pulse">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="h-10 rounded-xl bg-surface-2/60" />
+              ))}
+            </div>
+          ) : byCategory.size === 0 ? (
+            <p className="px-4 py-3 text-sm text-text-muted">Unable to load scoring rules.</p>
+          ) : (
+            <div className="px-4 py-3">
+              <ScoringRulesSection byCategory={byCategory} profile={profile} hideScoringRulesTitle />
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -625,11 +442,13 @@ function ScoringGuide() {
 export function LeaderboardTab({
   initialView,
   initialMonth,
+  profile,
 }: {
   initialView?: LeaderboardView;
   initialMonth?: string;
+  profile?: ProfileContext;
 } = {}) {
-  const [view, setView] = useState<LeaderboardView>(() => initialView ?? 'weekly');
+  const [view, setView] = useState<LeaderboardView>(() => initialView ?? 'monthly');
   const [weekStart, setWeekStart] = useState<string>(getCurrentWeekMonday);
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState<string>(() => initialMonth ?? getCurrentMonthStr());
@@ -701,15 +520,21 @@ export function LeaderboardTab({
 
   if (!data) return <div className="text-text-muted">Could not load leaderboard.</div>;
 
+  const monthMeta = view === 'monthly' ? monthLeagueMeta(selectedMonth) : null;
+  const myMonthlyRank =
+    view === 'monthly' && data.current_user_id != null
+      ? data.rankings.find((r) => r.user.id === data.current_user_id)?.rank ?? null
+      : null;
+
   return (
     <div className="space-y-5 animate-fade-up">
       {/* ── Header ── */}
       <div className="space-y-3">
         <h2 className="text-lg font-semibold text-text-primary">Leaderboard</h2>
 
-        {/* View tabs */}
+        {/* View tabs — Month first (default) */}
         <div className="flex gap-2">
-          {(['weekly', 'monthly', 'alltime'] as const).map((v) => (
+          {(['monthly', 'weekly', 'alltime'] as const).map((v) => (
             <button
               key={v}
               onClick={() => setView(v)}
@@ -762,44 +587,106 @@ export function LeaderboardTab({
           </div>
         )}
 
-        {/* Month navigator */}
-        {view === 'monthly' && (
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setSelectedMonth((m) => addMonthsToStr(m, -1))}
-              className="p-1.5 hover:bg-white/10 rounded-lg transition-colors flex-shrink-0"
-              aria-label="Previous month"
-            >
-              <ChevronLeft className="w-4 h-4 text-text-secondary" />
-            </button>
+        {/* Month league hero — same visual language as dashboard "This month's league" */}
+        {view === 'monthly' && monthMeta && (
+          <div className="relative overflow-hidden rounded-2xl border-2 border-accent-superjoin-orange/35 bg-surface-1 shadow-lg shadow-accent-superjoin-orange/15">
+            <div
+              className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_120%_80%_at_100%_-20%,rgba(249,115,22,0.22),transparent_55%),radial-gradient(ellipse_80%_50%_at_0%_100%,rgba(251,191,36,0.08),transparent_50%)]"
+              aria-hidden
+            />
+            <div className="relative flex flex-col gap-4 p-4 sm:p-5 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
+              <div className="flex gap-3 min-w-0 flex-1">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-accent-superjoin-orange/20 border border-accent-superjoin-orange/35 shadow-inner">
+                  <Trophy className="h-6 w-6 text-accent-superjoin-orange" aria-hidden />
+                </div>
+                <div className="min-w-0 space-y-1.5">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-accent-superjoin-orange/90">
+                    This month&apos;s league
+                  </p>
+                  <h3 className="text-2xl sm:text-3xl font-black tracking-tight leading-none">
+                    <span className="bg-gradient-to-r from-accent-superjoin-orange via-amber-500 to-amber-600 bg-clip-text text-transparent">
+                      {monthMeta.monthNameLong}
+                    </span>
+                    <span className="text-text-primary"> league</span>
+                  </h3>
+                  {monthMeta.isSelectedCurrentMonth ? (
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+                      <span className="font-bold tabular-nums text-accent-superjoin-orange">
+                        Day {monthMeta.dayOfMonth}/{monthMeta.daysInMonth}
+                      </span>
+                      <span className="text-text-muted/70">·</span>
+                      <span className="font-semibold text-text-primary">
+                        {monthMeta.daysRemainingInMonth}{' '}
+                        {monthMeta.daysRemainingInMonth === 1 ? 'day' : 'days'} left
+                      </span>
+                    </div>
+                  ) : (
+                    <p className="text-sm font-semibold text-text-secondary">Full month standings</p>
+                  )}
+                  <p className="text-xs text-text-muted">
+                    {monthMeta.isSelectedCurrentMonth ? monthMeta.todayLabel : data.period}
+                  </p>
+                </div>
+              </div>
 
-            <div className="relative flex-1 flex justify-center">
-              <button
-                onClick={() => setMonthCalendarOpen((o) => !o)}
-                className="flex items-center gap-2 px-3 py-1.5 bg-surface-2 hover:bg-white/10 rounded-xl text-sm font-medium text-text-primary transition-colors w-full justify-center"
-              >
-                <CalendarDays className="w-3.5 h-3.5 text-text-muted flex-shrink-0" />
-                <span className="truncate">{data.period}</span>
-              </button>
-              {monthCalendarOpen && (
-                <MonthPicker
-                  selectedMonth={selectedMonth}
-                  onSelect={(m) => { setSelectedMonth(m); }}
-                  onClose={() => setMonthCalendarOpen(false)}
-                />
-              )}
+              <div className="flex flex-row sm:flex-col items-center justify-between sm:justify-center gap-3 sm:gap-4 sm:min-w-[9.5rem] sm:text-right sm:items-end border-t border-white/10 pt-3 sm:border-t-0 sm:pt-0">
+                <div className="flex items-baseline gap-2 sm:flex-col sm:items-end sm:gap-0.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted">Your rank</span>
+                  {myMonthlyRank != null ? (
+                    <span className="text-3xl sm:text-4xl font-black tabular-nums leading-none text-accent-superjoin-orange drop-shadow-sm">
+                      #{myMonthlyRank}
+                    </span>
+                  ) : (
+                    <span className="text-lg font-bold text-text-muted">—</span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedMonth((m) => addMonthsToStr(m, -1))}
+                    className="p-2 hover:bg-white/10 rounded-xl transition-colors flex-shrink-0 border border-white/10"
+                    aria-label="Previous month"
+                  >
+                    <ChevronLeft className="w-4 h-4 text-text-secondary" />
+                  </button>
+                  <div className="relative flex-1 sm:flex-initial flex justify-center min-w-0">
+                    <button
+                      type="button"
+                      onClick={() => setMonthCalendarOpen((o) => !o)}
+                      className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-accent-superjoin-orange/35 bg-accent-superjoin-orange/15 px-3 py-2 text-sm font-bold text-accent-superjoin-orange shadow-inner transition hover:brightness-110 w-full sm:w-auto max-w-[200px]"
+                    >
+                      <CalendarDays className="w-3.5 h-3.5 shrink-0" aria-hidden />
+                      <span className="truncate tabular-nums">
+                        {monthMeta.monthNameLong} {monthMeta.year}
+                      </span>
+                    </button>
+                    {monthCalendarOpen && (
+                      <MonthPicker
+                        selectedMonth={selectedMonth}
+                        onSelect={(m) => {
+                          setSelectedMonth(m);
+                        }}
+                        onClose={() => setMonthCalendarOpen(false)}
+                      />
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!isCurrentMonth) setSelectedMonth((m) => addMonthsToStr(m, 1));
+                    }}
+                    disabled={isCurrentMonth}
+                    className={`p-2 rounded-xl transition-colors flex-shrink-0 border border-white/10 ${
+                      isCurrentMonth ? 'opacity-30 cursor-not-allowed' : 'hover:bg-white/10'
+                    }`}
+                    aria-label="Next month"
+                  >
+                    <ChevronRight className="w-4 h-4 text-text-secondary" />
+                  </button>
+                </div>
+              </div>
             </div>
-
-            <button
-              onClick={() => { if (!isCurrentMonth) setSelectedMonth((m) => addMonthsToStr(m, 1)); }}
-              disabled={isCurrentMonth}
-              className={`p-1.5 rounded-lg transition-colors flex-shrink-0 ${
-                isCurrentMonth ? 'opacity-30 cursor-not-allowed' : 'hover:bg-white/10'
-              }`}
-              aria-label="Next month"
-            >
-              <ChevronRight className="w-4 h-4 text-text-secondary" />
-            </button>
           </div>
         )}
 
@@ -808,7 +695,7 @@ export function LeaderboardTab({
         )}
       </div>
 
-      {/* ── Rankings ── */}
+      {/* ── Single leaderboard board (top 10 ladder + full rows for 11+) ── */}
       <div className="glass-card overflow-hidden">
         {!data.rankings?.length ? (
           <div className="p-6 text-center">
@@ -819,125 +706,86 @@ export function LeaderboardTab({
             </p>
           </div>
         ) : (
-          <ul className="divide-y divide-white/10">
-            {data.rankings.map((r) => {
-              const isMe =
-                data.current_user_id != null && r.user.id === data.current_user_id;
-              const bd = r.score.breakdown;
-
-              return (
-                <li
-                  key={r.rank}
-                  className={`px-3 py-3 transition-colors ${
-                    isMe
-                      ? 'border-l-[3px] border-primary-orange bg-primary-orange/5 hover:bg-primary-orange/8'
-                      : 'border-l-[3px] border-transparent hover:bg-white/5'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    {/* Rank */}
-                    <RankBadge rank={r.rank} />
-
-                    {/* Avatar */}
-                    <Avatar userId={r.user.id} name={r.user.display_name} url={r.user.avatar_url} />
-
-                    {/* Name + stats sub-line */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="font-semibold text-[15px] text-text-primary leading-tight truncate">
-                          {r.user.display_name}
-                        </span>
-                        {isMe && (
-                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-primary-orange text-white leading-none flex-shrink-0">
-                            YOU
-                          </span>
-                        )}
-                        {r.user.fitness_goal && (
-                          <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full leading-none flex-shrink-0 ${FITNESS_GOAL_BADGES[r.user.fitness_goal as FitnessGoal]?.color ?? ''}`}>
-                            {FITNESS_GOAL_BADGES[r.user.fitness_goal as FitnessGoal]?.label ?? r.user.fitness_goal}
-                          </span>
-                        )}
-                      </div>
-                      {/* Sub-line: breakdown · days · streak · adherence · pts-to-rank */}
-                      <div className="flex items-center gap-2 mt-1 flex-wrap">
-                        {bd && (
-                          <>
-                            <span className="inline-flex items-center gap-0.5 text-xs">
-                              <Dumbbell className="w-3 h-3 text-blue-400" />
-                              <span className="text-text-secondary">{bd.workout}</span>
-                            </span>
-                            <span className="inline-flex items-center gap-0.5 text-xs">
-                              <Utensils className="w-3 h-3 text-emerald-400" />
-                              <span className="text-text-secondary">{bd.nutrition}</span>
-                            </span>
-                            <span className="inline-flex items-center gap-0.5 text-xs">
-                              <Moon className="w-3 h-3 text-indigo-400" />
-                              <span className="text-text-secondary">{bd.sleep}</span>
-                            </span>
-                            <span className="inline-flex items-center gap-0.5 text-xs">
-                              <Activity className="w-3 h-3 text-amber-400" />
-                              <span className="text-text-secondary">{(bd as Record<string, number>).movement ?? (bd as Record<string, number>).steps ?? 0}</span>
-                            </span>
-                            <span className="text-text-muted/40 text-xs">·</span>
-                          </>
-                        )}
-                        <span className="text-xs text-text-muted">
-                          {r.user.days_active}d active
-                        </span>
-                        {r.user.streak_days > 0 && (
-                          <span className="inline-flex items-center gap-0.5 text-orange-400 text-xs font-semibold">
-                            <Flame className="w-3 h-3" />
-                            {r.user.streak_days}d
-                          </span>
-                        )}
-                        {r.user.goal_crush_streak > 0 && (
-                          <span className="inline-flex items-center gap-0.5 text-amber-400 text-xs font-semibold">
-                            <Zap className="w-3 h-3" />
-                            {r.user.goal_crush_streak}d
-                          </span>
-                        )}
-                        {r.score.goal_adherence_pct != null && (
-                          <span
-                            className="text-xs font-semibold"
-                            title="Goal adherence %"
-                            style={{ color: goalColor(r.score.goal_adherence_pct) }}
-                          >
-                            {r.score.goal_adherence_pct}% goals
-                          </span>
-                        )}
-                        {isMe && r.insights?.pts_to_next_rank != null && r.insights.pts_to_next_rank > 0 && (
-                          <span className="text-[10px] text-accent-superjoin-orange font-medium bg-accent-superjoin-orange/10 px-1.5 py-0.5 rounded-full">
-                            {r.insights.pts_to_next_rank} pts to rank up
-                          </span>
-                        )}
-                        {isMe && r.insights?.pts_to_next_rank === null && (
-                          <span className="text-[10px] text-accent-gold font-medium bg-accent-gold/10 px-1.5 py-0.5 rounded-full">
-                            👑 Top rank
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Points inline */}
-                    <div className="flex-shrink-0 text-right">
-                      <p className="font-bold text-[15px] text-text-primary leading-tight tabular-nums">
-                        {view === 'alltime'
-                          ? r.score.normalized_score.toFixed(1)
-                          : r.score.total_points}
-                        <span className="text-xs font-normal text-text-muted ml-0.5">
-                          {view === 'alltime' ? 'pts/d' : 'pts'}
-                        </span>
-                      </p>
-                      <div className="flex justify-end mt-0.5">
-                        <RankChange change={r.rank_change} />
-                      </div>
-                    </div>
-
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
+          <>
+            <div className="px-4 py-3 sm:px-5 border-b border-white/10 bg-surface-2/30">
+              <div className="flex items-center gap-2">
+                <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-accent-superjoin-orange/15 border border-accent-superjoin-orange/25">
+                  <Trophy className="h-4 w-4 text-accent-superjoin-orange" aria-hidden />
+                </div>
+                <h3 className="text-sm font-semibold text-text-primary leading-tight">Standings</h3>
+              </div>
+            </div>
+            <div className={`p-4 sm:p-5 ${data.rankings.length > 10 ? 'border-b border-white/10' : ''}`}>
+              <LeaderboardTopLadder
+                view={view}
+                rankings={data.rankings}
+                currentUserId={data.current_user_id}
+              />
+            </div>
+            {data.rankings.length > 10 && (
+              <>
+                <div className="px-4 py-2 border-b border-white/10 bg-surface-2/20">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted">Rank 11 and below</p>
+                </div>
+                <ul className="divide-y divide-white/10">
+                  {data.rankings.slice(10).map((r) => {
+                    const isMe =
+                      data.current_user_id != null && r.user.id === data.current_user_id;
+                    return (
+                      <li
+                        key={r.rank}
+                        className={`px-3 py-3 transition-colors ${
+                          isMe
+                            ? 'border-l-[3px] border-primary-orange bg-primary-orange/5 hover:bg-primary-orange/8'
+                            : 'border-l-[3px] border-transparent hover:bg-white/5'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <RankBadge rank={r.rank} />
+                          <Avatar userId={r.user.id} name={r.user.display_name} url={r.user.avatar_url} />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="font-semibold text-[15px] text-text-primary leading-tight truncate">
+                                {r.user.display_name}
+                              </span>
+                              {isMe && (
+                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-primary-orange text-white leading-none flex-shrink-0">
+                                  YOU
+                                </span>
+                              )}
+                              {r.user.fitness_goal && (
+                                <span
+                                  className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full leading-none flex-shrink-0 ${
+                                    FITNESS_GOAL_BADGES[r.user.fitness_goal as FitnessGoal]?.color ?? ''
+                                  }`}
+                                >
+                                  {FITNESS_GOAL_BADGES[r.user.fitness_goal as FitnessGoal]?.label ?? r.user.fitness_goal}
+                                </span>
+                              )}
+                            </div>
+                            <LeaderboardRowStats r={r} isMe={isMe} className="mt-1" />
+                          </div>
+                          <div className="flex-shrink-0 text-right">
+                            <p className="font-bold text-[15px] text-text-primary leading-tight tabular-nums">
+                              {view === 'alltime'
+                                ? r.score.normalized_score.toFixed(1)
+                                : r.score.total_points}
+                              <span className="text-xs font-normal text-text-muted ml-0.5">
+                                {view === 'alltime' ? 'pts/d' : 'pts'}
+                              </span>
+                            </p>
+                            <div className="flex justify-end mt-0.5">
+                              <RankChange change={r.rank_change} />
+                            </div>
+                          </div>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </>
+            )}
+          </>
         )}
       </div>
 
@@ -949,7 +797,7 @@ export function LeaderboardTab({
       )}
 
       {/* ── Scoring guide ── */}
-      <ScoringGuide />
+      <ScoringGuide profile={profile} />
     </div>
   );
 }

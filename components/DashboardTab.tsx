@@ -15,6 +15,7 @@ import {
   ArrowRight,
   Utensils,
   Trophy,
+  Footprints,
 } from 'lucide-react';
 import { apiUrl, getApiFetchOptions } from '@/lib/api';
 import { LogEntryModal, type EntryType } from './LogEntryModal';
@@ -337,6 +338,12 @@ export function DashboardTab({
     }
   }
 
+  // Steps tracking
+  const trackSteps = (profile.goal_steps_day ?? 0) > 0;
+  const stepsPct = trackSteps && profile.goal_steps_day
+    ? clampPct(todayEntry?.steps, profile.goal_steps_day)
+    : null;
+
   // Overall daily completion: average of all goals that are set
   const activeDailyPcts: number[] = [];
   if (profile.goal_water_liters) activeDailyPcts.push(waterPct);
@@ -344,6 +351,7 @@ export function DashboardTab({
   if (profile.goal_workout_days_week) activeDailyPcts.push(workoutPct);
   if (proteinPct !== null) activeDailyPcts.push(proteinPct);
   if (caloriePct !== null) activeDailyPcts.push(caloriePct);
+  if (stepsPct !== null) activeDailyPcts.push(stepsPct);
 
   const overallDailyPct =
     activeDailyPcts.length > 0
@@ -394,6 +402,15 @@ export function DashboardTab({
       icon: <Utensils className="w-4 h-4 text-amber-500" />,
       text: profile.fitness_goal === 'lose_weight' ? 'Track your calorie intake today' : 'Log your calorie intake to hit target',
       modalType: 'meal_recovery',
+    });
+  }
+  if (trackSteps && profile.goal_steps_day && stepsPct !== null && stepsPct < 100) {
+    const logged = todayEntry?.steps ?? 0;
+    const rem = profile.goal_steps_day - logged;
+    remainingItems.push({
+      icon: <Footprints className="w-4 h-4 text-amber-500" />,
+      text: rem > 0 ? `${rem.toLocaleString()} more steps to reach your goal` : 'Log your steps today',
+      modalType: 'movement',
     });
   }
 
@@ -609,13 +626,13 @@ export function DashboardTab({
             </div>
 
             {/* Category mini rings */}
-            <div className="grid grid-cols-4 gap-3 w-full max-w-xs">
-              {/* Protein or Calorie ring (replaces Steps) */}
+            <div className={`grid gap-3 w-full ${trackSteps ? 'grid-cols-5 max-w-sm' : 'grid-cols-4 max-w-xs'}`}>
+              {/* Protein or Calorie ring */}
               <div className="flex flex-col items-center gap-1.5">
                 {trackProtein && profile.goal_protein_g_day ? (
                   <>
                     <div className="relative">
-                      <CircleRing pct={proteinPct ?? 0} size={60} strokeWidth={7} color="#f59e0b" />
+                      <CircleRing pct={proteinPct ?? 0} size={trackSteps ? 52 : 60} strokeWidth={trackSteps ? 6 : 7} color="#f59e0b" />
                       <div className="absolute inset-0 flex items-center justify-center">
                         <Utensils className="w-4 h-4 text-text-muted" />
                       </div>
@@ -629,7 +646,7 @@ export function DashboardTab({
                 ) : trackCalories && profile.goal_calories_day ? (
                   <>
                     <div className="relative">
-                      <CircleRing pct={caloriePct ?? 0} size={60} strokeWidth={7} color="#f59e0b" />
+                      <CircleRing pct={caloriePct ?? 0} size={trackSteps ? 52 : 60} strokeWidth={trackSteps ? 6 : 7} color="#f59e0b" />
                       <div className="absolute inset-0 flex items-center justify-center">
                         <Utensils className="w-4 h-4 text-text-muted" />
                       </div>
@@ -643,7 +660,7 @@ export function DashboardTab({
                 ) : (
                   <>
                     <div className={`relative opacity-30`}>
-                      <svg width={60} height={60} viewBox="0 0 60 60">
+                      <svg width={trackSteps ? 52 : 60} height={trackSteps ? 52 : 60} viewBox="0 0 60 60">
                         <circle cx={30} cy={30} r={26.5} fill="none" stroke="#e2e8f0" strokeWidth={7} />
                       </svg>
                       <div className="absolute inset-0 flex items-center justify-center">
@@ -660,9 +677,9 @@ export function DashboardTab({
               <div className="flex flex-col items-center gap-1.5">
                 <div className={`relative ${!profile.goal_water_liters ? 'opacity-30' : ''}`}>
                   {profile.goal_water_liters ? (
-                    <CircleRing pct={waterPct} size={60} strokeWidth={7} color="#2563eb" />
+                    <CircleRing pct={waterPct} size={trackSteps ? 52 : 60} strokeWidth={trackSteps ? 6 : 7} color="#2563eb" />
                   ) : (
-                    <svg width={60} height={60} viewBox="0 0 60 60">
+                    <svg width={trackSteps ? 52 : 60} height={trackSteps ? 52 : 60} viewBox="0 0 60 60">
                       <circle cx={30} cy={30} r={26.5} fill="none" stroke="#e2e8f0" strokeWidth={7} />
                     </svg>
                   )}
@@ -687,9 +704,9 @@ export function DashboardTab({
               <div className="flex flex-col items-center gap-1.5">
                 <div className={`relative ${!sleepGoal ? 'opacity-30' : ''}`}>
                   {sleepGoal ? (
-                    <CircleRing pct={sleepPct} size={60} strokeWidth={7} color="#7c3aed" />
+                    <CircleRing pct={sleepPct} size={trackSteps ? 52 : 60} strokeWidth={trackSteps ? 6 : 7} color="#7c3aed" />
                   ) : (
-                    <svg width={60} height={60} viewBox="0 0 60 60">
+                    <svg width={trackSteps ? 52 : 60} height={trackSteps ? 52 : 60} viewBox="0 0 60 60">
                       <circle cx={30} cy={30} r={26.5} fill="none" stroke="#e2e8f0" strokeWidth={7} />
                     </svg>
                   )}
@@ -714,9 +731,9 @@ export function DashboardTab({
               <div className="flex flex-col items-center gap-1.5">
                 <div className={`relative ${!profile.goal_workout_days_week ? 'opacity-30' : ''}`}>
                   {profile.goal_workout_days_week ? (
-                    <CircleRing pct={workoutPct} size={60} strokeWidth={7} color="#FF6B35" />
+                    <CircleRing pct={workoutPct} size={trackSteps ? 52 : 60} strokeWidth={trackSteps ? 6 : 7} color="#FF6B35" />
                   ) : (
-                    <svg width={60} height={60} viewBox="0 0 60 60">
+                    <svg width={trackSteps ? 52 : 60} height={trackSteps ? 52 : 60} viewBox="0 0 60 60">
                       <circle cx={30} cy={30} r={26.5} fill="none" stroke="#e2e8f0" strokeWidth={7} />
                     </svg>
                   )}
@@ -736,6 +753,23 @@ export function DashboardTab({
                   <span className="text-[11px] text-text-muted">–</span>
                 )}
               </div>
+
+              {/* Steps — only shown when goal_steps_day is set */}
+              {trackSteps && (
+                <div className="flex flex-col items-center gap-1.5">
+                  <div className="relative">
+                    <CircleRing pct={stepsPct ?? 0} size={52} strokeWidth={6} color="#f59e0b" />
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <Footprints className="w-3.5 h-3.5 text-text-muted" />
+                    </div>
+                  </div>
+                  <span className="text-[11px] font-medium text-text-secondary">Steps</span>
+                  <span className="text-[11px] font-semibold text-text-primary">{stepsPct ?? 0}%</span>
+                  <span className="text-[10px] text-text-muted leading-tight text-center">
+                    {(todayEntry?.steps ?? 0).toLocaleString()} / {(profile.goal_steps_day ?? 0).toLocaleString()}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
 

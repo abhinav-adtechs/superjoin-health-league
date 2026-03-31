@@ -187,9 +187,18 @@ export default function GoalSetupWizard({ isNewUser, existingProfile, onComplete
     );
     return fromProfile.length > 0 ? fromProfile : ['cardio_mix'];
   });
+  const [stepsGoal, setStepsGoal] = useState(existingProfile?.goal_steps_day ? String(existingProfile.goal_steps_day) : '');
+  const [trackStepsOptIn, setTrackStepsOptIn] = useState(!!(existingProfile?.goal_steps_day));
 
   function toggleWorkoutType(t: WorkoutGoalType) {
-    setWorkoutTypes((prev) => (prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]));
+    setWorkoutTypes((prev) => {
+      const next = prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t];
+      // Auto-fill 8,000 steps when walking is added (if no step goal yet)
+      if (t === 'walking' && !prev.includes('walking') && !stepsGoal) {
+        setStepsGoal('8000');
+      }
+      return next;
+    });
   }
 
   function applyGoalDefaults(goal: FitnessGoal) {
@@ -223,6 +232,9 @@ export default function GoalSetupWizard({ isNewUser, existingProfile, onComplete
     const water = parseFloat(waterLiters) || RECOMMENDED_WATER_LITERS_BY_GOAL[fitnessGoal];
     const mins = parseInt(workoutMins) || RECOMMENDED_WORKOUT_MINS_WEEK_BY_GOAL[fitnessGoal];
     const days = parseInt(workoutDays) || RECOMMENDED_WORKOUT_DAYS_WEEK_BY_GOAL[fitnessGoal];
+    const stepsPerDay = (workoutTypes.includes('walking') || trackStepsOptIn) && stepsGoal
+      ? parseInt(stepsGoal) || null
+      : null;
 
     if (workoutTypes.length === 0) {
       setError('Select at least one workout type.');
@@ -251,6 +263,7 @@ export default function GoalSetupWizard({ isNewUser, existingProfile, onComplete
             goal_workout_mins_week: mins,
             goal_workout_days_week: days,
             goal_workout_types: workoutTypes,
+            goal_steps_day: stepsPerDay,
           }),
         });
         if (!res.ok) {
@@ -278,6 +291,7 @@ export default function GoalSetupWizard({ isNewUser, existingProfile, onComplete
             goal_workout_mins_week: mins,
             goal_workout_days_week: days,
             goal_workout_types: workoutTypes,
+            goal_steps_day: stepsPerDay,
           }),
         });
         if (!res.ok) {
@@ -629,6 +643,63 @@ export default function GoalSetupWizard({ isNewUser, existingProfile, onComplete
                   </p>
                 </div>
               </div>
+
+              {/* Daily steps — auto-shown for walkers, opt-in for others */}
+              {workoutTypes.includes('walking') ? (
+                <div className="rounded-lg bg-amber-50 border border-amber-200 p-4 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">🚶</span>
+                    <p className="text-sm font-semibold text-amber-900">Daily step goal</p>
+                    <span className="text-[10px] font-bold bg-amber-200 text-amber-900 px-2 py-0.5 rounded-full">Walking selected</span>
+                  </div>
+                  <p className="text-xs text-amber-800/80">Steps are tracked as part of your walking workout. Aim for 8,000–10,000 steps/day.</p>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min="1000"
+                      max="30000"
+                      step="500"
+                      value={stepsGoal}
+                      onChange={(e) => setStepsGoal(e.target.value)}
+                      className="w-32 border border-amber-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white"
+                    />
+                    <span className="text-sm text-amber-800">steps / day</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-lg border border-gray-200 p-4">
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={trackStepsOptIn}
+                      onChange={(e) => {
+                        setTrackStepsOptIn(e.target.checked);
+                        if (e.target.checked && !stepsGoal) setStepsGoal('8000');
+                        if (!e.target.checked) setStepsGoal('');
+                      }}
+                      className="w-4 h-4 accent-indigo-600 rounded"
+                    />
+                    <div>
+                      <p className="text-sm font-medium text-gray-800">Track daily steps</p>
+                      <p className="text-xs text-gray-500">Add a daily step count goal and see progress on your dashboard</p>
+                    </div>
+                  </label>
+                  {trackStepsOptIn && (
+                    <div className="mt-3 flex items-center gap-2 pl-7">
+                      <input
+                        type="number"
+                        min="1000"
+                        max="30000"
+                        step="500"
+                        value={stepsGoal}
+                        onChange={(e) => setStepsGoal(e.target.value)}
+                        className="w-32 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                      />
+                      <span className="text-sm text-gray-600">steps / day</span>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Food tracking */}
