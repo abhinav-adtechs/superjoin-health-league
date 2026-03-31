@@ -56,6 +56,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   -- Personal goals (optional)
   goal_workout_mins_week INTEGER CHECK (goal_workout_mins_week IS NULL OR (goal_workout_mins_week >= 0 AND goal_workout_mins_week <= 600)),
   goal_workout_days_week INTEGER CHECK (goal_workout_days_week IS NULL OR (goal_workout_days_week >= 0 AND goal_workout_days_week <= 7)),
+  goal_workout_types JSONB NOT NULL DEFAULT '[]'::jsonb,
   goal_steps_day INTEGER CHECK (goal_steps_day IS NULL OR (goal_steps_day >= 0 AND goal_steps_day <= 100000)),
   goal_sleep_hours_min NUMERIC(3,1) CHECK (goal_sleep_hours_min IS NULL OR (goal_sleep_hours_min >= 0 AND goal_sleep_hours_min <= 24)),
   goal_sleep_hours_max NUMERIC(3,1) CHECK (goal_sleep_hours_max IS NULL OR (goal_sleep_hours_max >= 0 AND goal_sleep_hours_max <= 24)),

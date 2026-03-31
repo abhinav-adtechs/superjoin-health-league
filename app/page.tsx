@@ -11,10 +11,25 @@ import { LeaderboardTab } from '@/components/LeaderboardTab';
 import { SettingsTab, type SettingsSection } from '@/components/SettingsTab';
 import { NewEntryCTA } from '@/components/NewEntryCTA';
 import { LoginForm } from '@/components/LoginForm';
-import { OnboardingForm } from '@/components/OnboardingForm';
+import GoalSetupWizard from '@/components/GoalSetupWizard';
 import { SetPinForm } from '@/components/SetPinForm';
 import { PointSystemSheet } from '@/components/PointSystemPanel';
 import type { Profile } from '@/lib/types';
+import { resolveAvatarUrl } from '@/lib/avatar-url';
+
+/** True when the profile has no usable goal targets yet (DB dummy migration fills these for most users). */
+function profileNeedsGoals(p: Profile): boolean {
+  const has =
+    (p.goal_workout_mins_week != null && p.goal_workout_mins_week > 0) ||
+    (p.goal_workout_days_week != null && p.goal_workout_days_week > 0) ||
+    ((p.goal_sleep_hours ?? p.goal_sleep_hours_min) != null &&
+      Number(p.goal_sleep_hours ?? p.goal_sleep_hours_min) > 0) ||
+    (p.goal_water_liters != null && p.goal_water_liters > 0) ||
+    (p.goal_protein_g_day != null && p.goal_protein_g_day > 0) ||
+    (p.goal_calories_day != null && p.goal_calories_day > 0) ||
+    (p.goal_steps_day != null && p.goal_steps_day > 0);
+  return !has;
+}
 
 type TabId = 'dashboard' | 'log' | 'leaderboard' | 'settings';
 
@@ -30,6 +45,28 @@ const SETTINGS_SECTIONS: { id: SettingsSection; label: string; icon: typeof Hear
   { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'apps', label: 'Connected Apps', icon: Plug2 },
 ];
+
+const HEALTH_GYAN = [
+  'A 10-minute walk after meals can help regulate blood sugar.',
+  'Sleep is when your body repairs muscle and consolidates memory.',
+  'Staying hydrated improves focus and keeps energy levels steady.',
+  'Small, consistent habits beat big, rare efforts every time.',
+  'Movement is medicine — even a little beats none.',
+  'Eating slowly helps you feel full and digest better.',
+  'Standing or walking for 2 minutes every hour offsets sitting.',
+  'Morning sunlight helps set your circadian rhythm and mood.',
+  'Strength training 2x a week supports bones and metabolism.',
+  'Breathing deeply for a few minutes can lower stress and blood pressure.',
+];
+
+function HealthGyan() {
+  const [gyan] = useState(() => HEALTH_GYAN[Math.floor(Math.random() * HEALTH_GYAN.length)]);
+  return (
+    <p className="text-xs text-text-muted italic max-w-md mx-auto border-l-2 border-accent-superjoin-orange/30 pl-3 py-1">
+      {gyan}
+    </p>
+  );
+}
 
 export default function Home() {
   const [user, setUser] = useState<{ id: string; email?: string } | null>(null);
@@ -288,10 +325,11 @@ export default function Home() {
               </div>
             </div>
           </div>
-          <footer className="mt-8 sm:mt-12 pb-6 sm:pb-8 text-center space-y-2">
+          <footer className="mt-8 sm:mt-12 pb-6 sm:pb-8 text-center space-y-3">
             <p className="text-sm text-text-secondary max-w-md mx-auto">
               Where health becomes a team sport. Fair scoring. Real results. Every step, workout, and healthy habit counts toward your team&apos;s success.
             </p>
+            <HealthGyan />
             <p className="text-xs text-text-muted">
               Powered by <span className="font-semibold text-accent-superjoin-orange">Superjoin</span>
             </p>
@@ -303,30 +341,10 @@ export default function Home() {
 
   if (profile === null && user) {
     return (
-      <>
-        <header className="sticky top-0 z-50 safe-area-top border-b border-white/20 bg-surface-0/80 backdrop-blur-xl">
-          <div className="max-w-5xl mx-auto px-4 sm:px-6 py-3 sm:py-4">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2 sm:gap-3">
-                <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-accent-superjoin-orange/10 border border-accent-superjoin-orange/20 flex items-center justify-center flex-shrink-0">
-                  <Heart className="w-4 h-4 sm:w-5 sm:h-5 text-accent-superjoin-orange" />
-                </div>
-                <div className="flex items-center gap-1 sm:gap-2">
-                  <span className="text-sm sm:text-base font-bold text-text-primary">Superjoin</span>
-                  <span className="text-sm sm:text-base font-bold text-accent-superjoin-orange">Health OS</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </header>
-        <main className="max-w-lg mx-auto px-4 py-12">
-          <div className="glass-card p-8">
-            <h1 className="text-xl font-bold text-text-primary mb-2">Create your profile</h1>
-            <p className="text-sm text-text-secondary mb-6">One-time setup. All fields required for fair scoring (e.g. age bracket for step thresholds).</p>
-            <OnboardingForm onSuccess={loadUser} />
-          </div>
-        </main>
-      </>
+      <GoalSetupWizard
+        isNewUser
+        onComplete={loadUser}
+      />
     );
   }
 
@@ -353,6 +371,16 @@ export default function Home() {
           </div>
         </main>
       </>
+    );
+  }
+
+  if (user && profile && profileNeedsGoals(profile)) {
+    return (
+      <GoalSetupWizard
+        isNewUser={false}
+        existingProfile={profile}
+        onComplete={loadUser}
+      />
     );
   }
 
@@ -543,11 +571,22 @@ export default function Home() {
                     className="flex items-center gap-1.5 hover:opacity-80 transition-opacity"
                     aria-label="Profile & Settings"
                   >
-                    <div className="w-6 h-6 rounded-full bg-accent-superjoin-orange/20 border border-accent-superjoin-orange/30 flex items-center justify-center shrink-0">
-                      <span className="text-[10px] font-semibold text-accent-superjoin-orange leading-none">
-                        {profile?.display_name?.charAt(0).toUpperCase()}
-                      </span>
-                    </div>
+                    {profile ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={resolveAvatarUrl({
+                          userId: profile.id,
+                          displayName: profile.display_name,
+                          avatarUrl: profile.avatar_url,
+                        })}
+                        alt=""
+                        className="w-6 h-6 rounded-full object-cover shrink-0 border border-white/10 bg-surface-2"
+                      />
+                    ) : (
+                      <div className="w-6 h-6 rounded-full bg-accent-superjoin-orange/20 border border-accent-superjoin-orange/30 flex items-center justify-center shrink-0">
+                        <span className="text-[10px] font-semibold text-accent-superjoin-orange leading-none">?</span>
+                      </div>
+                    )}
                     <span className="text-xs font-medium text-text-secondary hidden sm:inline max-w-[120px] truncate">{profile?.display_name}</span>
                   </button>
                   <button
@@ -580,7 +619,7 @@ export default function Home() {
         </main>
 
         {/* Point system slide-over — all screen sizes */}
-        <PointSystemSheet open={pointsSheetOpen} onClose={() => setPointsSheetOpen(false)} />
+        <PointSystemSheet open={pointsSheetOpen} onClose={() => setPointsSheetOpen(false)} profile={profile ?? undefined} />
 
         <footer className="border-t border-white/10">
           <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8">

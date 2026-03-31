@@ -13,10 +13,19 @@ import {
   CheckCircle2,
   Zap,
   ArrowRight,
+  Utensils,
 } from 'lucide-react';
 import { apiUrl, getApiFetchOptions } from '@/lib/api';
 import { LogEntryModal, type EntryType } from './LogEntryModal';
-import type { Profile, DailyEntry } from '@/lib/types';
+import type { Profile, DailyEntry, FitnessGoal } from '@/lib/types';
+
+const FITNESS_GOAL_BADGES: Record<FitnessGoal, { label: string; color: string }> = {
+  lose_weight:      { label: 'Cutting',  color: 'bg-rose-100 text-rose-700 border border-rose-200' },
+  gain_muscle:      { label: 'Building', color: 'bg-indigo-100 text-indigo-700 border border-indigo-200' },
+  gain_weight:      { label: 'Bulking',  color: 'bg-emerald-100 text-emerald-700 border border-emerald-200' },
+  stay_active:      { label: 'Active',   color: 'bg-amber-100 text-amber-700 border border-amber-200' },
+  general_wellness: { label: 'Wellness', color: 'bg-violet-100 text-violet-700 border border-violet-200' },
+};
 
 // ── Blueprint Insights ─────────────────────────────────────────────────────────
 // Specific, actionable directives from Bryan Johnson's Blueprint protocol.
@@ -278,25 +287,52 @@ export function DashboardTab({
   });
 
   // Daily goal percentages
-  const stepsPct = clampPct(todayEntry?.steps, profile.goal_steps_day);
   const waterPct = clampPct(todayEntry?.water_liters, profile.goal_water_liters);
   const sleepGoal = profile.goal_sleep_hours ?? profile.goal_sleep_hours_max;
   const sleepPct = clampPct(todayEntry?.sleep_hours, sleepGoal);
   const workoutDone = !!(todayEntry?.workout_done || todayEntry?.cardio_done);
   const workoutPct = workoutDone ? 100 : 0;
 
+  // Food mode
+  const foodMode = profile.food_tracking_mode ?? null;
+  const trackProtein = !foodMode || foodMode === 'protein_only' || foodMode === 'both';
+  const trackCalories = foodMode === 'calories_only' || foodMode === 'both';
+
+  // Protein and calorie rings
+  const proteinPct = trackProtein && profile.goal_protein_g_day
+    ? clampPct((todayEntry as DailyEntry & { protein_qty?: number | null })?.protein_qty, profile.goal_protein_g_day)
+    : null;
+
+  // Calorie pct: directional
+  let caloriePct: number | null = null;
+  if (trackCalories && profile.goal_calories_day) {
+    const cal = (todayEntry as DailyEntry & { calories_kcal?: number | null })?.calories_kcal;
+    if (cal != null) {
+      const fg = profile.fitness_goal ?? 'stay_active';
+      if (fg === 'lose_weight') {
+        // lower is better — show as "how close to budget without going over"
+        caloriePct = Math.min(100, Math.round((profile.goal_calories_day / Math.max(cal, 1)) * 100));
+      } else {
+        caloriePct = clampPct(cal, profile.goal_calories_day);
+      }
+    } else {
+      caloriePct = 0;
+    }
+  }
+
   // Overall daily completion: average of all goals that are set
   const activeDailyPcts: number[] = [];
-  if (profile.goal_steps_day) activeDailyPcts.push(stepsPct);
   if (profile.goal_water_liters) activeDailyPcts.push(waterPct);
   if (sleepGoal) activeDailyPcts.push(sleepPct);
   if (profile.goal_workout_days_week) activeDailyPcts.push(workoutPct);
+  if (proteinPct !== null) activeDailyPcts.push(proteinPct);
+  if (caloriePct !== null) activeDailyPcts.push(caloriePct);
 
   const overallDailyPct =
     activeDailyPcts.length > 0
       ? Math.round(activeDailyPcts.reduce((a, b) => a + b, 0) / activeDailyPcts.length)
       : todayEntry
-        ? Math.min(Math.round((todayEntry.daily_points / 98) * 100), 100)
+        ? Math.min(Math.round((todayEntry.daily_points / 85) * 100), 100)
         : 0;
 
   const hasGoals = activeDailyPcts.length > 0;
@@ -305,14 +341,6 @@ export function DashboardTab({
   type RemainingItem = { icon: JSX.Element; text: string; modalType: EntryType };
   const remainingItems: RemainingItem[] = [];
 
-  if (profile.goal_steps_day && (todayEntry?.steps ?? 0) < profile.goal_steps_day) {
-    const rem = profile.goal_steps_day - (todayEntry?.steps ?? 0);
-    remainingItems.push({
-      icon: <Activity className="w-4 h-4 text-accent-green" />,
-      text: `Walk ${rem.toLocaleString()} more steps`,
-      modalType: 'movement',
-    });
-  }
   if (profile.goal_water_liters && (todayEntry?.water_liters ?? 0) < profile.goal_water_liters) {
     const rem = (profile.goal_water_liters - (todayEntry?.water_liters ?? 0)).toFixed(1);
     remainingItems.push({
@@ -335,6 +363,22 @@ export function DashboardTab({
       modalType: 'movement',
     });
   }
+  if (trackProtein && profile.goal_protein_g_day && proteinPct !== null && proteinPct < 100) {
+    const logged = (todayEntry as DailyEntry & { protein_qty?: number | null })?.protein_qty ?? 0;
+    const rem = profile.goal_protein_g_day - logged;
+    remainingItems.push({
+      icon: <Utensils className="w-4 h-4 text-amber-500" />,
+      text: `Log ${rem}g more protein`,
+      modalType: 'meal_recovery',
+    });
+  }
+  if (trackCalories && profile.goal_calories_day && caloriePct !== null && caloriePct < 80) {
+    remainingItems.push({
+      icon: <Utensils className="w-4 h-4 text-amber-500" />,
+      text: profile.fitness_goal === 'lose_weight' ? 'Track your calorie intake today' : 'Log your calorie intake to hit target',
+      modalType: 'meal_recovery',
+    });
+  }
 
   const allGoalsMet = hasGoals && remainingItems.length === 0;
 
@@ -346,8 +390,6 @@ export function DashboardTab({
   const goalCrushSafe = goalCrushStreak > 0 && allGoalsMet;
 
   // Weekly progress
-  // workout_done is only set when duration > 0 in the modal; also check workout_types
-  // and cardio signals so days aren't undercounted
   const weeklyWorkoutDays = weeklyEntries.filter(
     e =>
       e.workout_done ||
@@ -361,13 +403,9 @@ export function DashboardTab({
     (sum, e) => sum + (e.workout_duration ?? 0) + (e.cardio_duration ?? 0),
     0,
   );
-  const weeklyHomeCookedMeals = weeklyEntries.reduce(
-    (sum, e) => sum + (e.home_cooked_meals ?? 0),
-    0,
-  );
 
   const hasWeeklyGoals =
-    !!(profile.goal_workout_days_week || profile.goal_workout_mins_week || profile.goal_home_cooked_per_week);
+    !!(profile.goal_workout_days_week || profile.goal_workout_mins_week);
 
   // Blueprint insight of the day
   const insight = BLUEPRINT_INSIGHTS[getDayOfYear(new Date()) % BLUEPRINT_INSIGHTS.length];
@@ -401,9 +439,16 @@ export function DashboardTab({
 
         {/* ── Section 1: Greeting ──────────────────────────────────────────────── */}
         <div>
-          <h2 className="text-2xl font-bold text-text-primary">
-            {greeting}, {firstName}
-          </h2>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h2 className="text-2xl font-bold text-text-primary">
+              {greeting}, {firstName}
+            </h2>
+            {profile.fitness_goal && (
+              <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-full ${FITNESS_GOAL_BADGES[profile.fitness_goal]?.color ?? 'bg-gray-100 text-gray-600 border border-gray-200'}`}>
+                {FITNESS_GOAL_BADGES[profile.fitness_goal]?.label}
+              </span>
+            )}
+          </div>
           <p className="text-sm text-text-muted mt-0.5">
             {todayLabel} · Day {daysActive} in the league
           </p>
@@ -490,30 +535,49 @@ export function DashboardTab({
 
             {/* Category mini rings */}
             <div className="grid grid-cols-4 gap-3 w-full max-w-xs">
-              {/* Steps */}
+              {/* Protein or Calorie ring (replaces Steps) */}
               <div className="flex flex-col items-center gap-1.5">
-                <div className={`relative ${!profile.goal_steps_day ? 'opacity-30' : ''}`}>
-                  {profile.goal_steps_day ? (
-                    <CircleRing pct={stepsPct} size={60} strokeWidth={7} color="#059669" />
-                  ) : (
-                    <svg width={60} height={60} viewBox="0 0 60 60">
-                      <circle cx={30} cy={30} r={26.5} fill="none" stroke="#e2e8f0" strokeWidth={7} />
-                    </svg>
-                  )}
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <Activity className="w-4 h-4 text-text-muted" />
-                  </div>
-                </div>
-                <span className="text-[11px] font-medium text-text-secondary">Steps</span>
-                {profile.goal_steps_day ? (
+                {trackProtein && profile.goal_protein_g_day ? (
                   <>
-                    <span className="text-[11px] font-semibold text-text-primary">{stepsPct}%</span>
+                    <div className="relative">
+                      <CircleRing pct={proteinPct ?? 0} size={60} strokeWidth={7} color="#f59e0b" />
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <Utensils className="w-4 h-4 text-text-muted" />
+                      </div>
+                    </div>
+                    <span className="text-[11px] font-medium text-text-secondary">Protein</span>
+                    <span className="text-[11px] font-semibold text-text-primary">{proteinPct ?? 0}%</span>
                     <span className="text-[10px] text-text-muted leading-tight text-center">
-                      {(todayEntry?.steps ?? 0).toLocaleString()} / {profile.goal_steps_day.toLocaleString()}
+                      {(todayEntry as DailyEntry & { protein_qty?: number | null })?.protein_qty ?? 0}g / {profile.goal_protein_g_day}g
+                    </span>
+                  </>
+                ) : trackCalories && profile.goal_calories_day ? (
+                  <>
+                    <div className="relative">
+                      <CircleRing pct={caloriePct ?? 0} size={60} strokeWidth={7} color="#f59e0b" />
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <Utensils className="w-4 h-4 text-text-muted" />
+                      </div>
+                    </div>
+                    <span className="text-[11px] font-medium text-text-secondary">Calories</span>
+                    <span className="text-[11px] font-semibold text-text-primary">{caloriePct ?? 0}%</span>
+                    <span className="text-[10px] text-text-muted leading-tight text-center">
+                      {(todayEntry as DailyEntry & { calories_kcal?: number | null })?.calories_kcal ?? 0} kcal
                     </span>
                   </>
                 ) : (
-                  <span className="text-[11px] text-text-muted">–</span>
+                  <>
+                    <div className={`relative opacity-30`}>
+                      <svg width={60} height={60} viewBox="0 0 60 60">
+                        <circle cx={30} cy={30} r={26.5} fill="none" stroke="#e2e8f0" strokeWidth={7} />
+                      </svg>
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <Utensils className="w-4 h-4 text-text-muted" />
+                      </div>
+                    </div>
+                    <span className="text-[11px] font-medium text-text-secondary">Food</span>
+                    <span className="text-[11px] text-text-muted">–</span>
+                  </>
                 )}
               </div>
 
@@ -706,26 +770,6 @@ export function DashboardTab({
               </div>
             ) : null}
 
-            {/* Home-cooked meals */}
-            {profile.goal_home_cooked_per_week ? (
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-xs font-medium text-text-secondary">Home-cooked meals</span>
-                  <span className="text-xs font-semibold text-text-muted">
-                    {weeklyHomeCookedMeals}/{profile.goal_home_cooked_per_week}
-                  </span>
-                </div>
-                <div className="h-2 rounded-full bg-surface-3 overflow-hidden">
-                  <div
-                    className="h-full rounded-full bg-accent-blue transition-all duration-700"
-                    style={{
-                      width: `${Math.min((weeklyHomeCookedMeals / profile.goal_home_cooked_per_week) * 100, 100)}%`,
-                    }}
-                  />
-                </div>
-              </div>
-            ) : null}
-
             {!hasWeeklyGoals && (
               <p className="text-sm text-text-muted">
                 Set your weekly goals in{' '}
@@ -734,6 +778,38 @@ export function DashboardTab({
             )}
           </div>
         </div>
+
+        {/* ── Rank Trajectory ─────────────────────────────────────────────────── */}
+        {rank != null && (
+          <div className="glass-card p-5">
+            <h3 className="font-semibold text-text-primary flex items-center gap-2 mb-3">
+              <TrendingUp className="w-4 h-4 text-accent-superjoin-orange" />
+              Rank Trajectory
+            </h3>
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-xl bg-accent-superjoin-orange/10 border border-accent-superjoin-orange/20 flex items-center justify-center shrink-0">
+                <span className="text-lg font-bold text-accent-superjoin-orange">#{rank}</span>
+              </div>
+              <div className="flex-1 min-w-0">
+                {rank === 1 ? (
+                  <p className="text-sm font-medium text-text-primary">You&apos;re at the top!</p>
+                ) : (
+                  <p className="text-sm text-text-secondary">
+                    <span className="font-semibold text-text-primary">Rank #{rank}</span> this week
+                  </p>
+                )}
+                <p className="text-xs text-text-muted mt-0.5">
+                  {weeklyPoints} pts · {profile.fitness_goal ? FITNESS_GOAL_BADGES[profile.fitness_goal]?.label : 'No goal set'}
+                </p>
+              </div>
+            </div>
+            {!hasGoals && (
+              <p className="mt-3 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                Set daily goals in Profile &amp; Goals to get personalized rank-up guidance.
+              </p>
+            )}
+          </div>
+        )}
 
         {/* ── Section 5: Streak tiles ──────────────────────────────────────────── */}
         <div className="grid grid-cols-3 gap-3">

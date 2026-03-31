@@ -343,12 +343,13 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
   const goalDailyPts = useMemo(() => {
     const goalDays = workoutEntries.filter((e) => e.is_goal_crush_day === true && (e.daily_points ?? 0) > 0);
     if (goalDays.length === 0) {
-      // Fall back: rough estimate based on which goals are set
+      // Fall back: rough estimate based on which goals are set (new 85pt system)
       let est = 0;
       if ((profile.goal_workout_days_week ?? 0) > 0 || (profile.goal_workout_mins_week ?? 0) > 0) est += 20;
-      if ((profile.goal_steps_day ?? 0) > 0) est += 15;
       if ((profile.goal_sleep_hours ?? profile.goal_sleep_hours_min ?? 0) > 0) est += 10;
       if ((profile.goal_water_liters ?? 0) > 0) est += 10;
+      if ((profile.goal_protein_g_day ?? 0) > 0) est += 8;
+      if ((profile.goal_calories_day ?? 0) > 0) est += 8;
       return est > 0 ? est : 55;
     }
     const avg = goalDays.reduce((s, e) => s + (e.daily_points ?? 0), 0) / goalDays.length;
@@ -421,43 +422,49 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
         </p>
       </div>
 
-      {/* Goal pills — shown above the histogram card (matches DB: goal_sleep_hours or goal_sleep_hours_min/max) */}
+      {/* Goal pills */}
       {((profile.goal_workout_days_week ?? 0) > 0 ||
         (profile.goal_workout_mins_week ?? 0) > 0 ||
-        (profile.goal_steps_day ?? 0) > 0 ||
         (profile.goal_sleep_hours ?? profile.goal_sleep_hours_min ?? 0) > 0 ||
-        (profile.goal_water_liters ?? 0) > 0) && (
+        (profile.goal_water_liters ?? 0) > 0 ||
+        (profile.goal_protein_g_day ?? 0) > 0 ||
+        (profile.goal_calories_day ?? 0) > 0) && (
         <div className="space-y-1.5">
           <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Your goals</p>
-        <div className="flex flex-wrap gap-2">
-          {(profile.goal_workout_days_week ?? 0) > 0 && (
-            <span className="rounded-full bg-[#FF6B35]/15 text-[#FF6B35] px-2.5 py-1 text-xs font-semibold">
-              🏋️ {profile.goal_workout_days_week} days/wk
-            </span>
-          )}
-          {(profile.goal_workout_mins_week ?? 0) > 0 && !(profile.goal_workout_days_week ?? 0) && (
-            <span className="rounded-full bg-[#FF6B35]/15 text-[#FF6B35] px-2.5 py-1 text-xs font-semibold">
-              🏋️ {profile.goal_workout_mins_week}min/wk
-            </span>
-          )}
-          {(profile.goal_steps_day ?? 0) > 0 && (
-            <span className="rounded-full bg-emerald-500/15 text-emerald-400 px-2.5 py-1 text-xs font-semibold">
-              👟 {((profile.goal_steps_day ?? 0) / 1000).toFixed(0)}k steps/day
-            </span>
-          )}
-          {((profile.goal_sleep_hours ?? profile.goal_sleep_hours_min ?? 0) > 0) && (
-            <span className="rounded-full bg-blue-500/15 text-blue-400 px-2.5 py-1 text-xs font-semibold">
-              😴 {profile.goal_sleep_hours != null
-                ? `${profile.goal_sleep_hours}h`
-                : `${profile.goal_sleep_hours_min}–${profile.goal_sleep_hours_max}h`} sleep
-            </span>
-          )}
-          {(profile.goal_water_liters ?? 0) > 0 && (
-            <span className="rounded-full bg-amber-500/15 text-amber-400 px-2.5 py-1 text-xs font-semibold">
-              💧 {profile.goal_water_liters}L water
-            </span>
-          )}
-        </div>
+          <div className="flex flex-wrap gap-2">
+            {(profile.goal_workout_days_week ?? 0) > 0 && (
+              <span className="rounded-full bg-[#FF6B35]/15 text-[#FF6B35] px-2.5 py-1 text-xs font-semibold">
+                🏋️ {profile.goal_workout_days_week} days/wk
+              </span>
+            )}
+            {(profile.goal_workout_mins_week ?? 0) > 0 && !(profile.goal_workout_days_week ?? 0) && (
+              <span className="rounded-full bg-[#FF6B35]/15 text-[#FF6B35] px-2.5 py-1 text-xs font-semibold">
+                🏋️ {profile.goal_workout_mins_week}min/wk
+              </span>
+            )}
+            {((profile.goal_sleep_hours ?? profile.goal_sleep_hours_min ?? 0) > 0) && (
+              <span className="rounded-full bg-blue-500/15 text-blue-400 px-2.5 py-1 text-xs font-semibold">
+                😴 {profile.goal_sleep_hours != null
+                  ? `${profile.goal_sleep_hours}h`
+                  : `${profile.goal_sleep_hours_min}–${profile.goal_sleep_hours_max}h`} sleep
+              </span>
+            )}
+            {(profile.goal_water_liters ?? 0) > 0 && (
+              <span className="rounded-full bg-amber-500/15 text-amber-400 px-2.5 py-1 text-xs font-semibold">
+                💧 {profile.goal_water_liters}L water
+              </span>
+            )}
+            {(profile.goal_protein_g_day ?? 0) > 0 && (
+              <span className="rounded-full bg-indigo-500/15 text-indigo-400 px-2.5 py-1 text-xs font-semibold">
+                🥩 {profile.goal_protein_g_day}g protein/day
+              </span>
+            )}
+            {(profile.goal_calories_day ?? 0) > 0 && (
+              <span className="rounded-full bg-rose-500/15 text-rose-400 px-2.5 py-1 text-xs font-semibold">
+                🔥 {(profile.goal_calories_day ?? 0).toLocaleString()} kcal/day
+              </span>
+            )}
+          </div>
         </div>
       )}
 

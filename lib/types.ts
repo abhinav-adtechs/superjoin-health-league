@@ -1,7 +1,21 @@
 // Enums matching Supabase schema
 export type Gender = 'male' | 'female' | 'other';
-export type FitnessGoal = 'lose_weight' | 'gain_muscle' | 'stay_active' | 'general_wellness';
+export type FitnessGoal = 'lose_weight' | 'gain_muscle' | 'gain_weight' | 'stay_active' | 'general_wellness';
 export type AgeBracket = 'under_25' | '25_to_35' | 'over_35';
+export type WorkoutGoalType =
+  | 'strength'
+  | 'running'
+  | 'walking'
+  | 'martial_arts'
+  | 'cardio_mix'
+  | 'team_sports'
+  | 'racket_sports'
+  | 'cycling'
+  | 'swimming'
+  | 'yoga'
+  | 'crossfit';
+export type FoodTrackingMode = 'calories_only' | 'protein_only' | 'both';
+
 /** Multi-select: body parts + clusters */
 export type WorkoutOption =
   | 'bicep' | 'tricep' | 'shoulder' | 'chest' | 'back' | 'core' | 'quad' | 'hamstring' | 'glute' | 'calf' | 'forearm'
@@ -34,6 +48,10 @@ export interface Profile {
   pin_set_at?: string | null;
   created_at: string;
   updated_at: string;
+  // Goal change tracking
+  goal_changed_at?: string | null;
+  // Food tracking mode
+  food_tracking_mode?: FoodTrackingMode | null;
   // Personal goals (optional)
   goal_workout_mins_week?: number | null;
   goal_workout_days_week?: number | null;
@@ -43,6 +61,11 @@ export interface Profile {
   goal_sleep_hours_max?: number | null;
   goal_water_liters?: number | null;
   goal_home_cooked_per_week?: number | null;
+  // New goal fields
+  goal_protein_g_day?: number | null;
+  goal_calories_day?: number | null;
+  /** Primary workout focus tags (multi-select). */
+  goal_workout_types?: WorkoutGoalType[] | null;
 }
 
 export interface DailyEntry {
@@ -66,6 +89,8 @@ export interface DailyEntry {
   alcohol: Alcohol | null;
   sleep_hours: number | null;
   sleep_quality: number | null;
+  calories_kcal: number | null;
+  scored_with_goal: FitnessGoal | null;
   daily_points: number;
   is_goal_crush_day: boolean;
 }
@@ -102,19 +127,25 @@ export interface LeaderboardRanking {
     streak_days: number;
     goal_crush_streak: number;
     days_active: number;
+    fitness_goal?: FitnessGoal | null;
+    goal_workout_types?: WorkoutGoalType[] | null;
+    food_tracking_mode?: FoodTrackingMode | null;
   };
   score: {
     total_points: number;
     normalized_score: number;
-    /** % of theoretical max points achieved (weekly: points / days_elapsed / 98 * 100) */
+    /** % of theoretical max points achieved (weekly: points / days_elapsed / 85 * 100) */
     goals_pct?: number;
-    breakdown?: { workout: number; nutrition: number; sleep: number; steps: number };
-    breakdown_pct?: { exercise: string; nutrition: string; sleep: string; steps: string };
+    /** Goal adherence: % of personal goals hit per day (averaged over period) */
+    goal_adherence_pct?: number;
+    breakdown?: { workout: number; nutrition: number; sleep: number; movement: number };
+    breakdown_pct?: { exercise: string; nutrition: string; sleep: string; movement: string };
   };
   insights?: {
     strongest_category: string;
     improvement_vs_last_week?: string;
     improvement_detail?: string;
+    pts_to_next_rank?: number | null;
   };
 }
 

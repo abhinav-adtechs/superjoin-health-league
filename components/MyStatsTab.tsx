@@ -1,10 +1,89 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type ReactNode } from 'react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
-import { Target, Activity, Utensils, Moon, Pencil, Check, X, RefreshCw } from 'lucide-react';
+import { Target, Activity, Utensils, Moon, Pencil, Check, X, Calendar, Ruler, Scale } from 'lucide-react';
 import { apiUrl, getApiFetchOptions } from '@/lib/api';
-import type { Profile } from '@/lib/types';
+import type { Profile, FitnessGoal, FoodTrackingMode, WorkoutGoalType } from '@/lib/types';
+import { parseGoalWorkoutTypes } from '@/lib/workout-goals';
+import { formatProteinRecommendationLine } from '@/lib/protein-recommendations';
+import { getGoalHabitTips } from '@/lib/goal-habit-tips';
+import {
+  RECOMMENDED_SLEEP_HOURS_BY_GOAL,
+  RECOMMENDED_WATER_LITERS_BY_GOAL,
+  RECOMMENDED_WORKOUT_DAYS_WEEK_BY_GOAL,
+  formatRecommendedWaterLine,
+  formatRecommendedSleepLine,
+  formatRecommendedWorkoutSummaryLine,
+  recommendedWorkoutHoursMinsParts,
+} from '@/lib/goal-defaults';
+import { dicebearAvatarUrl, dicebearAvatarPickerSeeds, resolveAvatarUrl } from '@/lib/avatar-url';
+
+const FITNESS_GOAL_BADGES: Record<FitnessGoal, { label: string; color: string }> = {
+  lose_weight:      { label: 'Cutting',  color: 'bg-rose-100 text-rose-700 border-rose-200' },
+  gain_muscle:      { label: 'Building', color: 'bg-indigo-100 text-indigo-700 border-indigo-200' },
+  gain_weight:      { label: 'Bulking',  color: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
+  stay_active:      { label: 'Active',   color: 'bg-amber-100 text-amber-700 border-amber-200' },
+  general_wellness: { label: 'Wellness', color: 'bg-violet-100 text-violet-700 border-violet-200' },
+};
+
+const FITNESS_GOAL_DETAILS: Record<FitnessGoal, {
+  emoji: string;
+  who: string;
+  calorieModeLabel: string;
+  calorieModeHint: string;
+  calorieModeColor: string;
+}> = {
+  lose_weight: {
+    emoji: '🔥',
+    who: 'I want to burn fat',
+    calorieModeLabel: 'Calorie deficit',
+    calorieModeHint: 'Points for staying ≤ your calorie budget',
+    calorieModeColor: 'bg-rose-100 text-rose-700',
+  },
+  gain_muscle: {
+    emoji: '💪',
+    who: 'I want to build lean muscle',
+    calorieModeLabel: 'Calorie surplus',
+    calorieModeHint: 'Points for hitting ≥ 90% of calorie + protein targets',
+    calorieModeColor: 'bg-emerald-100 text-emerald-700',
+  },
+  gain_weight: {
+    emoji: '📈',
+    who: 'I want to add overall mass',
+    calorieModeLabel: 'Calorie surplus',
+    calorieModeHint: 'Points for meeting or exceeding your calorie target',
+    calorieModeColor: 'bg-emerald-100 text-emerald-700',
+  },
+  stay_active: {
+    emoji: '🏃',
+    who: 'I want to stay fit and consistent',
+    calorieModeLabel: 'Maintenance calories',
+    calorieModeHint: 'Eat around your maintenance level. Points scale with what you log — suited for people not actively cutting or bulking.',
+    calorieModeColor: 'bg-amber-100 text-amber-700',
+  },
+  general_wellness: {
+    emoji: '🧘',
+    who: 'I want to feel better overall',
+    calorieModeLabel: 'Balanced eating',
+    calorieModeHint: 'Scoring rewards balanced habits — sleep, hydration and food variety — not hitting a specific macro target.',
+    calorieModeColor: 'bg-violet-100 text-violet-700',
+  },
+};
+
+const WORKOUT_TYPES: { value: WorkoutGoalType; label: string; emoji: string }[] = [
+  { value: 'strength',      label: 'Strength',        emoji: '🏋️' },
+  { value: 'running',       label: 'Running',         emoji: '🏃' },
+  { value: 'team_sports',   label: 'Team Sports',     emoji: '⚽' },
+  { value: 'racket_sports', label: 'Racket Sports',   emoji: '🏸' },
+  { value: 'martial_arts',  label: 'Martial Arts',    emoji: '🥊' },
+  { value: 'cycling',       label: 'Cycling',         emoji: '🚴' },
+  { value: 'swimming',      label: 'Swimming',        emoji: '🏊' },
+  { value: 'yoga',          label: 'Yoga / Flex',     emoji: '🧘' },
+  { value: 'crossfit',      label: 'CrossFit / HIIT', emoji: '⚡' },
+  { value: 'walking',       label: 'Walking',         emoji: '🚶' },
+  { value: 'cardio_mix',    label: 'Mixed Cardio',    emoji: '🔄' },
+];
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -35,15 +114,40 @@ function fmtDate(dateStr: string): string {
   return `${day} ${mon} '${yr}`;
 }
 
-// DiceBear avataaars — caricature-style cartoon avatars
-function avatarUrl(seed: string) {
-  return `https://api.dicebear.com/9.x/avataaars/svg?seed=${encodeURIComponent(seed)}&backgroundColor=b6e3f4,c0aede,d1d4f9,ffd5dc,ffdfbf`;
-}
+/** Goals editor: inputs with depth, inset highlight, and focus ring. */
+const GOALS_INPUT =
+  'w-full rounded-xl border border-slate-200/90 bg-gradient-to-b from-white to-slate-50/90 px-3.5 py-2.5 text-sm text-text-primary shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_1px_2px_rgba(15,23,42,0.05)] outline-none transition placeholder:text-slate-400 focus:border-primary-orange/50 focus:ring-2 focus:ring-primary-orange/20 focus:shadow-[0_0_0_3px_rgba(255,107,53,0.1),inset_0_1px_0_rgba(255,255,255,0.95)]';
 
-// Generate N avatar seed options for a given name
-function avatarSeeds(name: string): string[] {
-  const base = name.replace(/\s+/g, '');
-  return [base, `${base}2`, `${base}3`, `${base}x`, `${base}pro`, `${base}7`];
+function GoalFormTip({
+  title,
+  tone,
+  children,
+}: {
+  title: string;
+  tone: 'coral' | 'sky' | 'amber' | 'indigo';
+  children: ReactNode;
+}) {
+  const shell = {
+    coral:
+      'border-orange-200/75 bg-gradient-to-br from-orange-50/95 via-white to-white',
+    sky: 'border-sky-200/75 bg-gradient-to-br from-sky-50/90 via-white to-white',
+    amber:
+      'border-amber-200/75 bg-gradient-to-br from-amber-50/90 via-white to-white',
+    indigo:
+      'border-indigo-200/75 bg-gradient-to-br from-indigo-50/90 via-white to-white',
+  }[tone];
+  const titleCls = {
+    coral: 'text-orange-900/90',
+    sky: 'text-sky-900/90',
+    amber: 'text-amber-900/90',
+    indigo: 'text-indigo-900/90',
+  }[tone];
+  return (
+    <div className={`rounded-xl border px-3.5 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] ${shell}`}>
+      <p className={`text-[10px] font-semibold uppercase tracking-wide mb-1 ${titleCls}`}>{title}</p>
+      <p className="text-[11px] text-text-secondary leading-relaxed">{children}</p>
+    </div>
+  );
 }
 
 // ─── component ──────────────────────────────────────────────────────────────
@@ -61,7 +165,6 @@ export function MyStatsTab({ profile, onSuccess }: { profile: Profile; onSuccess
     display_name: profile.display_name,
     age: String(profile.age),
     height_cm: String(profile.height_cm),
-    current_weight: String(profile.current_weight ?? ''),
     gender: profile.gender,
   });
 
@@ -77,19 +180,32 @@ export function MyStatsTab({ profile, onSuccess }: { profile: Profile; onSuccess
   );
   const [goals, setGoals] = useState({
     goal_workout_days_week: profile.goal_workout_days_week ?? '',
-    goal_steps_day: profile.goal_steps_day ?? '',
     goal_sleep_hours: profile.goal_sleep_hours ?? profile.goal_sleep_hours_min ?? '',
     goal_water_liters: profile.goal_water_liters ?? '',
-    goal_home_cooked_per_week: profile.goal_home_cooked_per_week ?? '',
+    goal_protein_g_day: profile.goal_protein_g_day ?? '',
+    goal_calories_day: profile.goal_calories_day ?? '',
   });
+  const [fitnessGoal, setFitnessGoal] = useState<FitnessGoal>(profile.fitness_goal ?? 'stay_active');
+  const [foodMode, setFoodMode] = useState<FoodTrackingMode>(profile.food_tracking_mode ?? 'protein_only');
+  const [workoutTypes, setWorkoutTypes] = useState<WorkoutGoalType[]>(() => {
+    const w = parseGoalWorkoutTypes(profile.goal_workout_types);
+    return w.length > 0 ? w : ['cardio_mix'];
+  });
+
+  function toggleWorkoutType(t: WorkoutGoalType) {
+    setWorkoutTypes((prev) => (prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]));
+  }
+  const [goalChangeWarning, setGoalChangeWarning] = useState(false);
+  const [goalsFieldError, setGoalsFieldError] = useState<string | null>(null);
+  const [goalsSavedToast, setGoalsSavedToast] = useState(false);
 
   const hasAnyGoals = [
     profile.goal_workout_mins_week,
     profile.goal_workout_days_week,
-    profile.goal_steps_day,
     profile.goal_sleep_hours ?? profile.goal_sleep_hours_min,
     profile.goal_water_liters,
-    profile.goal_home_cooked_per_week,
+    profile.goal_protein_g_day,
+    profile.goal_calories_day,
   ].some((v) => v != null && String(v) !== '');
 
   useEffect(() => {
@@ -98,20 +214,29 @@ export function MyStatsTab({ profile, onSuccess }: { profile: Profile; onSuccess
     setGoalWorkoutMins(m != null ? String(m % 60) : '');
     setGoals({
       goal_workout_days_week: profile.goal_workout_days_week ?? '',
-      goal_steps_day: profile.goal_steps_day ?? '',
       goal_sleep_hours: profile.goal_sleep_hours ?? profile.goal_sleep_hours_min ?? '',
       goal_water_liters: profile.goal_water_liters ?? '',
-      goal_home_cooked_per_week: profile.goal_home_cooked_per_week ?? '',
+      goal_protein_g_day: profile.goal_protein_g_day ?? '',
+      goal_calories_day: profile.goal_calories_day ?? '',
     });
+    setFitnessGoal(profile.fitness_goal ?? 'stay_active');
+    setFoodMode(profile.food_tracking_mode ?? 'protein_only');
+    {
+      const w = parseGoalWorkoutTypes(profile.goal_workout_types);
+      setWorkoutTypes(w.length > 0 ? w : ['cardio_mix']);
+    }
     setProfileFields({
       display_name: profile.display_name,
       age: String(profile.age),
       height_cm: String(profile.height_cm),
-      current_weight: String(profile.current_weight ?? ''),
       gender: profile.gender,
     });
     setSelectedAvatar(profile.avatar_url ?? '');
   }, [profile]);
+
+  useEffect(() => {
+    if (workoutTypes.length > 0) setGoalsFieldError(null);
+  }, [workoutTypes]);
 
   useEffect(() => {
     const from = new Date();
@@ -142,7 +267,6 @@ export function MyStatsTab({ profile, onSuccess }: { profile: Profile; onSuccess
       gender: profileFields.gender,
       avatar_url: selectedAvatar || null,
     };
-    if (profileFields.current_weight !== '') payload.current_weight = Number(profileFields.current_weight);
     const res = await fetch(apiUrl('/api/users/me'), getApiFetchOptions({
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -154,17 +278,25 @@ export function MyStatsTab({ profile, onSuccess }: { profile: Profile; onSuccess
 
   const handleSaveGoals = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (workoutTypes.length === 0) {
+      setGoalsFieldError('Select at least one workout type.');
+      return;
+    }
+    setGoalsFieldError(null);
     setGoalsSaving(true);
     const num = (v: string | number) => (v === '' || v == null ? null : Number(v));
     const totalWorkoutMins = (goalWorkoutHours !== '' || goalWorkoutMins !== '')
       ? (Number(goalWorkoutHours || 0) * 60 + Number(goalWorkoutMins || 0)) : null;
-    const payload: Record<string, number | null> = {
+    const payload: Record<string, unknown> = {
+      fitness_goal: fitnessGoal,
+      food_tracking_mode: foodMode,
+      goal_workout_types: workoutTypes,
       goal_workout_mins_week: totalWorkoutMins,
       goal_workout_days_week: num(goals.goal_workout_days_week),
-      goal_steps_day: num(goals.goal_steps_day),
       goal_sleep_hours: num(goals.goal_sleep_hours),
       goal_water_liters: num(goals.goal_water_liters),
-      goal_home_cooked_per_week: num(goals.goal_home_cooked_per_week),
+      goal_protein_g_day: foodMode !== 'calories_only' ? num(goals.goal_protein_g_day) : null,
+      goal_calories_day: foodMode !== 'protein_only' ? num(goals.goal_calories_day) : null,
     };
     const res = await fetch(apiUrl('/api/users/me'), getApiFetchOptions({
       method: 'PUT',
@@ -172,17 +304,44 @@ export function MyStatsTab({ profile, onSuccess }: { profile: Profile; onSuccess
       body: JSON.stringify(payload),
     }));
     setGoalsSaving(false);
-    if (res.ok) { setEditingGoals(false); onSuccess?.(); }
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      setGoalsFieldError(typeof (d as { error?: string }).error === 'string' ? (d as { error: string }).error : 'Could not save goals');
+      return;
+    }
+    setGoalsFieldError(null);
+    setEditingGoals(false);
+    setGoalChangeWarning(false);
+    setGoalsSavedToast(true);
+    window.setTimeout(() => setGoalsSavedToast(false), 5500);
+    onSuccess?.();
   };
 
   if (loading) return <div className="animate-pulse text-text-muted py-10">Loading your stats…</div>;
+
+  const weightKgForGoals = profile.current_weight ?? profile.starting_weight ?? 70;
+
+  const habitTipsForGoal = getGoalHabitTips(fitnessGoal);
+  const goalBadgeLabel = FITNESS_GOAL_BADGES[fitnessGoal].label;
+  const recWorkoutParts = recommendedWorkoutHoursMinsParts(fitnessGoal);
 
   const bmi = profile.current_weight && profile.height_cm
     ? (profile.current_weight / Math.pow(profile.height_cm / 100, 2)).toFixed(1) : null;
 
   const { feet, inches } = cmToFeetInch(profile.height_cm);
-  const seeds = avatarSeeds(profile.display_name);
-  const currentAvatarSrc = profile.avatar_url || avatarUrl(profile.display_name);
+  const seeds = dicebearAvatarPickerSeeds(profile.display_name);
+  const autoAvatarSrc = resolveAvatarUrl({
+    userId: profile.id,
+    displayName: profile.display_name,
+    avatarUrl: null,
+  });
+  const currentAvatarSrc = editingProfile
+    ? (selectedAvatar || autoAvatarSrc)
+    : resolveAvatarUrl({
+        userId: profile.id,
+        displayName: profile.display_name,
+        avatarUrl: profile.avatar_url,
+      });
 
   const weightChartData = [...weightHistory].reverse().map((w) => ({
     ...w,
@@ -191,11 +350,6 @@ export function MyStatsTab({ profile, onSuccess }: { profile: Profile; onSuccess
 
   const editBtnCls = 'flex items-center gap-1.5 text-xs font-medium transition-colors px-3 py-1.5 rounded-lg border';
 
-  const foodGoalList = [
-    { key: 'goal_water_liters', label: 'Water (L/day)', value: goals.goal_water_liters, set: (v: string) => setGoals((g) => ({ ...g, goal_water_liters: v })), placeholder: '2.5', min: 0, max: 10, step: 0.5 },
-    { key: 'goal_home_cooked_per_week', label: 'Home-cooked/week', value: goals.goal_home_cooked_per_week, set: (v: string) => setGoals((g) => ({ ...g, goal_home_cooked_per_week: v })), placeholder: '10', min: 0, max: 21 },
-  ];
-
   return (
     <div className="space-y-8 animate-fade-up">
 
@@ -203,13 +357,13 @@ export function MyStatsTab({ profile, onSuccess }: { profile: Profile; onSuccess
           PROFILE CARD
       ══════════════════════════════════════ */}
       <div className="glass-card overflow-hidden">
-        {/* Banner with edit button */}
-        <div className="h-20 bg-gradient-to-r from-primary-orange/25 via-primary-orange/10 to-indigo-100/30 relative">
+        {/* Banner — Edit profile sits in the gradient */}
+        <div className="h-24 sm:h-28 bg-gradient-to-r from-primary-orange/25 via-primary-orange/10 to-indigo-100/30 relative">
           {!editingProfile && (
             <button
               type="button"
               onClick={() => setEditingProfile(true)}
-              className={`${editBtnCls} absolute top-3 right-3 text-primary-orange border-primary-orange/30 bg-white/70 hover:bg-white hover:border-primary-orange/50 backdrop-blur-sm`}
+              className={`absolute right-4 sm:right-6 top-1/2 -translate-y-1/2 ${editBtnCls} text-primary-orange border-primary-orange/20 hover:bg-primary-orange/5 hover:border-primary-orange/30`}
             >
               <Pencil className="w-3.5 h-3.5" />
               Edit profile
@@ -219,12 +373,14 @@ export function MyStatsTab({ profile, onSuccess }: { profile: Profile; onSuccess
 
         <div className="px-4 sm:px-6 pb-5">
           {/* Avatar row */}
-          <div className="flex items-end -mt-9 mb-4">
-            <div className="w-16 h-16 rounded-2xl ring-4 ring-white shadow-md overflow-hidden bg-gradient-to-br from-primary-orange to-primary-orange-dark flex items-center justify-center text-white text-xl font-bold shrink-0">
-              {currentAvatarSrc.startsWith('http')
-                ? <img src={currentAvatarSrc} alt={profile.display_name} className="w-full h-full object-cover" />
-                : <span>{getInitials(profile.display_name)}</span>
-              }
+          <div className="flex items-end -mt-12 sm:-mt-14 mb-4">
+            <div className="relative shrink-0">
+              <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl sm:rounded-3xl ring-4 ring-white shadow-lg overflow-hidden bg-gradient-to-br from-primary-orange to-primary-orange-dark flex items-center justify-center text-white text-2xl sm:text-3xl font-bold">
+                {currentAvatarSrc.startsWith('http')
+                  ? <img src={currentAvatarSrc} alt={profile.display_name} className="w-full h-full object-cover" />
+                  : <span>{getInitials(profile.display_name)}</span>
+                }
+              </div>
             </div>
           </div>
 
@@ -235,7 +391,7 @@ export function MyStatsTab({ profile, onSuccess }: { profile: Profile; onSuccess
                 <p className="text-xs font-medium text-text-muted mb-2">Choose your avatar</p>
                 <div className="flex gap-2 flex-wrap">
                   {seeds.map((seed) => {
-                    const url = avatarUrl(seed);
+                    const url = dicebearAvatarUrl(seed);
                     const active = selectedAvatar === url;
                     return (
                       <button
@@ -276,19 +432,17 @@ export function MyStatsTab({ profile, onSuccess }: { profile: Profile; onSuccess
                     <option value="other">Other</option>
                   </select>
                 </div>
-                <div>
+                <div className="sm:col-span-2">
                   <label className="block text-xs font-medium text-text-muted mb-1">Height (cm)</label>
                   <input type="number" min={1} max={300} step={0.1} value={profileFields.height_cm}
                     onChange={(e) => setProfileFields((p) => ({ ...p, height_cm: e.target.value }))}
                     className="input-field" required />
                 </div>
-                <div>
-                  <label className="block text-xs font-medium text-text-muted mb-1">Current weight (kg)</label>
-                  <input type="number" min={1} max={500} step={0.1} value={profileFields.current_weight}
-                    onChange={(e) => setProfileFields((p) => ({ ...p, current_weight: e.target.value }))}
-                    className="input-field" />
-                </div>
               </div>
+              <p className="text-[11px] text-text-muted leading-relaxed rounded-lg bg-surface-1 border border-white/10 px-3 py-2">
+                Weight isn&apos;t edited here — it updates when you choose{' '}
+                <span className="font-medium text-text-secondary">Log weight</span> from the + menu when adding an entry.
+              </p>
               <div className="flex gap-2">
                 <button type="submit" disabled={profileSaving} className="btn-primary flex items-center gap-2 text-sm">
                   <Check className="w-3.5 h-3.5" />
@@ -304,20 +458,53 @@ export function MyStatsTab({ profile, onSuccess }: { profile: Profile; onSuccess
             <>
               <h3 className="text-xl font-bold text-text-primary leading-tight">{profile.display_name}</h3>
               <p className="text-sm text-text-muted capitalize mb-4">{profile.gender}</p>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
-                {[
-                  { label: 'Age', value: `${profile.age}` },
-                  { label: 'Height', value: `${profile.height_cm} cm`, sub: `${feet}'${inches}"` },
-                  { label: 'Weight', value: profile.current_weight != null ? `${profile.current_weight} kg` : '—' },
-                  { label: 'BMI', value: bmi ?? '—' },
-                ].map(({ label, value, sub }) => (
-                  <div key={label} className="bg-surface-1 rounded-xl px-3 py-3">
-                    <p className="text-[10px] uppercase tracking-wider text-text-muted font-semibold">{label}</p>
-                    <p className="text-base font-bold text-text-primary mt-0.5 leading-tight">{value}</p>
-                    {sub && <p className="text-xs text-text-muted mt-0.5">{sub}</p>}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="relative overflow-hidden rounded-2xl border border-amber-200/70 bg-gradient-to-br from-amber-50 via-white to-white p-3.5 sm:p-4 shadow-sm ring-1 ring-amber-900/[0.04]">
+                  <div className="inline-flex rounded-xl bg-amber-500/15 p-2 text-amber-700">
+                    <Calendar className="size-4 shrink-0" strokeWidth={2.25} />
                   </div>
-                ))}
+                  <p className="mt-3 text-[10px] font-semibold uppercase tracking-wider text-amber-900/70">Age</p>
+                  <p className="mt-0.5 text-[1.65rem] sm:text-[1.75rem] font-bold tabular-nums tracking-tight text-amber-950 leading-none">{profile.age}</p>
+                  <p className="text-[11px] font-medium text-amber-800/75">years</p>
+                </div>
+                <div className="relative overflow-hidden rounded-2xl border border-sky-200/70 bg-gradient-to-br from-sky-50 via-white to-white p-3.5 sm:p-4 shadow-sm ring-1 ring-sky-900/[0.04]">
+                  <div className="inline-flex rounded-xl bg-sky-500/15 p-2 text-sky-700">
+                    <Ruler className="size-4 shrink-0" strokeWidth={2.25} />
+                  </div>
+                  <p className="mt-3 text-[10px] font-semibold uppercase tracking-wider text-sky-900/70">Height</p>
+                  <p className="mt-0.5 text-[1.65rem] sm:text-[1.75rem] font-bold tabular-nums tracking-tight text-sky-950 leading-none">{profile.height_cm}</p>
+                  <p className="text-[11px] font-medium text-sky-800/75">
+                    cm <span className="text-sky-700/80">·</span> {feet}&apos;{inches}&quot;
+                  </p>
+                </div>
+                <div className="relative overflow-hidden rounded-2xl border border-emerald-200/70 bg-gradient-to-br from-emerald-50 via-white to-white p-3.5 sm:p-4 shadow-sm ring-1 ring-emerald-900/[0.04]">
+                  <div className="inline-flex rounded-xl bg-emerald-500/15 p-2 text-emerald-700">
+                    <Scale className="size-4 shrink-0" strokeWidth={2.25} />
+                  </div>
+                  <p className="mt-3 text-[10px] font-semibold uppercase tracking-wider text-emerald-900/70">Weight</p>
+                  <p className="mt-0.5 text-[1.65rem] sm:text-[1.75rem] font-bold tabular-nums tracking-tight text-emerald-950 leading-none">
+                    {profile.current_weight != null ? profile.current_weight : '—'}
+                  </p>
+                  <p className="text-[11px] font-medium text-emerald-800/75">kg</p>
+                </div>
+                <div className="relative overflow-hidden rounded-2xl border border-violet-200/70 bg-gradient-to-br from-violet-50 via-white to-white p-3.5 sm:p-4 shadow-sm ring-1 ring-violet-900/[0.04]">
+                  <div className="inline-flex rounded-xl bg-violet-500/15 p-2 text-violet-700">
+                    <Activity className="size-4 shrink-0" strokeWidth={2.25} />
+                  </div>
+                  <p className="mt-3 text-[10px] font-semibold uppercase tracking-wider text-violet-900/70">BMI</p>
+                  <p className={`mt-0.5 text-[1.65rem] sm:text-[1.75rem] font-bold tabular-nums tracking-tight leading-none ${bmi ? 'text-violet-950' : 'text-violet-400'}`}>
+                    {bmi ?? '—'}
+                  </p>
+                  <p className="text-[11px] font-medium text-violet-800/75">index</p>
+                </div>
               </div>
+              <p className="mt-3 flex items-start gap-2 rounded-xl border border-dashed border-slate-200/90 bg-slate-50/80 px-3 py-2.5 text-[11px] leading-snug text-text-muted">
+                <Scale className="size-3.5 shrink-0 mt-0.5 text-primary-orange/70" strokeWidth={2.25} />
+                <span>
+                  You can&apos;t edit weight here — it updates when you choose{' '}
+                  <span className="font-semibold text-text-secondary">Log weight</span> from the + menu when adding an entry.
+                </span>
+              </p>
             </>
           )}
         </div>
@@ -333,6 +520,12 @@ export function MyStatsTab({ profile, onSuccess }: { profile: Profile; onSuccess
               <Target className="w-4 h-4 text-accent-green" />
             </div>
             <span className="font-semibold text-text-primary">My Goals</span>
+            {/* Fitness goal badge */}
+            {profile.fitness_goal && (
+              <span className={`ml-1 px-2 py-0.5 text-xs font-semibold rounded-full border ${FITNESS_GOAL_BADGES[profile.fitness_goal]?.color ?? 'bg-gray-100 text-gray-600 border-gray-200'}`}>
+                {FITNESS_GOAL_BADGES[profile.fitness_goal]?.label ?? profile.fitness_goal}
+              </span>
+            )}
           </div>
           {hasAnyGoals && !editingGoals && (
             <button
@@ -347,79 +540,241 @@ export function MyStatsTab({ profile, onSuccess }: { profile: Profile; onSuccess
         </div>
 
         <div className="p-4 sm:p-6">
+          {goalsSavedToast && (
+            <div
+              className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50/90 px-4 py-3 flex items-start gap-3 animate-fade-up"
+              role="status"
+            >
+              <span className="text-xl leading-none" aria-hidden>✨</span>
+              <div>
+                <p className="text-sm font-semibold text-emerald-900">Let&apos;s get set — go!</p>
+                <p className="text-xs text-emerald-800/90 mt-0.5 leading-relaxed">
+                  Your goals are saved. Small steps today, big momentum tomorrow.
+                </p>
+              </div>
+            </div>
+          )}
           {(editingGoals || !hasAnyGoals) ? (
             <form onSubmit={handleSaveGoals} className="space-y-6">
-              {/* Workout */}
+              {/* Fitness Goal */}
               <div>
-                <div className="flex items-center gap-2 mb-3">
-                  <Activity className="w-4 h-4 text-[#FF6B35]" />
-                  <span className="text-sm font-semibold text-text-primary">Workout</span>
+                <div className="flex items-center gap-2 mb-1">
+                  <Target className="w-4 h-4 text-indigo-500" />
+                  <span className="text-sm font-semibold text-text-primary">Fitness Goal</span>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div>
-                    <label className="block text-xs font-medium text-text-muted mb-1">Duration per week</label>
-                    <div className="flex gap-1.5">
-                      <div className="relative flex-1 min-w-0">
-                        <input type="number" min={0} max={20} placeholder="4" value={goalWorkoutHours}
-                          onChange={(e) => setGoalWorkoutHours(e.target.value)}
-                          className="input-field pr-7" />
-                        <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-text-muted pointer-events-none">h</span>
-                      </div>
-                      <div className="relative flex-1 min-w-0">
-                        <input type="number" min={0} max={59} placeholder="30" value={goalWorkoutMins}
-                          onChange={(e) => setGoalWorkoutMins(e.target.value)}
-                          className="input-field pr-9" />
-                        <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-text-muted pointer-events-none">min</span>
-                      </div>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-text-muted mb-1">Days/week</label>
-                    <input type="number" min={0} max={7} placeholder="4" value={goals.goal_workout_days_week}
-                      onChange={(e) => setGoals((g) => ({ ...g, goal_workout_days_week: e.target.value }))}
-                      className="input-field" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-text-muted mb-1">Steps/day</label>
-                    <input type="number" min={0} max={100000} placeholder="10000" value={goals.goal_steps_day}
-                      onChange={(e) => setGoals((g) => ({ ...g, goal_steps_day: e.target.value }))}
-                      className="input-field" />
-                  </div>
+                <p className="text-xs text-text-muted mb-3">This changes how your food points are scored — not just a label.</p>
+                <div className="grid grid-cols-1 gap-2">
+                  {(Object.keys(FITNESS_GOAL_BADGES) as FitnessGoal[]).map((g) => {
+                    const badge = FITNESS_GOAL_BADGES[g];
+                    const detail = FITNESS_GOAL_DETAILS[g];
+                    const selected = fitnessGoal === g;
+                    return (
+                      <button
+                        key={g}
+                        type="button"
+                        onClick={() => {
+                          if (g !== profile.fitness_goal) setGoalChangeWarning(true);
+                          setFitnessGoal(g);
+                        }}
+                        className={`rounded-xl px-3 py-2.5 text-left transition-all border ${
+                          selected
+                            ? badge.color + ' border-current shadow-sm'
+                            : 'bg-surface-1 border-white/10 hover:bg-surface-2 text-text-secondary'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-base flex-shrink-0">{detail.emoji}</span>
+                            <div className="min-w-0">
+                              <span className="text-xs font-semibold block leading-tight">{badge.label}</span>
+                              <span className="text-[11px] opacity-70 block leading-tight">{detail.who}</span>
+                            </div>
+                          </div>
+                          {selected && <span className="text-xs opacity-80 flex-shrink-0">✓</span>}
+                        </div>
+                        {selected && (
+                          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${detail.calorieModeColor}`}>
+                              {detail.calorieModeLabel}
+                            </span>
+                            <span className="text-[10px] opacity-70">{detail.calorieModeHint}</span>
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
+                {goalChangeWarning && (
+                  <p className="mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                    ⚠️ Changing your fitness goal only affects entries from today. Past points are preserved.
+                  </p>
+                )}
               </div>
 
-              {/* Food */}
-              <div>
-                <div className="flex items-center gap-2 mb-3">
-                  <Utensils className="w-4 h-4 text-accent-gold" />
-                  <span className="text-sm font-semibold text-text-primary">Food</span>
+              {/* Workout — section tip + card */}
+              <div className="rounded-2xl border border-orange-200/70 bg-gradient-to-br from-white via-orange-50/25 to-white p-4 sm:p-5 shadow-sm space-y-4">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#FF6B35]/12 text-[#FF6B35] shadow-sm ring-1 ring-[#FF6B35]/20">
+                    <Activity className="h-5 w-5" strokeWidth={2.25} />
+                  </div>
+                  <div className="min-w-0 pt-0.5">
+                    <h3 className="text-sm font-semibold text-text-primary">Workout</h3>
+                    <p className="text-[11px] text-text-muted mt-0.5">Types, duration, and days per week</p>
+                  </div>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {foodGoalList.map((g) => (
-                    <div key={g.key}>
-                      <label className="block text-xs font-medium text-text-muted mb-1">{g.label}</label>
-                      <input type="number" min={g.min} max={g.max} step={g.step ?? 1}
-                        placeholder={g.placeholder} value={g.value}
-                        onChange={(e) => g.set(e.target.value)} className="input-field" />
+                <GoalFormTip title="Training for your goal" tone="coral">
+                  {habitTipsForGoal.workout}
+                </GoalFormTip>
+                <div>
+                  <label className="block text-xs font-semibold text-text-primary mb-1.5">
+                    Workout types <span className="font-normal text-text-muted">(select all that apply)</span>
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {WORKOUT_TYPES.map((t) => (
+                      <button key={t.value} type="button"
+                        onClick={() => toggleWorkoutType(t.value)}
+                        className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-medium border transition-all ${
+                          workoutTypes.includes(t.value)
+                            ? 'bg-[#FF6B35] text-white border-[#FF6B35] shadow-sm'
+                            : 'bg-white text-slate-600 border-slate-200/90 shadow-sm hover:border-[#FF6B35]/40 hover:bg-orange-50/60'
+                        }`}>
+                        <span aria-hidden>{t.emoji}</span>{t.label}
+                      </button>
+                    ))}
+                  </div>
+                  {goalsFieldError && (
+                    <p className="mt-2 text-xs text-red-600" role="alert">
+                      {goalsFieldError}
+                    </p>
+                  )}
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-semibold text-text-primary mb-1.5">Duration per week</label>
+                    <div className="flex gap-2">
+                      <div className="relative flex-1 min-w-0">
+                        <input type="number" min={0} max={20} placeholder={String(recWorkoutParts.hours)} value={goalWorkoutHours}
+                          onChange={(e) => setGoalWorkoutHours(e.target.value)}
+                          className={`${GOALS_INPUT} pr-9 tabular-nums`} />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium text-slate-500 pointer-events-none">h</span>
+                      </div>
+                      <div className="relative flex-1 min-w-0">
+                        <input type="number" min={0} max={59} placeholder={String(recWorkoutParts.mins)} value={goalWorkoutMins}
+                          onChange={(e) => setGoalWorkoutMins(e.target.value)}
+                          className={`${GOALS_INPUT} pr-11 tabular-nums`} />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium text-slate-500 pointer-events-none">min</span>
+                      </div>
                     </div>
-                  ))}
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-text-primary mb-1.5">Days / week</label>
+                    <input type="number" min={0} max={7} placeholder={String(RECOMMENDED_WORKOUT_DAYS_WEEK_BY_GOAL[fitnessGoal])} value={goals.goal_workout_days_week}
+                      onChange={(e) => setGoals((g) => ({ ...g, goal_workout_days_week: e.target.value }))}
+                      className={`${GOALS_INPUT} tabular-nums`} />
+                  </div>
+                </div>
+                <p className="text-[11px] text-text-muted leading-relaxed rounded-lg bg-orange-50/50 border border-orange-100/80 px-3 py-2.5 mt-1">
+                  {formatRecommendedWorkoutSummaryLine(fitnessGoal, goalBadgeLabel)}
+                </p>
+              </div>
+
+              {/* Food — hydration + nutrition tips */}
+              <div className="rounded-2xl border border-amber-200/70 bg-gradient-to-br from-amber-50/30 via-white to-white p-4 sm:p-5 shadow-sm space-y-4">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/12 text-amber-700 shadow-sm ring-1 ring-amber-900/10">
+                    <Utensils className="h-5 w-5" strokeWidth={2.25} />
+                  </div>
+                  <div className="min-w-0 pt-0.5">
+                    <h3 className="text-sm font-semibold text-text-primary">Food tracking</h3>
+                    <p className="text-[11px] text-text-muted mt-0.5">Hydration, protein, and calories — {FITNESS_GOAL_BADGES[fitnessGoal].label}</p>
+                  </div>
+                </div>
+                <GoalFormTip title="Hydration" tone="sky">
+                  {habitTipsForGoal.water}
+                </GoalFormTip>
+                <div>
+                  <label className="block text-xs font-semibold text-text-primary mb-2">What to track</label>
+                  <div className="flex flex-wrap gap-2">
+                    {([
+                      { value: 'protein_only', label: 'Protein only' },
+                      { value: 'calories_only', label: 'Calories only' },
+                      { value: 'both',          label: 'Both' },
+                    ] as { value: FoodTrackingMode; label: string }[]).map((m) => (
+                      <button key={m.value} type="button"
+                        onClick={() => setFoodMode(m.value)}
+                        className={`px-3 py-2 rounded-full text-xs font-medium border transition-all ${
+                          foodMode === m.value
+                            ? 'bg-amber-500 text-white border-amber-500 shadow-sm'
+                            : 'bg-white text-slate-600 border-slate-200/90 shadow-sm hover:border-amber-400/50 hover:bg-amber-50/50'
+                        }`}>
+                        {m.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <GoalFormTip title="Nutrition for your goal" tone="amber">
+                  {habitTipsForGoal.food}
+                </GoalFormTip>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-text-primary mb-1.5">Water (L / day)</label>
+                    <input type="number" min={0} max={10} step={0.5} placeholder={String(RECOMMENDED_WATER_LITERS_BY_GOAL[fitnessGoal])}
+                      value={goals.goal_water_liters}
+                      onChange={(e) => setGoals((g) => ({ ...g, goal_water_liters: e.target.value }))}
+                      className={`${GOALS_INPUT} tabular-nums`} />
+                    <p className="mt-2 text-[11px] text-text-muted leading-relaxed rounded-lg bg-sky-50/50 border border-sky-100/80 px-3 py-2.5">
+                      {formatRecommendedWaterLine(fitnessGoal, goalBadgeLabel)}
+                    </p>
+                  </div>
+                  {(foodMode === 'protein_only' || foodMode === 'both') && (
+                    <div>
+                      <label className="block text-xs font-semibold text-text-primary mb-1.5">Protein goal (g / day)</label>
+                      <input type="number" min={30} max={400} placeholder="140"
+                        value={goals.goal_protein_g_day}
+                        onChange={(e) => setGoals((g) => ({ ...g, goal_protein_g_day: e.target.value }))}
+                        className={`${GOALS_INPUT} tabular-nums`} />
+                      <p className="mt-2 text-[11px] text-text-muted leading-relaxed rounded-lg bg-surface-1 border border-white/10 px-2.5 py-2">
+                        {formatProteinRecommendationLine(weightKgForGoals, fitnessGoal)}
+                      </p>
+                    </div>
+                  )}
+                  {(foodMode === 'calories_only' || foodMode === 'both') && (
+                    <div>
+                      <label className="block text-xs font-semibold text-text-primary mb-1.5">
+                        Calorie {fitnessGoal === 'lose_weight' ? 'budget (stay under)' : 'target (kcal / day)'}
+                      </label>
+                      <input type="number" min={1000} max={5000} step={50} placeholder="2200"
+                        value={goals.goal_calories_day}
+                        onChange={(e) => setGoals((g) => ({ ...g, goal_calories_day: e.target.value }))}
+                        className={`${GOALS_INPUT} tabular-nums`} />
+                    </div>
+                  )}
                 </div>
               </div>
 
               {/* Sleep */}
-              <div>
-                <div className="flex items-center gap-2 mb-3">
-                  <Moon className="w-4 h-4 text-indigo-500" />
-                  <span className="text-sm font-semibold text-text-primary">Sleep</span>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-medium text-text-muted mb-1">Hours/night</label>
-                    <input type="number" min={4} max={12} step={0.5} placeholder="7.5"
-                      value={goals.goal_sleep_hours}
-                      onChange={(e) => setGoals((g) => ({ ...g, goal_sleep_hours: e.target.value }))}
-                      className="input-field" />
+              <div className="rounded-2xl border border-indigo-200/70 bg-gradient-to-br from-indigo-50/35 via-white to-white p-4 sm:p-5 shadow-sm space-y-4">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-500/12 text-indigo-700 shadow-sm ring-1 ring-indigo-900/10">
+                    <Moon className="h-5 w-5" strokeWidth={2.25} />
                   </div>
+                  <div className="min-w-0 pt-0.5">
+                    <h3 className="text-sm font-semibold text-text-primary">Sleep</h3>
+                    <p className="text-[11px] text-text-muted mt-0.5">Nightly hours you&apos;re aiming for</p>
+                  </div>
+                </div>
+                <GoalFormTip title="Rest & recovery" tone="indigo">
+                  {habitTipsForGoal.sleep}
+                </GoalFormTip>
+                <div>
+                  <label className="block text-xs font-semibold text-text-primary mb-1.5">Hours / night</label>
+                  <input type="number" min={4} max={12} step={0.5} placeholder={String(RECOMMENDED_SLEEP_HOURS_BY_GOAL[fitnessGoal])}
+                    value={goals.goal_sleep_hours}
+                    onChange={(e) => setGoals((g) => ({ ...g, goal_sleep_hours: e.target.value }))}
+                    className={`${GOALS_INPUT} max-w-[10rem] tabular-nums`} />
+                  <p className="mt-2 text-[11px] text-text-muted leading-relaxed rounded-lg bg-indigo-50/50 border border-indigo-100/80 px-3 py-2.5 max-w-[calc(100vw-2rem)] sm:max-w-md">
+                    {formatRecommendedSleepLine(fitnessGoal, goalBadgeLabel)}
+                  </p>
                 </div>
               </div>
 
@@ -429,7 +784,7 @@ export function MyStatsTab({ profile, onSuccess }: { profile: Profile; onSuccess
                   {goalsSaving ? 'Saving…' : 'Save goals'}
                 </button>
                 {hasAnyGoals && (
-                  <button type="button" onClick={() => setEditingGoals(false)} className="btn-ghost text-sm">
+                  <button type="button" onClick={() => { setEditingGoals(false); setGoalChangeWarning(false); setGoalsFieldError(null); }} className="btn-ghost text-sm">
                     Cancel
                   </button>
                 )}
@@ -446,19 +801,24 @@ export function MyStatsTab({ profile, onSuccess }: { profile: Profile; onSuccess
                   <span className="text-xs font-bold uppercase tracking-wider text-[#FF6B35]">Workout</span>
                 </div>
                 <ul className="space-y-1.5">
-                  {profile.goal_workout_mins_week != null && (
+                  {(profile.goal_workout_types?.length ?? 0) > 0 && (
                     <li className="text-sm font-semibold text-text-primary">
-                      {minsToHoursDisplay(profile.goal_workout_mins_week)}
-                      <span className="text-xs font-normal text-text-muted"> / week</span>
+                      {(profile.goal_workout_types ?? [])
+                        .map((v) => WORKOUT_TYPES.find((t) => t.value === v)?.label ?? v)
+                        .join(' · ')}
+                    </li>
+                  )}
+                  {profile.goal_workout_mins_week != null && (
+                    <li className="text-sm text-text-secondary">
+                      {minsToHoursDisplay(profile.goal_workout_mins_week)} / week
                     </li>
                   )}
                   {profile.goal_workout_days_week != null && (
                     <li className="text-sm text-text-secondary">{profile.goal_workout_days_week} days/week</li>
                   )}
-                  {profile.goal_steps_day != null && (
-                    <li className="text-sm text-text-secondary">{profile.goal_steps_day.toLocaleString()} steps/day</li>
-                  )}
-                  {!profile.goal_workout_mins_week && !profile.goal_workout_days_week && !profile.goal_steps_day && (
+                  {!profile.goal_workout_mins_week &&
+                    !profile.goal_workout_days_week &&
+                    !(profile.goal_workout_types?.length ?? 0) && (
                     <li className="text-sm text-text-muted">Not set</li>
                   )}
                 </ul>
@@ -471,18 +831,36 @@ export function MyStatsTab({ profile, onSuccess }: { profile: Profile; onSuccess
                     <Utensils className="w-4 h-4 text-amber-600" />
                   </div>
                   <span className="text-xs font-bold uppercase tracking-wider text-amber-600">Food</span>
+                  {profile.food_tracking_mode && (
+                    <span className="text-[10px] bg-amber-100 text-amber-700 rounded px-1.5 py-0.5 font-medium capitalize">
+                      {profile.food_tracking_mode.replace('_', ' ')}
+                    </span>
+                  )}
                 </div>
                 <ul className="space-y-1.5">
                   {profile.goal_water_liters != null && (
+                    <li className="text-sm text-text-secondary">{profile.goal_water_liters} L water/day</li>
+                  )}
+                  {profile.goal_protein_g_day != null && (
                     <li className="text-sm font-semibold text-text-primary">
-                      {profile.goal_water_liters} L
-                      <span className="text-xs font-normal text-text-muted"> water/day</span>
+                      {profile.goal_protein_g_day} g <span className="text-xs font-normal text-text-muted">protein/day</span>
+                      {(profile.current_weight ?? profile.starting_weight) != null &&
+                        (profile.current_weight ?? profile.starting_weight)! > 0 && (
+                        <span className="block text-[11px] font-normal text-text-muted mt-0.5">
+                          ≈{' '}
+                          {(profile.goal_protein_g_day / (profile.current_weight ?? profile.starting_weight)!).toFixed(1)}
+                          {' g/kg × '}
+                          {(profile.current_weight ?? profile.starting_weight)!.toFixed(1)} kg
+                        </span>
+                      )}
                     </li>
                   )}
-                  {profile.goal_home_cooked_per_week != null && (
-                    <li className="text-sm text-text-secondary">{profile.goal_home_cooked_per_week} home-cooked/week</li>
+                  {profile.goal_calories_day != null && (
+                    <li className="text-sm text-text-secondary">
+                      {profile.goal_calories_day.toLocaleString()} kcal/day
+                    </li>
                   )}
-                  {!profile.goal_water_liters && !profile.goal_home_cooked_per_week && (
+                  {!profile.goal_water_liters && !profile.goal_protein_g_day && !profile.goal_calories_day && (
                     <li className="text-sm text-text-muted">Not set</li>
                   )}
                 </ul>

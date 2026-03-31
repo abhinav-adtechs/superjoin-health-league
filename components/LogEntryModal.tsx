@@ -5,14 +5,18 @@ import { createPortal } from 'react-dom';
 import { X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { apiUrl, getApiFetchOptions } from '@/lib/api';
 import type { WorkoutOption, CardioType, Profile } from '@/lib/types';
+import { recommendedProteinGDay } from '@/lib/protein-recommendations';
 import { DateCarousel, MAX_DAYS_BACK } from '@/components/entry/DateCarousel';
 import { SliderField } from '@/components/entry/SliderField';
 import { MealsSlots, mealsToCounts, EMPTY_MEALS_LOG, type MealsLog } from '@/components/entry/MealsSlots';
 import { WorkoutSection } from '@/components/entry/WorkoutSection';
 
 export function getProteinTargetGrams(profile: Profile): number {
-  const weightKg = profile.current_weight ?? profile.starting_weight;
-  return Math.round(weightKg * 1.6);
+  if (profile.goal_protein_g_day != null && profile.goal_protein_g_day > 0) {
+    return profile.goal_protein_g_day;
+  }
+  const weightKg = profile.current_weight ?? profile.starting_weight ?? 70;
+  return recommendedProteinGDay(weightKg, profile.fitness_goal ?? 'stay_active');
 }
 
 export type EntryType = 'full' | 'movement' | 'meal_recovery' | 'sleep' | 'weight';

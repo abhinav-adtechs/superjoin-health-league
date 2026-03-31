@@ -15,6 +15,8 @@ const ALLOWED_FIELDS = [
   'workout_done', 'workout_duration', 'workout_types', 'cardio_done', 'cardio_duration', 'cardio_type',
   'steps', 'water_liters', 'home_cooked_meals', 'protein_meal', 'protein_qty', 'junk_food', 'meals_log', 'alcohol',
   'sleep_hours', 'sleep_quality',
+  // New fields
+  'calories_kcal',
 ] as const;
 
 function isValidDate(dateStr: string): boolean {
@@ -108,6 +110,7 @@ export async function POST(request: Request) {
       alcohol: existing.alcohol,
       sleep_hours: existing.sleep_hours,
       sleep_quality: existing.sleep_quality,
+      calories_kcal: existing.calories_kcal,
     } : {}),
   };
   for (const key of ALLOWED_FIELDS) {
@@ -146,11 +149,24 @@ export async function POST(request: Request) {
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('age_bracket, goal_steps_day, goal_water_liters, goal_sleep_hours, goal_sleep_hours_min, goal_sleep_hours_max')
+    .select('age_bracket, goal_steps_day, goal_water_liters, goal_sleep_hours, goal_sleep_hours_min, goal_sleep_hours_max, fitness_goal, food_tracking_mode, goal_protein_g_day, goal_calories_day')
     .eq('id', user.id)
     .single();
   const ageBracket: AgeBracket = (profile?.age_bracket as AgeBracket) ?? '25_to_35';
-  entry.daily_points = calculateDailyPoints(entry as Parameters<typeof calculateDailyPoints>[0], ageBracket);
+
+  // Stamp scored_with_goal at time of entry creation/update
+  entry.scored_with_goal = profile?.fitness_goal ?? null;
+
+  entry.daily_points = calculateDailyPoints(
+    entry as Parameters<typeof calculateDailyPoints>[0],
+    ageBracket,
+    profile ? {
+      goal_protein_g_day: profile.goal_protein_g_day,
+      goal_calories_day: profile.goal_calories_day,
+      food_tracking_mode: profile.food_tracking_mode,
+      fitness_goal: profile.fitness_goal,
+    } : undefined,
+  );
   entry.is_goal_crush_day = isGoalCrushDay(
     entry as Parameters<typeof isGoalCrushDay>[0],
     profile ?? {},

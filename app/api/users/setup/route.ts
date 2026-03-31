@@ -1,6 +1,24 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 import { getAgeBracket } from '@/lib/points';
+import type { FitnessGoal, FoodTrackingMode } from '@/lib/types';
+import { parseGoalWorkoutTypes } from '@/lib/workout-goals';
+
+const FITNESS_GOALS: FitnessGoal[] = [
+  'lose_weight',
+  'gain_muscle',
+  'gain_weight',
+  'stay_active',
+  'general_wellness',
+];
+
+const FOOD_MODES: FoodTrackingMode[] = ['protein_only', 'calories_only', 'both'];
+
+function optNum(body: Record<string, unknown>, key: string): number | null {
+  if (!(key in body) || body[key] === null || body[key] === '') return null;
+  const n = Number(body[key]);
+  return Number.isFinite(n) ? n : null;
+}
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -36,6 +54,32 @@ export async function POST(request: Request) {
   }
 
   const age_bracket = getAgeBracket(age);
+
+  const fitness_goal: FitnessGoal = FITNESS_GOALS.includes(body.fitness_goal)
+    ? body.fitness_goal
+    : 'general_wellness';
+
+  const food_tracking_mode =
+    body.food_tracking_mode != null && FOOD_MODES.includes(body.food_tracking_mode)
+      ? body.food_tracking_mode
+      : 'protein_only';
+
+  let goal_protein_g_day = optNum(body, 'goal_protein_g_day');
+  let goal_calories_day = optNum(body, 'goal_calories_day');
+  if (food_tracking_mode === 'calories_only') goal_protein_g_day = null;
+  if (food_tracking_mode === 'protein_only') goal_calories_day = null;
+
+  const goal_workout_types = parseGoalWorkoutTypes(body.goal_workout_types ?? body.goal_workout_type);
+  if (goal_workout_types.length === 0) {
+    return NextResponse.json({ error: 'Select at least one workout type' }, { status: 400 });
+  }
+
+  const goal_sleep_hours = optNum(body, 'goal_sleep_hours');
+  const goal_water_liters = optNum(body, 'goal_water_liters');
+  const goal_workout_mins_week = optNum(body, 'goal_workout_mins_week');
+  const goal_workout_days_week = optNum(body, 'goal_workout_days_week');
+  const goal_steps_day = optNum(body, 'goal_steps_day');
+
   const { data, error } = await supabase
     .from('profiles')
     .insert({
@@ -46,8 +90,18 @@ export async function POST(request: Request) {
       height_cm,
       starting_weight: current_weight,
       current_weight,
-      fitness_goal: 'general_wellness',
+      fitness_goal,
       age_bracket,
+      food_tracking_mode,
+      goal_protein_g_day,
+      goal_calories_day,
+      goal_workout_types,
+      goal_sleep_hours,
+      goal_water_liters,
+      goal_workout_mins_week,
+      goal_workout_days_week,
+      goal_steps_day,
+      goal_changed_at: new Date().toISOString(),
     })
     .select()
     .single();

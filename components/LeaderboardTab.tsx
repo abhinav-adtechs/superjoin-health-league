@@ -20,7 +20,16 @@ import {
   Zap,
 } from 'lucide-react';
 import { apiUrl, getApiFetchOptions } from '@/lib/api';
-import type { LeaderboardView, LeaderboardResponse } from '@/lib/types';
+import type { LeaderboardView, LeaderboardResponse, FitnessGoal } from '@/lib/types';
+import { resolveAvatarUrl } from '@/lib/avatar-url';
+
+const FITNESS_GOAL_BADGES: Record<FitnessGoal, { label: string; color: string }> = {
+  lose_weight:      { label: 'Cutting',  color: 'text-rose-400 bg-rose-400/10' },
+  gain_muscle:      { label: 'Building', color: 'text-indigo-400 bg-indigo-400/10' },
+  gain_weight:      { label: 'Bulking',  color: 'text-emerald-400 bg-emerald-400/10' },
+  stay_active:      { label: 'Active',   color: 'text-amber-400 bg-amber-400/10' },
+  general_wellness: { label: 'Wellness', color: 'text-violet-400 bg-violet-400/10' },
+};
 
 // ─── Date helpers ─────────────────────────────────────────────────────────────
 
@@ -74,7 +83,8 @@ const AVATAR_COLORS = [
   'bg-pink-500',
 ];
 
-function Avatar({ name, url }: { name: string; url: string | null }) {
+function Avatar({ userId, name, url }: { userId: string; name: string; url: string | null }) {
+  const [broken, setBroken] = useState(false);
   const initials = name
     .trim()
     .split(/\s+/)
@@ -82,26 +92,25 @@ function Avatar({ name, url }: { name: string; url: string | null }) {
     .join('')
     .slice(0, 2);
   const color = AVATAR_COLORS[name.charCodeAt(0) % AVATAR_COLORS.length];
+  const src = resolveAvatarUrl({ userId, displayName: name, avatarUrl: url });
 
-  if (url) {
+  if (broken) {
     return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        src={url}
-        alt={name}
-        className="w-8 h-8 rounded-full object-cover flex-shrink-0"
-        onError={(e) => {
-          (e.target as HTMLImageElement).style.display = 'none';
-        }}
-      />
+      <div
+        className={`w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center font-semibold text-xs text-white ${color}`}
+      >
+        {initials || '?'}
+      </div>
     );
   }
   return (
-    <div
-      className={`w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center font-semibold text-xs text-white ${color}`}
-    >
-      {initials || '?'}
-    </div>
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={src}
+      alt={name}
+      className="w-8 h-8 rounded-full object-cover flex-shrink-0 bg-surface-2"
+      onError={() => setBroken(true)}
+    />
   );
 }
 
@@ -536,7 +545,7 @@ function ScoringGuide() {
         <div className="flex items-center gap-2">
           <Info className="w-4 h-4 text-text-muted flex-shrink-0" />
           <span className="text-sm font-semibold text-text-primary">How points are scored</span>
-          <span className="text-[11px] text-text-muted bg-surface-2 px-2 py-0.5 rounded-full">98 pts / day max</span>
+          <span className="text-[11px] text-text-muted bg-surface-2 px-2 py-0.5 rounded-full">85 pts / day max</span>
         </div>
         <ChevronDown
           className={`w-4 h-4 text-text-muted transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
@@ -600,10 +609,11 @@ function ScoringGuide() {
           })}
 
           <div className="px-4 py-3 bg-surface-2/50">
-            <p className="text-[11px] text-text-muted leading-relaxed">
-              <span className="font-semibold text-text-secondary">Age bracket:</span> Members over 35 have 85% thresholds for steps and cardio for fair comparison.
-              Streak bonuses are one-time awards per milestone and do not count toward the 98 pts/day cap.
-            </p>
+          <p className="text-[11px] text-text-muted leading-relaxed">
+            <span className="font-semibold text-text-secondary">Age bracket:</span> Members over 35 have 85% thresholds for steps and cardio for fair comparison.
+            Streak bonuses are one-time awards per milestone and do not count toward the 85 pts/day cap.
+            Food points depend on your fitness goal — cutting users score by staying under budget, bulking users by hitting their target.
+          </p>
           </div>
         </div>
       )}
@@ -655,21 +665,30 @@ export function LeaderboardTab() {
   if (loading) return <div className="animate-pulse text-text-muted">Loading leaderboard…</div>;
 
   if (error) {
+    const isConfigError = error.toLowerCase().includes('supabase') || error.toLowerCase().includes('env') || error.toLowerCase().includes('missing');
+    const isSchemaError = error.toLowerCase().includes('column') || error.toLowerCase().includes('does not exist') || error.toLowerCase().includes('relation');
     return (
       <div className="space-y-4 animate-fade-up">
         <h2 className="text-lg font-semibold text-text-primary">Leaderboard</h2>
         <div className="glass-card p-6 text-center">
           <p className="text-accent-red font-medium">Could not load leaderboard</p>
           <p className="text-sm text-text-muted mt-1">{error}</p>
-          <p className="text-xs text-text-secondary mt-3">
-            Check that Supabase is configured in{' '}
-            <code className="bg-black/5 px-1 rounded">.env.local</code> and the DB is reachable.
-            Open{' '}
-            <a href="/api/health" target="_blank" rel="noopener noreferrer" className="text-primary-orange underline">
-              /api/health
-            </a>{' '}
-            to verify connection.
-          </p>
+          {isSchemaError && (
+            <p className="text-xs text-text-secondary mt-3">
+              A database migration may be pending. Run the latest migration in your Supabase project to add missing columns.
+            </p>
+          )}
+          {isConfigError && !isSchemaError && (
+            <p className="text-xs text-text-secondary mt-3">
+              Check that Supabase is configured in{' '}
+              <code className="bg-black/5 px-1 rounded">.env.local</code> and the DB is reachable.
+              Open{' '}
+              <a href="/api/health" target="_blank" rel="noopener noreferrer" className="text-primary-orange underline">
+                /api/health
+              </a>{' '}
+              to verify connection.
+            </p>
+          )}
         </div>
       </div>
     );
@@ -815,11 +834,11 @@ export function LeaderboardTab() {
                     <RankBadge rank={r.rank} />
 
                     {/* Avatar */}
-                    <Avatar name={r.user.display_name} url={r.user.avatar_url} />
+                    <Avatar userId={r.user.id} name={r.user.display_name} url={r.user.avatar_url} />
 
                     {/* Name + stats sub-line */}
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="font-semibold text-[15px] text-text-primary leading-tight truncate">
                           {r.user.display_name}
                         </span>
@@ -828,8 +847,13 @@ export function LeaderboardTab() {
                             YOU
                           </span>
                         )}
+                        {r.user.fitness_goal && (
+                          <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full leading-none flex-shrink-0 ${FITNESS_GOAL_BADGES[r.user.fitness_goal as FitnessGoal]?.color ?? ''}`}>
+                            {FITNESS_GOAL_BADGES[r.user.fitness_goal as FitnessGoal]?.label ?? r.user.fitness_goal}
+                          </span>
+                        )}
                       </div>
-                      {/* Sub-line: breakdown · days · streak · goal% */}
+                      {/* Sub-line: breakdown · days · streak · adherence · pts-to-rank */}
                       <div className="flex items-center gap-2 mt-1 flex-wrap">
                         {bd && (
                           <>
@@ -847,7 +871,7 @@ export function LeaderboardTab() {
                             </span>
                             <span className="inline-flex items-center gap-0.5 text-xs">
                               <Activity className="w-3 h-3 text-amber-400" />
-                              <span className="text-text-secondary">{bd.steps}</span>
+                              <span className="text-text-secondary">{(bd as Record<string, number>).movement ?? (bd as Record<string, number>).steps ?? 0}</span>
                             </span>
                             <span className="text-text-muted/40 text-xs">·</span>
                           </>
@@ -867,12 +891,23 @@ export function LeaderboardTab() {
                             {r.user.goal_crush_streak}d
                           </span>
                         )}
-                        {r.score.goals_pct != null && (
+                        {r.score.goal_adherence_pct != null && (
                           <span
                             className="text-xs font-semibold"
-                            style={{ color: goalColor(r.score.goals_pct) }}
+                            title="Goal adherence %"
+                            style={{ color: goalColor(r.score.goal_adherence_pct) }}
                           >
-                            {r.score.goals_pct}%
+                            {r.score.goal_adherence_pct}% goals
+                          </span>
+                        )}
+                        {isMe && r.insights?.pts_to_next_rank != null && r.insights.pts_to_next_rank > 0 && (
+                          <span className="text-[10px] text-accent-superjoin-orange font-medium bg-accent-superjoin-orange/10 px-1.5 py-0.5 rounded-full">
+                            {r.insights.pts_to_next_rank} pts to rank up
+                          </span>
+                        )}
+                        {isMe && r.insights?.pts_to_next_rank === null && (
+                          <span className="text-[10px] text-accent-gold font-medium bg-accent-gold/10 px-1.5 py-0.5 rounded-full">
+                            👑 Top rank
                           </span>
                         )}
                       </div>

@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { apiUrl, getApiFetchOptions } from '@/lib/api';
+import { resolveAvatarUrl } from '@/lib/avatar-url';
 import { UserCircle, ChevronDown } from 'lucide-react';
 
 const ADMIN_EMAIL = 'abhinav@superjoin.ai';
@@ -143,13 +144,15 @@ export function LoginForm({ onSuccess }: { onSuccess: () => void }) {
               >
                 {selectedUser ? (
                   <>
-                    {selectedUser.avatar_url ? (
-                      <img src={selectedUser.avatar_url} alt="" className="w-8 h-8 rounded-full object-cover bg-surface-2" />
-                    ) : (
-                      <div className="w-8 h-8 rounded-full bg-surface-2 flex items-center justify-center">
-                        <UserCircle className="w-5 h-5 text-text-muted" />
-                      </div>
-                    )}
+                    <img
+                      src={resolveAvatarUrl({
+                        userId: selectedUser.id,
+                        displayName: selectedUser.display_name,
+                        avatarUrl: selectedUser.avatar_url,
+                      })}
+                      alt=""
+                      className="w-8 h-8 rounded-full object-cover bg-surface-2"
+                    />
                     <span className="font-medium">{selectedUser.display_name}</span>
                   </>
                 ) : (
@@ -169,13 +172,15 @@ export function LoginForm({ onSuccess }: { onSuccess: () => void }) {
                       onClick={() => { setSelectedUser(u); setDropdownOpen(false); }}
                       className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-surface-1 transition-colors"
                     >
-                      {u.avatar_url ? (
-                        <img src={u.avatar_url} alt="" className="w-8 h-8 rounded-full object-cover bg-surface-2" />
-                      ) : (
-                        <div className="w-8 h-8 rounded-full bg-surface-2 flex items-center justify-center">
-                          <UserCircle className="w-5 h-5 text-text-muted" />
-                        </div>
-                      )}
+                      <img
+                        src={resolveAvatarUrl({
+                          userId: u.id,
+                          displayName: u.display_name,
+                          avatarUrl: u.avatar_url,
+                        })}
+                        alt=""
+                        className="w-8 h-8 rounded-full object-cover bg-surface-2"
+                      />
                       <span>{u.display_name}</span>
                     </button>
                   ))}

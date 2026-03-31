@@ -1,8 +1,9 @@
 import { createClient } from '@/lib/supabase/server';
 import { createServiceRoleClient } from '@/lib/supabase/admin';
 import { NextResponse } from 'next/server';
-import type { LeaderboardView, LeaderboardRanking } from '@/lib/types';
-import { isWeeklyGoalHit, WEEKLY_PERF_BONUS } from '@/lib/points';
+import type { LeaderboardView, LeaderboardRanking, FitnessGoal, FoodTrackingMode } from '@/lib/types';
+import { isWeeklyGoalHit, WEEKLY_PERF_BONUS, computeGoalAdherencePct } from '@/lib/points';
+import { parseGoalWorkoutTypes } from '@/lib/workout-goals';
 
 type ProfileRow = {
   id: string;
@@ -10,9 +11,18 @@ type ProfileRow = {
   avatar_url: string | null;
   age_bracket: string;
   joined_at: string;
+  fitness_goal: FitnessGoal | null;
+  goal_workout_types?: unknown;
+  food_tracking_mode: FoodTrackingMode | null;
   goal_workout_days_week: number | null;
   goal_workout_mins_week: number | null;
   goal_home_cooked_per_week: number | null;
+  goal_water_liters: number | null;
+  goal_sleep_hours: number | null;
+  goal_sleep_hours_min: number | null;
+  goal_sleep_hours_max: number | null;
+  goal_protein_g_day: number | null;
+  goal_calories_day: number | null;
 };
 
 type FullEntry = {
@@ -33,6 +43,8 @@ type FullEntry = {
   alcohol: string | null;
   sleep_hours: number | null;
   sleep_quality: number | null;
+  calories_kcal: number | null;
+  scored_with_goal: FitnessGoal | null;
 };
 
 // ─── Date helpers ─────────────────────────────────────────────────────────────
@@ -73,42 +85,51 @@ function monthStart(d: Date): string {
 function computeBreakdown(
   entries: FullEntry[],
   ageBracket: string,
-): { workout: number; nutrition: number; sleep: number; steps: number } {
-  let workout = 0, nutrition = 0, sleep = 0, steps = 0;
+): { workout: number; nutrition: number; sleep: number; movement: number } {
+  let workout = 0, nutrition = 0, sleep = 0, movement = 0;
   const adj = ageBracket === 'over_35' ? 0.85 : 1.0;
   for (const e of entries) {
+    // Workout (max 20/day)
+    let wpts = 0;
     if (e.workout_done) {
-      workout += 10;
-      if (e.workout_duration != null && e.workout_duration >= 45) workout += 5;
-      if (e.workout_duration != null && e.workout_duration >= 60) workout += 5;
+      wpts += 10;
+      if (e.workout_duration != null && e.workout_duration >= 45) wpts += 5;
+      if (e.workout_duration != null && e.workout_duration >= 60) wpts += 5;
     }
+    workout += Math.min(wpts, 20);
+
+    // Movement: cardio + steps (max 25/day)
+    let mpts = 0;
     if (e.cardio_done) {
-      workout += 10;
-      if (e.cardio_duration != null && e.cardio_duration >= 30 * adj) workout += 5;
+      mpts += 10;
+      if (e.cardio_duration != null && e.cardio_duration >= 30 * adj) mpts += 5;
     }
+    if (e.steps != null) {
+      if (e.steps >= Math.round(10000 * adj)) mpts += 10;
+      else if (e.steps >= Math.round(7500 * adj)) mpts += 7;
+      else if (e.steps >= Math.round(5000 * adj)) mpts += 5;
+    }
+    movement += Math.min(mpts, 25);
+
+    // Sleep (max 10/day)
     if (e.sleep_hours != null) {
       if (e.sleep_hours >= 7 && e.sleep_hours <= 9) sleep += 10;
       else if (e.sleep_hours >= 6) sleep += 5;
     }
-    if (e.sleep_quality != null && e.sleep_quality >= 4) sleep += 5;
+
+    // Nutrition (max 26/day)
+    let npts = 0;
     if (e.water_liters != null) {
-      if (e.water_liters >= 3) nutrition += 10;
-      else if (e.water_liters >= 2) nutrition += 5;
+      if (e.water_liters >= 3) npts += 10;
+      else if (e.water_liters >= 2) npts += 5;
     }
-    if (e.home_cooked_meals != null && e.home_cooked_meals >= 2) nutrition += 5;
     if (e.protein_meal) {
-      nutrition += 5;
-      if (e.protein_qty != null && e.protein_qty >= 100) nutrition += 3;
+      npts += 5;
+      if (e.protein_qty != null && e.protein_qty >= 100) npts += 3;
     }
-    if (e.junk_food === false) nutrition += 5;
-    if (e.alcohol === 'zero') nutrition += 5;
-    if (e.steps != null) {
-      if (e.steps >= 10000 * adj) steps += 15;
-      else if (e.steps >= 7500 * adj) steps += 10;
-      else if (e.steps >= 5000 * adj) steps += 5;
-    }
+    nutrition += Math.min(npts, 26);
   }
-  return { workout, nutrition, sleep, steps };
+  return { workout, nutrition, sleep, movement };
 }
 
 /** Current streak = consecutive days with entries, counting backwards from asOfDate. */
@@ -151,11 +172,8 @@ function computeGoalCrushStreak(entries: FullEntry[], asOfDate: string): number 
 
 // ─── Route handler ────────────────────────────────────────────────────────────
 
-// Note: is_goal_crush_day is NOT in this select because the column requires migration
-// 20260302_goal_crush_streak.sql to be applied first. Goal crush streak is computed
-// from daily_points >= 60 as a fallback until the migration runs.
 const FULL_ENTRY_SELECT =
-  'user_id, date, daily_points, workout_done, workout_duration, cardio_done, cardio_duration, steps, water_liters, home_cooked_meals, protein_meal, protein_qty, junk_food, alcohol, sleep_hours, sleep_quality';
+  'user_id, date, daily_points, is_goal_crush_day, workout_done, workout_duration, cardio_done, cardio_duration, steps, water_liters, home_cooked_meals, protein_meal, protein_qty, junk_food, alcohol, sleep_hours, sleep_quality, calories_kcal, scored_with_goal';
 
 export async function GET(request: Request) {
   let supabase;
@@ -177,7 +195,13 @@ export async function GET(request: Request) {
   const currentUserId = currentUser?.id ?? null;
 
   // Use admin client for profiles and entries so leaderboard works for guests (unauthenticated)
-  const adminSupabase = createServiceRoleClient();
+  let adminSupabase;
+  try {
+    adminSupabase = createServiceRoleClient();
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'Service role not configured';
+    return NextResponse.json({ error: msg, view, period: '', rankings: [], category_leaders: {}, team_stats: {} }, { status: 503 });
+  }
 
   const now = new Date();
   let period = '';
@@ -218,7 +242,7 @@ export async function GET(request: Request) {
 
   const { data: profiles, error: profilesError } = await adminSupabase
     .from('profiles')
-    .select('id, display_name, avatar_url, age_bracket, joined_at, goal_workout_days_week, goal_workout_mins_week, goal_home_cooked_per_week')
+    .select('id, display_name, avatar_url, age_bracket, joined_at, fitness_goal, goal_workout_types, food_tracking_mode, goal_workout_days_week, goal_workout_mins_week, goal_home_cooked_per_week, goal_water_liters, goal_sleep_hours, goal_sleep_hours_min, goal_sleep_hours_max, goal_protein_g_day, goal_calories_day')
     .eq('is_active', true);
 
   if (profilesError) {
@@ -339,6 +363,13 @@ export async function GET(request: Request) {
       const streakDays = computeStreak(recentEntries.map((e) => e.date), todayStr);
       const goalCrushStreak = computeGoalCrushStreak(recentEntries, todayStr);
       const breakdown = computeBreakdown(userEntries, p.age_bracket);
+
+      // Goal adherence: avg across entries that have profile goals set
+      const adherenceScores = userEntries.map((e) => computeGoalAdherencePct(e, p));
+      const goal_adherence_pct = adherenceScores.length > 0
+        ? Math.round(adherenceScores.reduce((a, b) => a + b, 0) / adherenceScores.length)
+        : undefined;
+
       return {
         rank: 0,
         user: {
@@ -348,10 +379,14 @@ export async function GET(request: Request) {
           streak_days: streakDays,
           goal_crush_streak: goalCrushStreak,
           days_active: daysActive,
+          fitness_goal: p.fitness_goal ?? null,
+          goal_workout_types: parseGoalWorkoutTypes(p.goal_workout_types),
+          food_tracking_mode: p.food_tracking_mode ?? null,
         },
         score: {
           total_points: total,
           normalized_score: Math.round(normalized * 10) / 10,
+          goal_adherence_pct,
           breakdown,
         },
       };
@@ -367,7 +402,7 @@ export async function GET(request: Request) {
       const goalCrushStreak = computeGoalCrushStreak(recentEntries, todayStr);
       const breakdown = computeBreakdown(userEntries, p.age_bracket);
 
-      // Weekly performance bonus: add to total if user hit their weekly profile goals
+      // Weekly performance bonus
       let weeklyBonus = 0;
       if (view === 'weekly') {
         const weekResult = isWeeklyGoalHit(userEntries, p);
@@ -377,10 +412,18 @@ export async function GET(request: Request) {
 
       const total = baseTotal + weeklyBonus;
 
+      // goals_pct: daily avg vs 85 pt cap
       const goalsPct =
         view === 'weekly'
-          ? Math.min(100, Math.round((baseTotal / (daysElapsed * 98)) * 100))
+          ? Math.min(100, Math.round((baseTotal / (daysElapsed * 85)) * 100))
           : undefined;
+
+      // Goal adherence
+      const adherenceScores = userEntries.map((e) => computeGoalAdherencePct(e, p));
+      const goal_adherence_pct = adherenceScores.length > 0
+        ? Math.round(adherenceScores.reduce((a, b) => a + b, 0) / adherenceScores.length)
+        : undefined;
+
       const prevRank = view === 'weekly' ? (prevRankMap.get(p.id) ?? null) : undefined;
       return {
         rank: 0,
@@ -392,11 +435,15 @@ export async function GET(request: Request) {
           streak_days: streakDays,
           goal_crush_streak: goalCrushStreak,
           days_active: daysActive,
+          fitness_goal: p.fitness_goal ?? null,
+          goal_workout_types: parseGoalWorkoutTypes(p.goal_workout_types),
+          food_tracking_mode: p.food_tracking_mode ?? null,
         },
         score: {
           total_points: total,
           normalized_score: total,
           goals_pct: goalsPct,
+          goal_adherence_pct,
           breakdown,
         },
       };
@@ -407,10 +454,25 @@ export async function GET(request: Request) {
   rankings.forEach((r, i) => {
     r.rank = i + 1;
     if (r.prev_rank != null) {
-      // Positive = moved up (previous rank number was higher = lower position)
       r.rank_change = r.prev_rank - r.rank;
     }
   });
+
+  // Add pts_to_next_rank for current user
+  if (currentUserId) {
+    const currentUserRankIdx = rankings.findIndex((r) => r.user.id === currentUserId);
+    if (currentUserRankIdx > 0) {
+      const nextRankEntry = rankings[currentUserRankIdx - 1];
+      const currentEntry = rankings[currentUserRankIdx];
+      const ptsToNext = nextRankEntry.score.total_points - currentEntry.score.total_points + 1;
+      if (!currentEntry.insights) currentEntry.insights = { strongest_category: '' };
+      currentEntry.insights.pts_to_next_rank = Math.max(0, ptsToNext);
+    } else if (currentUserRankIdx === 0 && rankings.length > 1) {
+      const currentEntry = rankings[0];
+      if (!currentEntry.insights) currentEntry.insights = { strongest_category: '' };
+      currentEntry.insights.pts_to_next_rank = null; // already top
+    }
+  }
 
   return NextResponse.json({
     view,
