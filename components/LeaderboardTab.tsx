@@ -532,8 +532,8 @@ export function LeaderboardTab({
       <div className="space-y-3">
         <h2 className="text-lg font-semibold text-text-primary">Leaderboard</h2>
 
-        {/* View tabs — Month first (default) */}
-        <div className="flex gap-2">
+        {/* View tabs — Month first (default); scroll on narrow screens */}
+        <div className="flex gap-2 overflow-x-auto pb-0.5 -mx-1 px-1 md:mx-0 md:px-0 md:overflow-visible [scrollbar-width:thin]">
           {(['monthly', 'weekly', 'alltime'] as const).map((v) => (
             <button
               key={v}
@@ -589,12 +589,12 @@ export function LeaderboardTab({
 
         {/* Month league hero — same visual language as dashboard "This month's league" */}
         {view === 'monthly' && monthMeta && (
-          <div className="relative overflow-hidden rounded-2xl border-2 border-accent-superjoin-orange/35 bg-surface-1 shadow-lg shadow-accent-superjoin-orange/15">
+          <div className="relative overflow-hidden rounded-2xl border-2 border-accent-superjoin-orange/35 bg-surface-1 shadow-lg shadow-accent-superjoin-orange/15 w-full min-w-0">
             <div
               className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_120%_80%_at_100%_-20%,rgba(249,115,22,0.22),transparent_55%),radial-gradient(ellipse_80%_50%_at_0%_100%,rgba(251,191,36,0.08),transparent_50%)]"
               aria-hidden
             />
-            <div className="relative flex flex-col gap-4 p-4 sm:p-5 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
+            <div className="relative flex flex-col gap-4 p-4 sm:p-5 sm:flex-row sm:items-center sm:justify-between sm:gap-6 min-w-0">
               <div className="flex gap-3 min-w-0 flex-1">
                 <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-accent-superjoin-orange/20 border border-accent-superjoin-orange/35 shadow-inner">
                   <Trophy className="h-6 w-6 text-accent-superjoin-orange" aria-hidden />
@@ -610,12 +610,12 @@ export function LeaderboardTab({
                     <span className="text-text-primary"> league</span>
                   </h3>
                   {monthMeta.isSelectedCurrentMonth ? (
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
-                      <span className="font-bold tabular-nums text-accent-superjoin-orange">
+                    <div className="flex flex-wrap sm:flex-nowrap items-center gap-x-2 gap-y-1 text-sm">
+                      <span className="font-bold tabular-nums text-accent-superjoin-orange shrink-0">
                         Day {monthMeta.dayOfMonth}/{monthMeta.daysInMonth}
                       </span>
-                      <span className="text-text-muted/70">·</span>
-                      <span className="font-semibold text-text-primary">
+                      <span className="text-text-muted/70 shrink-0">·</span>
+                      <span className="font-semibold text-text-primary sm:whitespace-nowrap">
                         {monthMeta.daysRemainingInMonth}{' '}
                         {monthMeta.daysRemainingInMonth === 1 ? 'day' : 'days'} left
                       </span>
@@ -623,13 +623,13 @@ export function LeaderboardTab({
                   ) : (
                     <p className="text-sm font-semibold text-text-secondary">Full month standings</p>
                   )}
-                  <p className="text-xs text-text-muted">
+                  <p className="text-xs text-text-muted sm:whitespace-nowrap">
                     {monthMeta.isSelectedCurrentMonth ? monthMeta.todayLabel : data.period}
                   </p>
                 </div>
               </div>
 
-              <div className="flex flex-row sm:flex-col items-center justify-between sm:justify-center gap-3 sm:gap-4 sm:min-w-[9.5rem] sm:text-right sm:items-end border-t border-white/10 pt-3 sm:border-t-0 sm:pt-0">
+              <div className="flex flex-col gap-4 w-full min-w-0 items-stretch sm:w-auto sm:shrink-0 sm:items-end sm:min-w-[9.5rem] sm:text-right border-t border-white/10 pt-3 sm:border-t-0 sm:pt-0">
                 <div className="flex items-baseline gap-2 sm:flex-col sm:items-end sm:gap-0.5">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted">Your rank</span>
                   {myMonthlyRank != null ? (
@@ -641,7 +641,7 @@ export function LeaderboardTab({
                   )}
                 </div>
 
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1.5 w-full min-w-0 max-w-full sm:max-w-none">
                   <button
                     type="button"
                     onClick={() => setSelectedMonth((m) => addMonthsToStr(m, -1))}
@@ -654,7 +654,7 @@ export function LeaderboardTab({
                     <button
                       type="button"
                       onClick={() => setMonthCalendarOpen((o) => !o)}
-                      className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-accent-superjoin-orange/35 bg-accent-superjoin-orange/15 px-3 py-2 text-sm font-bold text-accent-superjoin-orange shadow-inner transition hover:brightness-110 w-full sm:w-auto max-w-[200px]"
+                      className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-accent-superjoin-orange/35 bg-accent-superjoin-orange/15 px-3 py-2 text-sm font-bold text-accent-superjoin-orange shadow-inner transition hover:brightness-110 w-full min-w-0 sm:w-auto sm:max-w-[200px]"
                     >
                       <CalendarDays className="w-3.5 h-3.5 shrink-0" aria-hidden />
                       <span className="truncate tabular-nums">
@@ -696,7 +696,7 @@ export function LeaderboardTab({
       </div>
 
       {/* ── Single leaderboard board (top 10 ladder + full rows for 11+) ── */}
-      <div className="glass-card overflow-hidden">
+      <div className="glass-card overflow-x-auto">
         {!data.rankings?.length ? (
           <div className="p-6 text-center">
             <p className="text-text-muted">No users on the leaderboard yet.</p>

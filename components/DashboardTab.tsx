@@ -487,12 +487,12 @@ export function DashboardTab({
             )}
           </div>
 
-          <div className="mt-4 relative overflow-hidden rounded-2xl border-2 border-accent-superjoin-orange/35 bg-surface-1 shadow-lg shadow-accent-superjoin-orange/15">
+          <div className="mt-4 relative overflow-hidden rounded-2xl border-2 border-accent-superjoin-orange/35 bg-surface-1 shadow-lg shadow-accent-superjoin-orange/15 w-full min-w-0">
             <div
               className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_120%_80%_at_100%_-20%,rgba(249,115,22,0.22),transparent_55%),radial-gradient(ellipse_80%_50%_at_0%_100%,rgba(251,191,36,0.08),transparent_50%)]"
               aria-hidden
             />
-            <div className="relative flex flex-col gap-4 p-4 sm:p-5 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
+            <div className="relative flex flex-col gap-4 p-4 sm:p-5 sm:flex-row sm:items-center sm:justify-between sm:gap-6 min-w-0">
               <div className="flex gap-3 min-w-0 flex-1">
                 <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-accent-superjoin-orange/20 border border-accent-superjoin-orange/35 shadow-inner">
                   <Trophy className="h-6 w-6 text-accent-superjoin-orange" aria-hidden />
@@ -507,20 +507,20 @@ export function DashboardTab({
                     </span>
                     <span className="text-text-primary"> league</span>
                   </h3>
-                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
-                    <span className="font-bold tabular-nums text-accent-superjoin-orange">
+                  <div className="flex flex-wrap sm:flex-nowrap items-center gap-x-2 gap-y-1 text-sm">
+                    <span className="font-bold tabular-nums text-accent-superjoin-orange shrink-0">
                       Day {dayOfMonth}/{daysInMonth}
                     </span>
-                    <span className="text-text-muted/70">·</span>
-                    <span className="font-semibold text-text-primary">
+                    <span className="text-text-muted/70 shrink-0">·</span>
+                    <span className="font-semibold text-text-primary sm:whitespace-nowrap">
                       {daysRemainingInMonth} {daysRemainingInMonth === 1 ? 'day' : 'days'} left
                     </span>
                   </div>
-                  <p className="text-xs text-text-muted">{todayLabel}</p>
+                  <p className="text-xs text-text-muted sm:whitespace-nowrap">{todayLabel}</p>
                 </div>
               </div>
 
-              <div className="flex flex-row sm:flex-col items-center justify-between sm:justify-center gap-3 sm:gap-4 sm:min-w-[9.5rem] sm:text-right sm:items-end border-t border-white/10 pt-3 sm:border-t-0 sm:pt-0">
+              <div className="flex flex-col gap-4 w-full min-w-0 items-stretch sm:w-auto sm:shrink-0 sm:items-end sm:min-w-[9.5rem] sm:text-right border-t border-white/10 pt-3 sm:border-t-0 sm:pt-0">
                 <div className="flex items-baseline gap-2 sm:flex-col sm:items-end sm:gap-0.5">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted">Your rank</span>
                   {monthRank != null ? (
@@ -535,7 +535,7 @@ export function DashboardTab({
                   <button
                     type="button"
                     onClick={onOpenLeaderboard}
-                    className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-accent-superjoin-orange px-3.5 py-2 text-sm font-bold text-white shadow-md shadow-accent-superjoin-orange/25 transition hover:brightness-110 active:scale-[0.98]"
+                    className="inline-flex w-full sm:w-auto items-center justify-center gap-1.5 rounded-xl bg-accent-superjoin-orange px-3.5 py-2 text-sm font-bold text-white shadow-md shadow-accent-superjoin-orange/25 transition hover:brightness-110 active:scale-[0.98]"
                   >
                     Leaderboard
                     <ArrowRight className="h-4 w-4 shrink-0" aria-hidden />

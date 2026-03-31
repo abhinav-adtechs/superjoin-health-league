@@ -141,12 +141,17 @@ export function LeaderboardTopLadder({
 
   return (
     <>
-      {/* Podium: 2–1–3 when 3+ */}
-      <div
-        className={`flex items-end justify-center gap-2 sm:gap-4 ${
-          podiumSlots.length === 1 ? 'max-w-xs mx-auto' : podiumSlots.length === 2 ? 'max-w-md mx-auto' : ''
-        }`}
-      >
+      {/* Podium: 2–1–3 when 3+ — horizontal scroll on very narrow viewports */}
+      <div className="w-full min-w-0 overflow-x-auto overscroll-x-contain pb-1 md:overflow-visible [scrollbar-width:thin]">
+        <div
+          className={`flex items-end justify-center gap-2 sm:gap-4 ${
+            podiumSlots.length === 1
+              ? 'max-w-xs mx-auto'
+              : podiumSlots.length === 2
+                ? 'max-w-md mx-auto'
+                : 'min-w-[280px] sm:min-w-0'
+          }`}
+        >
         {podiumSlots.map((slot) => {
           const tier = PODIUM_TIER[slot.rank];
           const s = scoreValue(slot.r, view);
@@ -219,6 +224,7 @@ export function LeaderboardTopLadder({
             </div>
           );
         })}
+        </div>
       </div>
 
       {/* Ranks 4–10 */}

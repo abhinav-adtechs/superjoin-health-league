@@ -537,20 +537,20 @@ export default function Home() {
         {/* Header */}
         <header className="sticky top-0 z-30 safe-area-top border-b border-white/20 bg-surface-0/80 backdrop-blur-xl">
           <div className="max-w-5xl mx-auto px-4 sm:px-6">
-            <div className="h-14 sm:h-16 flex items-center justify-between gap-3">
+            <div className="h-14 sm:h-16 flex items-center justify-between gap-2 sm:gap-3">
               {/* Logo — mobile only (desktop shows in sidebar) */}
-              <div className="flex items-center gap-2 md:hidden">
+              <div className="flex items-center gap-2 md:hidden shrink-0">
                 <div className="w-8 h-8 rounded-xl bg-accent-superjoin-orange/10 border border-accent-superjoin-orange/20 flex items-center justify-center shrink-0">
                   <Heart className="w-4 h-4 text-accent-superjoin-orange" />
                 </div>
-                <div className="flex items-center gap-1">
-                  <span className="text-sm font-bold text-text-primary">Superjoin</span>
-                  <span className="text-sm font-bold text-accent-superjoin-orange">Health OS</span>
+                <div className="flex items-center gap-1 min-w-0">
+                  <span className="text-sm font-bold text-text-primary truncate">Superjoin</span>
+                  <span className="text-sm font-bold text-accent-superjoin-orange truncate">Health OS</span>
                 </div>
               </div>
-              {/* Desktop header left — current section label */}
-              <div className="hidden md:flex items-center">
-                <span className="text-sm font-semibold text-text-primary">
+              {/* Current section — centered on mobile (matches desktop sidebar context), left on md+ */}
+              <div className="flex-1 min-w-0 md:flex-none flex justify-center md:justify-start md:ml-0">
+                <span className="text-sm font-semibold text-text-primary truncate text-center md:text-left px-1">
                   {TABS.find((t) => t.id === activeTab)?.label}
                 </span>
               </div>
@@ -615,7 +615,7 @@ export default function Home() {
         </header>
 
         {/* Main content */}
-        <main className="flex-1 max-w-5xl mx-auto w-full px-4 sm:px-6 py-6 sm:py-10 pb-28 md:pb-10">
+        <main className="flex-1 min-h-0 max-w-5xl mx-auto w-full px-4 sm:px-6 py-6 sm:py-10 pb-28 md:pb-10">
           {activeTab === 'dashboard' && (
             <DashboardTab
               profile={profile!}
