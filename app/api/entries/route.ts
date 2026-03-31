@@ -19,6 +19,9 @@ const ALLOWED_FIELDS = [
   'calories_kcal',
 ] as const;
 
+// Fields that accumulate across multiple logs per day (add new value on top of existing)
+const ADDITIVE_FIELDS = new Set<string>(['water_liters', 'protein_qty', 'calories_kcal', 'steps', 'home_cooked_meals']);
+
 function isValidDate(dateStr: string): boolean {
   const d = new Date(dateStr);
   return !isNaN(d.getTime());
@@ -127,10 +130,18 @@ export async function POST(request: Request) {
     } else if (key === 'cardio_duration' && body[key] && existing?.cardio_duration) {
       // Sum: add new cardio on top of existing
       entry[key] = Number(existing.cardio_duration) + Number(body[key]);
+    } else if (ADDITIVE_FIELDS.has(key) && body[key] != null && existing != null) {
+      // Sum: accumulate across multiple logs per day (water, protein, calories, steps, home_cooked_meals)
+      entry[key] = Number(existing[key as keyof typeof existing] ?? 0) + Number(body[key]);
     } else {
-      // All other fields: new value wins
+      // All other fields: new value wins (sleep, junk_food, alcohol, cardio_type, etc.)
       entry[key] = body[key];
     }
+  }
+
+  // Auto-set protein_meal flag when accumulated protein_qty > 0
+  if ((entry.protein_qty as number) > 0) {
+    entry.protein_meal = true;
   }
 
   // Validation: if workout_done is false, clear duration/types
