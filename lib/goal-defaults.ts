@@ -18,6 +18,15 @@ export const RECOMMENDED_SLEEP_HOURS_BY_GOAL: Record<FitnessGoal, number> = {
   general_wellness: 7,
 };
 
+/** Matches `profiles.goal_workout_mins_week` CHECK in the database */
+export const GOAL_WORKOUT_MINS_WEEK_MAX = 600;
+
+/** Clamp weekly workout minutes to DB-allowed range (0–600) or null */
+export function clampGoalWorkoutMinsWeek(value: number): number {
+  const rounded = Math.round(value);
+  return Math.min(GOAL_WORKOUT_MINS_WEEK_MAX, Math.max(0, rounded));
+}
+
 /** Total training minutes per week */
 export const RECOMMENDED_WORKOUT_MINS_WEEK_BY_GOAL: Record<FitnessGoal, number> = {
   lose_weight: 200,

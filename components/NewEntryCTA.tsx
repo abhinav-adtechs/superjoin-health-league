@@ -7,7 +7,7 @@ import { LogEntryModal, type EntryType } from './LogEntryModal';
 import type { Profile } from '@/lib/types';
 
 const ENTRY_OPTIONS: { type: EntryType; label: string; icon: typeof Dumbbell }[] = [
-  { type: 'movement', label: 'Log Strength', icon: Dumbbell },
+  { type: 'movement', label: 'Log Movement', icon: Dumbbell },
   { type: 'meal_recovery', label: 'Log Food', icon: Utensils },
   { type: 'sleep', label: 'Log Sleep', icon: Moon },
   { type: 'weight', label: 'Log Weight', icon: Scale },

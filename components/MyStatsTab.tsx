@@ -9,6 +9,7 @@ import { parseGoalWorkoutTypes } from '@/lib/workout-goals';
 import { formatProteinRecommendationLine } from '@/lib/protein-recommendations';
 import { getGoalHabitTips } from '@/lib/goal-habit-tips';
 import {
+  clampGoalWorkoutMinsWeek,
   RECOMMENDED_SLEEP_HOURS_BY_GOAL,
   RECOMMENDED_WATER_LITERS_BY_GOAL,
   RECOMMENDED_WORKOUT_DAYS_WEEK_BY_GOAL,
@@ -294,8 +295,12 @@ export function MyStatsTab({ profile, onSuccess }: { profile: Profile; onSuccess
     setGoalsFieldError(null);
     setGoalsSaving(true);
     const num = (v: string | number) => (v === '' || v == null ? null : Number(v));
-    const totalWorkoutMins = (goalWorkoutHours !== '' || goalWorkoutMins !== '')
+    const totalWorkoutMinsRaw = (goalWorkoutHours !== '' || goalWorkoutMins !== '')
       ? (Number(goalWorkoutHours || 0) * 60 + Number(goalWorkoutMins || 0)) : null;
+    const totalWorkoutMins =
+      totalWorkoutMinsRaw != null && Number.isFinite(totalWorkoutMinsRaw)
+        ? clampGoalWorkoutMinsWeek(totalWorkoutMinsRaw)
+        : null;
     const payload: Record<string, unknown> = {
       fitness_goal: fitnessGoal,
       food_tracking_mode: foodMode,

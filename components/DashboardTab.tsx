@@ -234,6 +234,7 @@ export function DashboardTab({
   const [weeklyPoints, setWeeklyPoints] = useState(0);
   const [rank, setRank] = useState<number | null>(null);
   const [monthRank, setMonthRank] = useState<number | null>(null);
+  const [monthlyPoints, setMonthlyPoints] = useState(0);
   const [loading, setLoading] = useState(true);
   const [modalType, setModalType] = useState<EntryType | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -280,6 +281,7 @@ export function DashboardTab({
           r.user.display_name === profile.display_name,
       );
       setMonthRank(myMonthEntry?.rank ?? null);
+      setMonthlyPoints(myMonthEntry?.score?.total_points ?? 0);
       setLoading(false);
     }
     load();
@@ -293,7 +295,11 @@ export function DashboardTab({
   const now = new Date();
   const hour = now.getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
-  const firstName = profile.display_name.split(' ')[0];
+  const firstName = (() => {
+    const raw = profile.display_name?.trim();
+    if (!raw) return 'there';
+    return raw.split(/\s+/)[0] || 'there';
+  })();
   const dayOfMonth = now.getDate();
   const daysInMonth = daysInMonthFor(now);
   const monthNameLong = now.toLocaleDateString('en-US', { month: 'long' });
@@ -357,7 +363,7 @@ export function DashboardTab({
     activeDailyPcts.length > 0
       ? Math.round(activeDailyPcts.reduce((a, b) => a + b, 0) / activeDailyPcts.length)
       : todayEntry
-        ? Math.min(Math.round((todayEntry.daily_points / 85) * 100), 100)
+        ? Math.min(Math.round(((todayEntry.daily_points ?? 0) / 85) * 100), 100)
         : 0;
 
   const hasGoals = activeDailyPcts.length > 0;
@@ -888,8 +894,8 @@ export function DashboardTab({
           </div>
         </div>
 
-        {/* ── Rank Trajectory ─────────────────────────────────────────────────── */}
-        {rank != null && (
+        {/* ── Rank Trajectory (monthly league) ─────────────────────────────────── */}
+        {monthRank != null && (
           <div className="glass-card p-5">
             <h3 className="font-semibold text-text-primary flex items-center gap-2 mb-3">
               <TrendingUp className="w-4 h-4 text-accent-superjoin-orange" />
@@ -897,18 +903,18 @@ export function DashboardTab({
             </h3>
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 rounded-xl bg-accent-superjoin-orange/10 border border-accent-superjoin-orange/20 flex items-center justify-center shrink-0">
-                <span className="text-lg font-bold text-accent-superjoin-orange">#{rank}</span>
+                <span className="text-lg font-bold text-accent-superjoin-orange">#{monthRank}</span>
               </div>
               <div className="flex-1 min-w-0">
-                {rank === 1 ? (
+                {monthRank === 1 ? (
                   <p className="text-sm font-medium text-text-primary">You&apos;re at the top!</p>
                 ) : (
                   <p className="text-sm text-text-secondary">
-                    <span className="font-semibold text-text-primary">Rank #{rank}</span> this week
+                    <span className="font-semibold text-text-primary">Rank #{monthRank}</span> this month
                   </p>
                 )}
                 <p className="text-xs text-text-muted mt-0.5">
-                  {weeklyPoints} pts · {profile.fitness_goal ? FITNESS_GOAL_BADGES[profile.fitness_goal]?.label : 'No goal set'}
+                  {monthlyPoints} pts · {profile.fitness_goal ? FITNESS_GOAL_BADGES[profile.fitness_goal]?.label : 'No goal set'}
                 </p>
               </div>
             </div>

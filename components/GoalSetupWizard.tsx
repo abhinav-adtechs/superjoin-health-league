@@ -10,6 +10,7 @@ import {
   RECOMMENDED_SLEEP_HOURS_BY_GOAL,
   RECOMMENDED_WATER_LITERS_BY_GOAL,
   RECOMMENDED_WORKOUT_DAYS_WEEK_BY_GOAL,
+  clampGoalWorkoutMinsWeek,
   RECOMMENDED_WORKOUT_MINS_WEEK_BY_GOAL,
   formatRecommendedSleepLine,
   formatRecommendedWaterLine,
@@ -231,7 +232,12 @@ export default function GoalSetupWizard({ isNewUser, existingProfile, onComplete
     const calories = parseFloat(calorieGoal) || suggestedCalories;
     const sleep = parseFloat(sleepHours) || RECOMMENDED_SLEEP_HOURS_BY_GOAL[fitnessGoal];
     const water = parseFloat(waterLiters) || RECOMMENDED_WATER_LITERS_BY_GOAL[fitnessGoal];
-    const mins = parseInt(workoutMins) || RECOMMENDED_WORKOUT_MINS_WEEK_BY_GOAL[fitnessGoal];
+    const parsedMins = parseInt(workoutMins, 10);
+    const mins = clampGoalWorkoutMinsWeek(
+      Number.isFinite(parsedMins) && parsedMins > 0
+        ? parsedMins
+        : RECOMMENDED_WORKOUT_MINS_WEEK_BY_GOAL[fitnessGoal]
+    );
     const days = parseInt(workoutDays) || RECOMMENDED_WORKOUT_DAYS_WEEK_BY_GOAL[fitnessGoal];
     const stepsPerDay = (workoutTypes.includes('walking') || trackStepsOptIn) && stepsGoal
       ? parseInt(stepsGoal) || null

@@ -29,15 +29,15 @@ type ProjectionResponse = {
   message?: string;
 };
 
-type WeeklyRankingEntry = {
+type LeaderboardRankingEntry = {
   rank: number;
   user: { id: string; display_name: string };
   score: { total_points: number };
 };
 
-type WeeklyLeaderboard = {
+type LeaderboardSnapshot = {
   current_user_id: string | null;
-  rankings: WeeklyRankingEntry[];
+  rankings: LeaderboardRankingEntry[];
 };
 
 type EntryRow = {
@@ -215,7 +215,7 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
   const [weightHistory, setWeightHistory] = useState<{ week_start: string; weight_kg: number }[]>([]);
   const [loading, setLoading] = useState(true);
   const [projection, setProjection] = useState<ProjectionResponse | null>(null);
-  const [weeklyBoard, setWeeklyBoard] = useState<WeeklyLeaderboard | null>(null);
+  const [monthlyBoard, setMonthlyBoard] = useState<LeaderboardSnapshot | null>(null);
   const [historyRange, setHistoryRange] = useState<HistoryRange>('all');
   const [historyWeekOffset, setHistoryWeekOffset] = useState(0);
   const [historyMonthOffset, setHistoryMonthOffset] = useState(0);
@@ -287,10 +287,12 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
 
   useEffect(() => {
     let cancelled = false;
-    fetch(apiUrl('/api/leaderboard?view=weekly'), getApiFetchOptions())
+    const d = new Date();
+    const monthStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    fetch(apiUrl(`/api/leaderboard?view=monthly&month=${monthStr}`), getApiFetchOptions())
       .then((r) => r.json())
-      .then((data) => { if (!cancelled) setWeeklyBoard(data); })
-      .catch(() => { if (!cancelled) setWeeklyBoard(null); });
+      .then((data) => { if (!cancelled) setMonthlyBoard(data); })
+      .catch(() => { if (!cancelled) setMonthlyBoard(null); });
     return () => { cancelled = true; };
   }, [refreshTrigger]);
 
@@ -469,42 +471,43 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
     return Math.round(avg);
   }, [logEntries, profile]);
 
-  // Weekly rank insights from live leaderboard
+  // Monthly rank insights from live leaderboard
   const rankInsights = useMemo(() => {
     const dailyPts = projection?.expected_daily_points ?? 0;
     const today = new Date();
-    const dow = today.getDay();
-    const remainingWeekDays = dow === 0 ? 0 : 7 - dow; // days left after today (Sun=0)
+    const dayOfMonth = today.getDate();
+    const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+    const remainingMonthDays = Math.max(0, daysInMonth - dayOfMonth);
 
-    if (!weeklyBoard?.current_user_id || !weeklyBoard.rankings.length) {
-      return { dailyPts, remainingWeekDays, myRank: null, myPts: null, total: 0, above: null, ptsNeeded: null, projectedRank: null, goalProjectedTotal: null, goalProjectedRank: null };
+    if (!monthlyBoard?.current_user_id || !monthlyBoard.rankings.length) {
+      return { dailyPts, remainingMonthDays, myRank: null, myPts: null, total: 0, above: null, ptsNeeded: null, projectedRank: null, goalProjectedTotal: null, goalProjectedRank: null };
     }
 
-    const userId = weeklyBoard.current_user_id;
-    const myEntry = weeklyBoard.rankings.find((r) => r.user.id === userId);
+    const userId = monthlyBoard.current_user_id;
+    const myEntry = monthlyBoard.rankings.find((r) => r.user.id === userId);
     if (!myEntry) {
-      return { dailyPts, remainingWeekDays, myRank: null, myPts: null, total: weeklyBoard.rankings.length, above: null, ptsNeeded: null, projectedRank: null, goalProjectedTotal: null, goalProjectedRank: null };
+      return { dailyPts, remainingMonthDays, myRank: null, myPts: null, total: monthlyBoard.rankings.length, above: null, ptsNeeded: null, projectedRank: null, goalProjectedTotal: null, goalProjectedRank: null };
     }
 
     const myRank = myEntry.rank;
     const myPts = myEntry.score.total_points;
-    const total = weeklyBoard.rankings.length;
+    const total = monthlyBoard.rankings.length;
 
-    const above = myRank > 1 ? weeklyBoard.rankings.find((r) => r.rank === myRank - 1) : null;
+    const above = myRank > 1 ? monthlyBoard.rankings.find((r) => r.rank === myRank - 1) : null;
     const ptsNeeded = above ? Math.max(1, above.score.total_points - myPts + 1) : null;
 
-    const projectedTotal = myPts + Math.round(dailyPts * remainingWeekDays);
+    const projectedTotal = myPts + Math.round(dailyPts * remainingMonthDays);
     const projectedRank =
-      weeklyBoard.rankings.filter((r) => r.user.id !== userId && r.score.total_points > projectedTotal)
+      monthlyBoard.rankings.filter((r) => r.user.id !== userId && r.score.total_points > projectedTotal)
         .length + 1;
 
-    const goalProjectedTotal = myPts + Math.round(goalDailyPts * remainingWeekDays);
+    const goalProjectedTotal = myPts + Math.round(goalDailyPts * remainingMonthDays);
     const goalProjectedRank =
-      weeklyBoard.rankings.filter((r) => r.user.id !== userId && r.score.total_points > goalProjectedTotal)
+      monthlyBoard.rankings.filter((r) => r.user.id !== userId && r.score.total_points > goalProjectedTotal)
         .length + 1;
 
-    return { dailyPts, remainingWeekDays, myRank, myPts, total, above, ptsNeeded, projectedTotal, projectedRank, goalProjectedTotal, goalProjectedRank };
-  }, [weeklyBoard, projection, goalDailyPts]);
+    return { dailyPts, remainingMonthDays, myRank, myPts, total, above, ptsNeeded, projectedTotal, projectedRank, goalProjectedTotal, goalProjectedRank };
+  }, [monthlyBoard, projection, goalDailyPts]);
 
   const hasWeeklyGoal = (profile.goal_workout_days_week ?? 0) > 0 || (profile.goal_workout_mins_week ?? 0) > 0;
 
@@ -594,14 +597,14 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
 
         {(projection || rankInsights.myRank != null) ? (
           <div className="space-y-3 text-sm">
-            {/* This week block */}
+            {/* This month block */}
             <div className="rounded-lg bg-surface-2/50 p-3 space-y-2">
-              <div className="text-[10px] font-semibold text-text-muted uppercase tracking-wide mb-1">This week</div>
+              <div className="text-[10px] font-semibold text-text-muted uppercase tracking-wide mb-1">This month</div>
 
-              {/* Weekly rank */}
+              {/* Monthly rank */}
               {rankInsights.myRank != null && (
                 <div className="flex items-center justify-between">
-                  <span className="text-text-secondary">Your rank this week</span>
+                  <span className="text-text-secondary">Your rank this month</span>
                   <span className="font-bold text-text-primary">
                     #{rankInsights.myRank}
                     {rankInsights.total > 1 && (
@@ -626,17 +629,17 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
               {rankInsights.myRank === 1 && (
                 <div className="flex items-start gap-2 text-xs text-text-primary font-medium">
                   <Trophy className="w-3.5 h-3.5 text-accent-gold shrink-0 mt-0.5" />
-                  <span>You&apos;re leading this week! Keep it up.</span>
+                  <span>You&apos;re leading this month! Keep it up.</span>
                 </div>
               )}
 
               {/* Projected rank at current pace */}
-              {rankInsights.dailyPts > 0 && rankInsights.remainingWeekDays > 0 && rankInsights.projectedRank != null && (
+              {rankInsights.dailyPts > 0 && rankInsights.remainingMonthDays > 0 && rankInsights.projectedRank != null && (
                 <div className="flex items-start gap-2 text-xs text-text-secondary">
                   <TrendingUp className="w-3.5 h-3.5 text-text-muted shrink-0 mt-0.5" />
                   <span>
                     If you keep scoring at your current pace (~<span className="font-bold text-text-primary">{rankInsights.dailyPts} pts/day</span> for the remaining{' '}
-                    <span className="font-bold text-text-primary">{rankInsights.remainingWeekDays} day{rankInsights.remainingWeekDays !== 1 ? 's' : ''}</span>), you&apos;ll finish the week at{' '}
+                    <span className="font-bold text-text-primary">{rankInsights.remainingMonthDays} day{rankInsights.remainingMonthDays !== 1 ? 's' : ''}</span> of the month), you&apos;ll finish the month at{' '}
                     <span className="font-bold text-text-primary">rank #{rankInsights.projectedRank}</span> with{' '}
                     <span className="font-bold text-text-primary">{rankInsights.projectedTotal} pts</span>.
                   </span>
@@ -644,11 +647,11 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
               )}
 
               {/* Projected rank if goals are met */}
-              {rankInsights.remainingWeekDays > 0 && rankInsights.goalProjectedRank != null && (
+              {rankInsights.remainingMonthDays > 0 && rankInsights.goalProjectedRank != null && (
                 <div className="flex items-start gap-2 text-xs text-text-secondary">
                   <Trophy className="w-3.5 h-3.5 text-text-muted shrink-0 mt-0.5" />
                   <span>
-                    If you hit your daily goals for every remaining day this week, you&apos;ll finish at{' '}
+                    If you hit your daily goals for every remaining day this month, you&apos;ll finish at{' '}
                     <span className="font-bold text-text-primary">rank #{rankInsights.goalProjectedRank}</span> with about{' '}
                     <span className="font-bold text-text-primary">{rankInsights.goalProjectedTotal} pts</span>.
                   </span>

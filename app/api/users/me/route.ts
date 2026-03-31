@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
+import { clampGoalWorkoutMinsWeek } from '@/lib/goal-defaults';
 import { parseGoalWorkoutTypes } from '@/lib/workout-goals';
 
 export async function GET() {
@@ -63,6 +64,21 @@ export async function PUT(request: Request) {
 
   for (const key of allowed) {
     if (body[key] !== undefined) updates[key] = body[key];
+  }
+  if (updates.goal_workout_mins_week !== undefined) {
+    const v = updates.goal_workout_mins_week;
+    if (v === null) {
+      updates.goal_workout_mins_week = null;
+    } else {
+      const n = Number(v);
+      if (!Number.isFinite(n)) {
+        return NextResponse.json(
+          { error: 'goal_workout_mins_week must be a number between 0 and 600' },
+          { status: 400 }
+        );
+      }
+      updates.goal_workout_mins_week = clampGoalWorkoutMinsWeek(n);
+    }
   }
   if (body.goal_workout_types !== undefined) {
     const parsed = parseGoalWorkoutTypes(body.goal_workout_types);

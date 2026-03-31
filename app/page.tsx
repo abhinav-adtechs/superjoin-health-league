@@ -164,18 +164,8 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    console.log('Home component mounted, starting loadUser...');
-    
-    // Safety timeout - if loading takes more than 5 seconds, force it to false
-    const safetyTimeout = setTimeout(() => {
-      console.warn('Safety timeout: forcing loading to false');
-      setLoading(false);
-    }, 5000);
-    
-    loadUser().finally(() => {
-      clearTimeout(safetyTimeout);
-    });
-    
+    loadUser();
+
     let unsubscribe: (() => void) | null = null;
     try {
       const supabase = createClient();
@@ -189,7 +179,6 @@ export default function Home() {
       console.error('Failed to set up auth listener:', e);
     }
     return () => {
-      clearTimeout(safetyTimeout);
       if (unsubscribe) {
         unsubscribe();
       }
@@ -231,7 +220,10 @@ export default function Home() {
     setProfile(undefined);
   };
 
-  if (loading) {
+  // Keep shell loading while profile is in flight for signed-in users. The 5s safety timeout can
+  // clear `loading` before /api/users/me returns, which would otherwise render Dashboard with
+  // profile undefined and crash on profile! assertions.
+  if (loading || (user && profile === undefined)) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="animate-pulse text-text-muted font-medium">Loading…</div>

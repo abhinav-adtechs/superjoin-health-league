@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 import { getAgeBracket } from '@/lib/points';
 import type { FitnessGoal, FoodTrackingMode } from '@/lib/types';
+import { clampGoalWorkoutMinsWeek } from '@/lib/goal-defaults';
 import { parseGoalWorkoutTypes } from '@/lib/workout-goals';
 
 const FITNESS_GOALS: FitnessGoal[] = [
@@ -76,7 +77,9 @@ export async function POST(request: Request) {
 
   const goal_sleep_hours = optNum(body, 'goal_sleep_hours');
   const goal_water_liters = optNum(body, 'goal_water_liters');
-  const goal_workout_mins_week = optNum(body, 'goal_workout_mins_week');
+  const goal_workout_mins_week_raw = optNum(body, 'goal_workout_mins_week');
+  const goal_workout_mins_week =
+    goal_workout_mins_week_raw == null ? null : clampGoalWorkoutMinsWeek(goal_workout_mins_week_raw);
   const goal_workout_days_week = optNum(body, 'goal_workout_days_week');
   const goal_steps_day = optNum(body, 'goal_steps_day');
 
