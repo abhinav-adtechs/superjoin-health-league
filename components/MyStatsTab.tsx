@@ -18,14 +18,13 @@ import {
   recommendedWorkoutHoursMinsParts,
 } from '@/lib/goal-defaults';
 import { dicebearAvatarUrl, dicebearAvatarPickerSeeds, resolveAvatarUrl } from '@/lib/avatar-url';
+import { FITNESS_GOAL_THEMES } from '@/lib/fitness-goal-theme';
 
-const FITNESS_GOAL_BADGES: Record<FitnessGoal, { label: string; color: string }> = {
-  lose_weight:      { label: 'Cutting',  color: 'bg-rose-100 text-rose-700 border-rose-200' },
-  gain_muscle:      { label: 'Building', color: 'bg-indigo-100 text-indigo-700 border-indigo-200' },
-  gain_weight:      { label: 'Bulking',  color: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
-  stay_active:      { label: 'Active',   color: 'bg-amber-100 text-amber-700 border-amber-200' },
-  general_wellness: { label: 'Wellness', color: 'bg-violet-100 text-violet-700 border-violet-200' },
-};
+const FITNESS_GOAL_BADGES: Record<FitnessGoal, { label: string; color: string }> = Object.fromEntries(
+  (Object.entries(FITNESS_GOAL_THEMES) as [FitnessGoal, { label: string; badgeClass: string }][]).map(
+    ([k, v]) => [k, { label: v.label, color: v.badgeClass }],
+  ),
+) as Record<FitnessGoal, { label: string; color: string }>;
 
 const FITNESS_GOAL_DETAILS: Record<FitnessGoal, {
   emoji: string;

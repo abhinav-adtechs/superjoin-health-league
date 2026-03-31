@@ -8,12 +8,20 @@
   --glass-border: rgba(0, 0, 0, 0.08);
   --accent-green: #059669;
   --accent-gold: #d97706;
-  --primary-orange: #FF6B35;
-  --primary-orange-dark: #E55A2B;
-  --primary-orange-light: #FF8C5A;
   --text-primary: #0f172a;
   --text-secondary: #475569;
   --text-muted: #64748b;
+
+  /* Goal-driven theme — overridden at runtime by applyFitnessGoalTheme() */
+  --theme-primary: #FF6B35;
+  --theme-primary-dark: #E55A2B;
+  --theme-primary-light: #FF8C5A;
+  --theme-primary-rgb: 255, 107, 53;
+
+  /* Legacy aliases — point to theme vars so CSS rules below work everywhere */
+  --primary-orange: var(--theme-primary);
+  --primary-orange-dark: var(--theme-primary-dark);
+  --primary-orange-light: var(--theme-primary-light);
 }
 
 * {
@@ -33,7 +41,7 @@ body {
   line-height: 1.5;
 }
 
-/* Mesh background */
+/* Mesh background — blobs track the active goal color */
 .mesh-bg {
   position: fixed;
   inset: 0;
@@ -48,7 +56,7 @@ body {
   height: 800px;
   top: -200px;
   right: -200px;
-  background: radial-gradient(circle, rgba(255, 107, 53, 0.06) 0%, transparent 70%);
+  background: radial-gradient(circle, rgba(var(--theme-primary-rgb), 0.07) 0%, transparent 70%);
   animation: float 12s ease-in-out infinite;
 }
 .mesh-bg::after {
@@ -58,7 +66,7 @@ body {
   height: 600px;
   bottom: -100px;
   left: -100px;
-  background: radial-gradient(circle, rgba(255, 140, 90, 0.05) 0%, transparent 70%);
+  background: radial-gradient(circle, rgba(var(--theme-primary-rgb), 0.05) 0%, transparent 70%);
   animation: float 15s ease-in-out infinite reverse;
 }
 @keyframes float {
@@ -91,14 +99,14 @@ body {
 }
 
 .gradient-text {
-  background: linear-gradient(135deg, #FF6B35, #E55A2B, #FF8C5A);
+  background: linear-gradient(135deg, var(--theme-primary), var(--theme-primary-dark), var(--theme-primary-light));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
 .btn-primary {
-  background: #FF6B35;
+  background: var(--theme-primary);
   color: #fff;
   font-weight: 600;
   border: none;
@@ -108,9 +116,9 @@ body {
   transition: all 0.2s ease;
 }
 .btn-primary:hover:not(:disabled) {
-  background: #E55A2B;
+  background: var(--theme-primary-dark);
   transform: translateY(-1px);
-  box-shadow: 0 8px 24px -4px rgba(255, 107, 53, 0.35);
+  box-shadow: 0 8px 24px -4px rgba(var(--theme-primary-rgb), 0.35);
 }
 .btn-primary:disabled {
   opacity: 0.6;
@@ -144,8 +152,8 @@ body {
   width: 100%;
 }
 .input-field:focus {
-  border-color: rgba(255, 107, 53, 0.5);
-  box-shadow: 0 0 0 3px rgba(255, 107, 53, 0.12);
+  border-color: rgba(var(--theme-primary-rgb), 0.5);
+  box-shadow: 0 0 0 3px rgba(var(--theme-primary-rgb), 0.12);
 }
 
 .tab-item {
@@ -182,7 +190,7 @@ body {
   width: 20px;
   height: 2px;
   border-radius: 2px;
-  background: var(--primary-orange);
+  background: var(--theme-primary);
 }
 
 /* ── Sidebar navigation (desktop) ── */
@@ -205,8 +213,8 @@ body {
   color: var(--text-secondary);
 }
 .sidebar-nav-item.active {
-  background: rgba(255, 107, 53, 0.08);
-  color: var(--primary-orange);
+  background: rgba(var(--theme-primary-rgb), 0.08);
+  color: var(--theme-primary);
 }
 .sidebar-nav-item.active::before {
   content: '';
@@ -217,7 +225,7 @@ body {
   width: 3px;
   height: 60%;
   border-radius: 0 3px 3px 0;
-  background: var(--primary-orange);
+  background: var(--theme-primary);
 }
 
 /* ── Safe area for iOS notch/status bar (top bar) ── */
@@ -257,10 +265,10 @@ body {
   transform: scale(0.92);
 }
 .bottom-nav-item.active {
-  color: var(--primary-orange);
+  color: var(--theme-primary);
 }
 .bottom-nav-item.active svg {
-  filter: drop-shadow(0 2px 6px rgba(255, 107, 53, 0.4));
+  filter: drop-shadow(0 2px 6px rgba(var(--theme-primary-rgb), 0.4));
 }
 
 .rank-1 { background: linear-gradient(135deg, rgba(217, 119, 6, 0.15), rgba(217, 119, 6, 0.05)); border: 1px solid rgba(217, 119, 6, 0.3); color: #b45309; }

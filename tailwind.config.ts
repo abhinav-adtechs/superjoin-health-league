@@ -9,9 +9,9 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        'primary-orange': '#FF6B35',
-        'primary-orange-dark': '#E55A2B',
-        'primary-orange-light': '#FF8C5A',
+        'primary-orange': 'var(--theme-primary, #FF6B35)',
+        'primary-orange-dark': 'var(--theme-primary-dark, #E55A2B)',
+        'primary-orange-light': 'var(--theme-primary-light, #FF8C5A)',
         surface: {
           '0': '#ffffff',
           '1': '#f8fafc',
@@ -27,8 +27,8 @@ const config: Config = {
           blue: '#2563eb',
           purple: '#7c3aed',
           red: '#dc2626',
-          orange: '#FF6B35',
-          'superjoin-orange': '#FF6B35',
+          orange: 'var(--theme-primary, #FF6B35)',
+          'superjoin-orange': 'var(--theme-primary, #FF6B35)',
         },
         text: {
           primary: '#0f172a',

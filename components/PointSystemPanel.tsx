@@ -8,6 +8,7 @@ import {
 import type { ScoringRule } from '@/app/api/scoring-rules/route';
 import type { FoodTrackingMode, FitnessGoal } from '@/lib/types';
 import { apiUrl, getApiFetchOptions } from '@/lib/api';
+import { FITNESS_GOAL_THEMES } from '@/lib/fitness-goal-theme';
 
 type ProfileContext = {
   fitness_goal?: FitnessGoal | null;
@@ -16,13 +17,11 @@ type ProfileContext = {
   goal_calories_day?: number | null;
 };
 
-const FITNESS_GOAL_META: Record<string, { label: string; color: string }> = {
-  lose_weight:      { label: 'Cutting',  color: 'bg-rose-500/15 text-rose-400' },
-  gain_muscle:      { label: 'Building', color: 'bg-indigo-500/15 text-indigo-400' },
-  gain_weight:      { label: 'Bulking',  color: 'bg-emerald-500/15 text-emerald-400' },
-  stay_active:      { label: 'Active',   color: 'bg-amber-500/15 text-amber-400' },
-  general_wellness: { label: 'Wellness', color: 'bg-violet-500/15 text-violet-400' },
-};
+const FITNESS_GOAL_META: Record<string, { label: string; color: string }> = Object.fromEntries(
+  (Object.entries(FITNESS_GOAL_THEMES) as [FitnessGoal, { label: string; badgeDimClass: string }][]).map(
+    ([k, v]) => [k, { label: v.label, color: v.badgeDimClass }],
+  ),
+);
 
 const FOOD_MODE_LABELS: Record<string, string> = {
   protein_only:  'Protein tracking only',

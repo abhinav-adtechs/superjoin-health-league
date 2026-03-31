@@ -22,14 +22,13 @@ import {
 import { apiUrl, getApiFetchOptions } from '@/lib/api';
 import type { LeaderboardView, LeaderboardResponse, FitnessGoal } from '@/lib/types';
 import { resolveAvatarUrl } from '@/lib/avatar-url';
+import { FITNESS_GOAL_THEMES } from '@/lib/fitness-goal-theme';
 
-const FITNESS_GOAL_BADGES: Record<FitnessGoal, { label: string; color: string }> = {
-  lose_weight:      { label: 'Cutting',  color: 'text-rose-400 bg-rose-400/10' },
-  gain_muscle:      { label: 'Building', color: 'text-indigo-400 bg-indigo-400/10' },
-  gain_weight:      { label: 'Bulking',  color: 'text-emerald-400 bg-emerald-400/10' },
-  stay_active:      { label: 'Active',   color: 'text-amber-400 bg-amber-400/10' },
-  general_wellness: { label: 'Wellness', color: 'text-violet-400 bg-violet-400/10' },
-};
+const FITNESS_GOAL_BADGES: Record<FitnessGoal, { label: string; color: string }> = Object.fromEntries(
+  (Object.entries(FITNESS_GOAL_THEMES) as [FitnessGoal, { label: string; badgeDimClass: string }][]).map(
+    ([k, v]) => [k, { label: v.label, color: v.badgeDimClass }],
+  ),
+) as Record<FitnessGoal, { label: string; color: string }>;
 
 // ─── Date helpers ─────────────────────────────────────────────────────────────
 
@@ -623,11 +622,17 @@ function ScoringGuide() {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export function LeaderboardTab() {
-  const [view, setView] = useState<LeaderboardView>('weekly');
+export function LeaderboardTab({
+  initialView,
+  initialMonth,
+}: {
+  initialView?: LeaderboardView;
+  initialMonth?: string;
+} = {}) {
+  const [view, setView] = useState<LeaderboardView>(() => initialView ?? 'weekly');
   const [weekStart, setWeekStart] = useState<string>(getCurrentWeekMonday);
   const [calendarOpen, setCalendarOpen] = useState(false);
-  const [selectedMonth, setSelectedMonth] = useState<string>(getCurrentMonthStr);
+  const [selectedMonth, setSelectedMonth] = useState<string>(() => initialMonth ?? getCurrentMonthStr());
   const [monthCalendarOpen, setMonthCalendarOpen] = useState(false);
   const [data, setData] = useState<LeaderboardResponse | null>(null);
   const [loading, setLoading] = useState(true);

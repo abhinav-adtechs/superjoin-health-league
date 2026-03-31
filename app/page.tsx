@@ -16,6 +16,7 @@ import { SetPinForm } from '@/components/SetPinForm';
 import { PointSystemSheet } from '@/components/PointSystemPanel';
 import type { Profile } from '@/lib/types';
 import { resolveAvatarUrl } from '@/lib/avatar-url';
+import { applyFitnessGoalTheme } from '@/lib/fitness-goal-theme';
 
 /** True when the profile has no usable goal targets yet (DB dummy migration fills these for most users). */
 function profileNeedsGoals(p: Profile): boolean {
@@ -89,6 +90,8 @@ export default function Home() {
   });
   const [loading, setLoading] = useState(true);
   const [entryRefresh, setEntryRefresh] = useState(0);
+  /** When set from the dashboard month league CTA, leaderboard opens on monthly view for this YYYY-MM. */
+  const [leaderboardOpenContext, setLeaderboardOpenContext] = useState<{ month: string } | null>(null);
   const [sidebarPinned, setSidebarPinned] = useState(false);
   const [pointsSheetOpen, setPointsSheetOpen] = useState(false);
   const [guestPointsOpen, setGuestPointsOpen] = useState(false);
@@ -192,6 +195,14 @@ export default function Home() {
       }
     };
   }, [loadUser]);
+
+  useEffect(() => {
+    applyFitnessGoalTheme(profile?.fitness_goal ?? null);
+  }, [profile?.fitness_goal]);
+
+  useEffect(() => {
+    if (activeTab !== 'leaderboard') setLeaderboardOpenContext(null);
+  }, [activeTab]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -605,9 +616,27 @@ export default function Home() {
 
         {/* Main content */}
         <main className="flex-1 max-w-5xl mx-auto w-full px-4 sm:px-6 py-6 sm:py-10 pb-28 md:pb-10">
-          {activeTab === 'dashboard' && <DashboardTab profile={profile!} onRefresh={loadUser} refreshTrigger={entryRefresh} />}
+          {activeTab === 'dashboard' && (
+            <DashboardTab
+              profile={profile!}
+              onRefresh={loadUser}
+              refreshTrigger={entryRefresh}
+              onOpenLeaderboard={() => {
+                const d = new Date();
+                const month = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                setLeaderboardOpenContext({ month });
+                setActiveTab('leaderboard');
+              }}
+            />
+          )}
           {activeTab === 'log' && <LogEntryTab profile={profile!} onSuccess={loadUser} refreshTrigger={entryRefresh} />}
-          {activeTab === 'leaderboard' && <LeaderboardTab />}
+          {activeTab === 'leaderboard' && (
+            <LeaderboardTab
+              key={leaderboardOpenContext ? `lb-${leaderboardOpenContext.month}` : 'lb'}
+              initialView={leaderboardOpenContext ? 'monthly' : undefined}
+              initialMonth={leaderboardOpenContext?.month}
+            />
+          )}
           {activeTab === 'settings' && (
             <SettingsTab
               profile={profile!}

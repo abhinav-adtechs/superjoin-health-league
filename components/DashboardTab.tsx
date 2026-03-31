@@ -14,18 +14,18 @@ import {
   Zap,
   ArrowRight,
   Utensils,
+  Trophy,
 } from 'lucide-react';
 import { apiUrl, getApiFetchOptions } from '@/lib/api';
 import { LogEntryModal, type EntryType } from './LogEntryModal';
 import type { Profile, DailyEntry, FitnessGoal } from '@/lib/types';
+import { FITNESS_GOAL_THEMES } from '@/lib/fitness-goal-theme';
 
-const FITNESS_GOAL_BADGES: Record<FitnessGoal, { label: string; color: string }> = {
-  lose_weight:      { label: 'Cutting',  color: 'bg-rose-100 text-rose-700 border border-rose-200' },
-  gain_muscle:      { label: 'Building', color: 'bg-indigo-100 text-indigo-700 border border-indigo-200' },
-  gain_weight:      { label: 'Bulking',  color: 'bg-emerald-100 text-emerald-700 border border-emerald-200' },
-  stay_active:      { label: 'Active',   color: 'bg-amber-100 text-amber-700 border border-amber-200' },
-  general_wellness: { label: 'Wellness', color: 'bg-violet-100 text-violet-700 border border-violet-200' },
-};
+const FITNESS_GOAL_BADGES: Record<FitnessGoal, { label: string; color: string }> = Object.fromEntries(
+  (Object.entries(FITNESS_GOAL_THEMES) as [FitnessGoal, { label: string; badgeClass: string }][]).map(
+    ([k, v]) => [k, { label: v.label, color: v.badgeClass }],
+  ),
+) as Record<FitnessGoal, { label: string; color: string }>;
 
 // ── Blueprint Insights ─────────────────────────────────────────────────────────
 // Specific, actionable directives from Bryan Johnson's Blueprint protocol.
@@ -132,6 +132,10 @@ function getLocalDateStr(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+function daysInMonthFor(d: Date): number {
+  return new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+}
+
 function getMondayOfWeek(d: Date): string {
   const day = d.getDay(); // 0 = Sunday
   const diff = day === 0 ? -6 : 1 - day;
@@ -213,10 +217,12 @@ export function DashboardTab({
   profile,
   onRefresh,
   refreshTrigger = 0,
+  onOpenLeaderboard,
 }: {
   profile: Profile;
   onRefresh: () => void;
   refreshTrigger?: number;
+  onOpenLeaderboard?: () => void;
 }) {
   const [todayEntry, setTodayEntry] = useState<DailyEntry | null>(null);
   const [weeklyEntries, setWeeklyEntries] = useState<DailyEntry[]>([]);
@@ -226,6 +232,7 @@ export function DashboardTab({
   const [weeklyGoalsHit, setWeeklyGoalsHit] = useState<'full' | 'partial' | 'none'>('none');
   const [weeklyPoints, setWeeklyPoints] = useState(0);
   const [rank, setRank] = useState<number | null>(null);
+  const [monthRank, setMonthRank] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [modalType, setModalType] = useState<EntryType | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -238,18 +245,22 @@ export function DashboardTab({
       setLoading(true);
       const today = getLocalDateStr(new Date());
       const monday = getMondayOfWeek(new Date());
-      const [entryRes, weeklyRes, streakRes, lbRes] = await Promise.all([
+      const d = new Date();
+      const monthStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const [entryRes, weeklyRes, streakRes, lbRes, monthLbRes] = await Promise.all([
         fetch(apiUrl(`/api/entries?date=${today}`), getApiFetchOptions()),
         fetch(apiUrl(`/api/entries/history?from=${monday}&to=${today}`), getApiFetchOptions()),
         fetch(apiUrl('/api/streaks/me'), getApiFetchOptions()),
         fetch(apiUrl('/api/leaderboard?view=weekly'), getApiFetchOptions()),
+        fetch(apiUrl(`/api/leaderboard?view=monthly&month=${monthStr}`), getApiFetchOptions()),
       ]);
       if (cancelled) return;
-      const [entryData, weeklyData, streakData, lbData] = await Promise.all([
+      const [entryData, weeklyData, streakData, lbData, monthLbData] = await Promise.all([
         entryRes.json().catch(() => null),
         weeklyRes.json().catch(() => []),
         streakRes.json().catch(() => ({})),
         lbRes.json().catch(() => ({})),
+        monthLbRes.json().catch(() => ({})),
       ]);
       setTodayEntry(entryData?.id ? (entryData as DailyEntry) : null);
       setWeeklyEntries(Array.isArray(weeklyData) ? (weeklyData as DailyEntry[]) : []);
@@ -263,6 +274,11 @@ export function DashboardTab({
       );
       setRank(myEntry?.rank ?? null);
       setWeeklyPoints(myEntry?.score?.total_points ?? 0);
+      const myMonthEntry = monthLbData.rankings?.find(
+        (r: { user: { display_name: string }; rank: number; score: { total_points: number } }) =>
+          r.user.display_name === profile.display_name,
+      );
+      setMonthRank(myMonthEntry?.rank ?? null);
       setLoading(false);
     }
     load();
@@ -273,14 +289,15 @@ export function DashboardTab({
 
   // ── Computed values ───────────────────────────────────────────────────────────
 
-  const hour = new Date().getHours();
+  const now = new Date();
+  const hour = now.getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
   const firstName = profile.display_name.split(' ')[0];
-  const daysActive = Math.max(
-    1,
-    Math.floor((Date.now() - new Date(profile.joined_at).getTime()) / (1000 * 60 * 60 * 24)),
-  );
-  const todayLabel = new Date().toLocaleDateString('en-US', {
+  const dayOfMonth = now.getDate();
+  const daysInMonth = daysInMonthFor(now);
+  const monthNameLong = now.toLocaleDateString('en-US', { month: 'long' });
+  const daysRemainingInMonth = daysInMonth - dayOfMonth + 1;
+  const todayLabel = now.toLocaleDateString('en-US', {
     weekday: 'long',
     month: 'long',
     day: 'numeric',
@@ -423,7 +440,10 @@ export function DashboardTab({
   if (loading) {
     return (
       <div className="space-y-5 animate-pulse">
-        <div className="h-10 w-56 rounded-lg bg-surface-2" />
+        <div className="space-y-3">
+          <div className="h-10 w-56 rounded-lg bg-surface-2" />
+          <div className="h-36 sm:h-32 w-full max-w-2xl rounded-2xl bg-surface-2" />
+        </div>
         <div className="h-72 rounded-2xl bg-surface-2" />
         <div className="h-36 rounded-2xl bg-surface-2" />
         <div className="h-40 rounded-2xl bg-surface-2" />
@@ -449,9 +469,64 @@ export function DashboardTab({
               </span>
             )}
           </div>
-          <p className="text-sm text-text-muted mt-0.5">
-            {todayLabel} · Day {daysActive} in the league
-          </p>
+
+          <div className="mt-4 relative overflow-hidden rounded-2xl border-2 border-accent-superjoin-orange/35 bg-surface-1 shadow-lg shadow-accent-superjoin-orange/15">
+            <div
+              className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_120%_80%_at_100%_-20%,rgba(249,115,22,0.22),transparent_55%),radial-gradient(ellipse_80%_50%_at_0%_100%,rgba(251,191,36,0.08),transparent_50%)]"
+              aria-hidden
+            />
+            <div className="relative flex flex-col gap-4 p-4 sm:p-5 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
+              <div className="flex gap-3 min-w-0 flex-1">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-accent-superjoin-orange/20 border border-accent-superjoin-orange/35 shadow-inner">
+                  <Trophy className="h-6 w-6 text-accent-superjoin-orange" aria-hidden />
+                </div>
+                <div className="min-w-0 space-y-1.5">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-accent-superjoin-orange/90">
+                    This month&apos;s league
+                  </p>
+                  <h3 className="text-2xl sm:text-3xl font-black tracking-tight leading-none">
+                    <span className="bg-gradient-to-r from-accent-superjoin-orange via-amber-500 to-amber-600 bg-clip-text text-transparent">
+                      {monthNameLong}
+                    </span>
+                    <span className="text-text-primary"> league</span>
+                  </h3>
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+                    <span className="font-bold tabular-nums text-accent-superjoin-orange">
+                      Day {dayOfMonth}/{daysInMonth}
+                    </span>
+                    <span className="text-text-muted/70">·</span>
+                    <span className="font-semibold text-text-primary">
+                      {daysRemainingInMonth} {daysRemainingInMonth === 1 ? 'day' : 'days'} left
+                    </span>
+                  </div>
+                  <p className="text-xs text-text-muted">{todayLabel}</p>
+                </div>
+              </div>
+
+              <div className="flex flex-row sm:flex-col items-center justify-between sm:justify-center gap-3 sm:gap-4 sm:min-w-[9.5rem] sm:text-right sm:items-end border-t border-white/10 pt-3 sm:border-t-0 sm:pt-0">
+                <div className="flex items-baseline gap-2 sm:flex-col sm:items-end sm:gap-0.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted">Your rank</span>
+                  {monthRank != null ? (
+                    <span className="text-3xl sm:text-4xl font-black tabular-nums leading-none text-accent-superjoin-orange drop-shadow-sm">
+                      #{monthRank}
+                    </span>
+                  ) : (
+                    <span className="text-lg font-bold text-text-muted">—</span>
+                  )}
+                </div>
+                {onOpenLeaderboard && (
+                  <button
+                    type="button"
+                    onClick={onOpenLeaderboard}
+                    className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-accent-superjoin-orange px-3.5 py-2 text-sm font-bold text-white shadow-md shadow-accent-superjoin-orange/25 transition hover:brightness-110 active:scale-[0.98]"
+                  >
+                    Leaderboard
+                    <ArrowRight className="h-4 w-4 shrink-0" aria-hidden />
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* ── Section 2: Daily Completion Ring + CTA ───────────────────────────── */}
