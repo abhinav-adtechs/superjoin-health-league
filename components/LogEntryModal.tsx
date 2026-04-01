@@ -7,7 +7,8 @@ import { apiUrl, getApiFetchOptions } from '@/lib/api';
 import type { CardioType, FitnessGoal, Profile } from '@/lib/types';
 import { recommendedProteinGDay } from '@/lib/protein-recommendations';
 import { CALORIE_MULTIPLIERS_PER_KG } from '@/lib/goal-defaults';
-import { DateCarousel, MAX_DAYS_BACK } from '@/components/entry/DateCarousel';
+import { DateCarousel } from '@/components/entry/DateCarousel';
+import { isWithinAllowedPastRange } from '@/lib/entryDateWindow';
 import { SliderField } from '@/components/entry/SliderField';
 import { WorkoutSection } from '@/components/entry/WorkoutSection';
 import { parseGoalWorkoutTypes } from '@/lib/workout-goals';
@@ -79,17 +80,6 @@ const SUCCESS_MSG: Record<EntryType, (delta: number, total: number) => string> =
 
 const WIZARD_STEPS = ['date', 'movement', 'food', 'sleep'] as const;
 type WizardStep = (typeof WIZARD_STEPS)[number];
-
-function isWithinAllowedPastRange(dateStr: string): boolean {
-  const d = new Date(dateStr + 'T12:00:00');
-  const today = new Date();
-  today.setHours(12, 0, 0, 0);
-  if (d.getTime() > today.getTime()) return false;
-  const min = new Date(today);
-  min.setDate(min.getDate() - MAX_DAYS_BACK);
-  min.setHours(12, 0, 0, 0);
-  return d.getTime() >= min.getTime();
-}
 
 interface LogEntryModalProps {
   entryType: EntryType;

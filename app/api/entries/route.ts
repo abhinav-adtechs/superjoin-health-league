@@ -1,7 +1,13 @@
 import { createClient } from '@/lib/supabase/server';
 import { createServiceRoleClient } from '@/lib/supabase/admin';
 import { NextResponse } from 'next/server';
-import { calculateDailyPoints, getAgeBracket, isGoalCrushDay } from '@/lib/points';
+import {
+  applyClearActivity,
+  isClearActivityKey,
+  isDailyEntryEmpty,
+} from '@/lib/clearEntryActivity';
+import { isValidDate, isWithinAllowedPastRange } from '@/lib/entryDateWindow';
+import { calculateDailyPoints, isGoalCrushDay } from '@/lib/points';
 import type { AgeBracket } from '@/lib/types';
 import {
   detectEntryCategory,
@@ -21,26 +27,6 @@ const ALLOWED_FIELDS = [
 
 // Fields that accumulate across multiple logs per day (add new value on top of existing)
 const ADDITIVE_FIELDS = new Set<string>(['water_liters', 'protein_qty', 'calories_kcal', 'steps', 'home_cooked_meals']);
-
-function isValidDate(dateStr: string): boolean {
-  const d = new Date(dateStr);
-  return !isNaN(d.getTime());
-}
-
-const MAX_DAYS_BACK = 4;
-
-function isWithinAllowedPastRange(dateStr: string, maxDaysBack: number = MAX_DAYS_BACK): boolean {
-  const d = new Date(dateStr + 'T12:00:00');
-  const today = new Date();
-  today.setHours(12, 0, 0, 0);
-  const dTime = d.getTime();
-  const todayTime = today.getTime();
-  if (dTime > todayTime) return false;
-  const minDate = new Date(today);
-  minDate.setDate(minDate.getDate() - maxDaysBack);
-  minDate.setHours(12, 0, 0, 0);
-  return dTime >= minDate.getTime();
-}
 
 function weekStart(d: Date): string {
   const day = d.getDay();
@@ -70,6 +56,117 @@ export async function GET(request: Request) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json(data);
+}
+
+export async function PATCH(request: Request) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
+  }
+  if (!body || typeof body !== 'object') {
+    return NextResponse.json({ error: 'Invalid body' }, { status: 400 });
+  }
+  const { date, activity } = body as { date?: unknown; activity?: unknown };
+  if (typeof date !== 'string' || !isValidDate(date)) {
+    return NextResponse.json({ error: 'Invalid date' }, { status: 400 });
+  }
+  if (!isWithinAllowedPastRange(date)) {
+    return NextResponse.json({ error: 'Date must be today or up to 4 days in the past' }, { status: 400 });
+  }
+  if (!isClearActivityKey(activity)) {
+    return NextResponse.json({ error: 'Invalid activity' }, { status: 400 });
+  }
+
+  const { data: existing, error: fetchErr } = await supabase
+    .from('daily_entries')
+    .select('*')
+    .eq('user_id', user.id)
+    .eq('date', date)
+    .maybeSingle();
+
+  if (fetchErr) return NextResponse.json({ error: fetchErr.message }, { status: 500 });
+  if (!existing) return NextResponse.json({ error: 'No entry for this date' }, { status: 404 });
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('age_bracket, goal_steps_day, goal_water_liters, goal_sleep_hours, goal_sleep_hours_min, goal_sleep_hours_max, fitness_goal, food_tracking_mode, goal_protein_g_day, goal_calories_day')
+    .eq('id', user.id)
+    .single();
+  const ageBracket: AgeBracket = (profile?.age_bracket as AgeBracket) ?? '25_to_35';
+
+  const profileForPoints = profile
+    ? {
+        goal_protein_g_day: profile.goal_protein_g_day,
+        goal_calories_day: profile.goal_calories_day,
+        food_tracking_mode: profile.food_tracking_mode,
+        fitness_goal: profile.fitness_goal,
+      }
+    : undefined;
+
+  const prevDailyPoints = calculateDailyPoints(
+    existing as Parameters<typeof calculateDailyPoints>[0],
+    ageBracket,
+    profileForPoints,
+  );
+
+  const cleared = applyClearActivity(existing as Record<string, unknown>, activity);
+
+  if (isDailyEntryEmpty(cleared)) {
+    const { error: delErr } = await supabase
+      .from('daily_entries')
+      .delete()
+      .eq('user_id', user.id)
+      .eq('date', date);
+    if (delErr) return NextResponse.json({ error: delErr.message }, { status: 500 });
+    return NextResponse.json({ deleted: true, date, points_delta: -prevDailyPoints });
+  }
+
+  const entry: Record<string, unknown> = {
+    ...cleared,
+    user_id: user.id,
+    date,
+    scored_with_goal: profile?.fitness_goal ?? null,
+  };
+
+  entry.daily_points = calculateDailyPoints(
+    entry as Parameters<typeof calculateDailyPoints>[0],
+    ageBracket,
+    profileForPoints,
+  );
+  entry.is_goal_crush_day = isGoalCrushDay(
+    entry as Parameters<typeof isGoalCrushDay>[0],
+    profile ?? {},
+    entry.daily_points as number,
+  );
+
+  let { data, error } = await supabase
+    .from('daily_entries')
+    .upsert(entry, { onConflict: 'user_id,date', ignoreDuplicates: false })
+    .select()
+    .single();
+
+  if (error && 'is_goal_crush_day' in entry) {
+    const { is_goal_crush_day: _dropped, ...entryWithoutCrush } = entry as Record<string, unknown> & { is_goal_crush_day: unknown };
+    void _dropped;
+    const retry = await supabase
+      .from('daily_entries')
+      .upsert(entryWithoutCrush, { onConflict: 'user_id,date', ignoreDuplicates: false })
+      .select()
+      .single();
+    data = retry.data;
+    error = retry.error;
+  }
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  const pointsDelta = (data!.daily_points as number) - prevDailyPoints;
+  return NextResponse.json({ ...data, points_delta: pointsDelta });
 }
 
 export async function POST(request: Request) {

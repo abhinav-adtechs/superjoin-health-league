@@ -1,8 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
-
-const MAX_DAYS_BACK = 4;
+import { MAX_DAYS_BACK } from '@/lib/entryDateWindow';
 
 function localDateStr(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;

@@ -801,7 +801,7 @@ export function DashboardTab({
                     <button
                       type="button"
                       onClick={() => setModalType(item.modalType)}
-                      className="shrink-0 inline-flex items-center justify-center min-h-[36px] rounded-none border border-accent-superjoin-orange/35 bg-transparent px-3.5 text-sm font-medium text-accent-superjoin-orange transition-colors hover:border-accent-superjoin-orange/55 hover:bg-accent-superjoin-orange/[0.08] active:scale-[0.98] touch-manipulation"
+                      className="shrink-0 inline-flex h-8 min-w-[5.25rem] items-center justify-center rounded-xl border border-accent-superjoin-orange/35 bg-transparent px-5 text-sm font-medium text-accent-superjoin-orange transition-colors hover:border-accent-superjoin-orange/55 hover:bg-accent-superjoin-orange/[0.08] active:scale-[0.98] touch-manipulation"
                     >
                       Log
                     </button>

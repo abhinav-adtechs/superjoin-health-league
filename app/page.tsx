@@ -621,7 +621,16 @@ export default function Home() {
               }}
             />
           )}
-          {activeTab === 'log' && <LogEntryTab profile={profile!} onSuccess={loadUser} refreshTrigger={entryRefresh} />}
+          {activeTab === 'log' && (
+            <LogEntryTab
+              profile={profile!}
+              onSuccess={() => {
+                loadUser();
+                setEntryRefresh((r) => r + 1);
+              }}
+              refreshTrigger={entryRefresh}
+            />
+          )}
           {activeTab === 'leaderboard' && (
             <LeaderboardTab
               key={leaderboardOpenContext ? `lb-${leaderboardOpenContext.month}` : 'lb'}

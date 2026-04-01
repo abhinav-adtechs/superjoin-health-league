@@ -181,6 +181,10 @@ CREATE POLICY "Users can update own entries"
   ON public.daily_entries FOR UPDATE
   USING (auth.uid() = user_id);
 
+CREATE POLICY "Users can delete own entries"
+  ON public.daily_entries FOR DELETE
+  USING (auth.uid() = user_id);
+
 -- Weekly weigh-ins: own only
 CREATE POLICY "Users can read own weigh ins"
   ON public.weekly_weigh_ins FOR SELECT

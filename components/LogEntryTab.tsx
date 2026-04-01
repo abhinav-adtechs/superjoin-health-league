@@ -14,12 +14,18 @@ import {
   Scale,
   UtensilsCrossed,
   Gauge,
+  Trash2,
 } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { apiUrl, getApiFetchOptions } from '@/lib/api';
 import { CalendarHistogram } from './CalendarHistogram';
 import { getLoggingStreakBonus } from '@/lib/points';
 import type { Profile } from '@/lib/types';
+import {
+  CLEAR_ACTIVITY_LABELS,
+  type ClearActivityKey,
+} from '@/lib/clearEntryActivity';
+import { isWithinAllowedPastRange } from '@/lib/entryDateWindow';
 
 type ProjectionResponse = {
   rank: number;
@@ -221,6 +227,29 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
   const [historyMonthOffset, setHistoryMonthOffset] = useState(0);
   const [categoryFilter, setCategoryFilter] = useState<LogCategoryFilter>('all');
   const [visibleWeeks, setVisibleWeeks] = useState(8);
+  const [busyClearKey, setBusyClearKey] = useState<string | null>(null);
+
+  async function clearActivityForDate(date: string, activity: ClearActivityKey) {
+    const label = CLEAR_ACTIVITY_LABELS[activity];
+    if (!confirm(`Remove ${label} log for this day?`)) return;
+    const k = `${date}:${activity}`;
+    setBusyClearKey(k);
+    try {
+      const res = await fetch(apiUrl('/api/entries'), getApiFetchOptions({
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date, activity }),
+      }));
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert((data as { error?: string }).error || 'Failed to remove');
+        return;
+      }
+      onSuccess();
+    } finally {
+      setBusyClearKey(null);
+    }
+  }
 
   const logEntries = useMemo(
     () => [...entries].filter(hasAnyLog).sort((a, b) => b.date.localeCompare(a.date)),
@@ -862,6 +891,19 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
                       const totalDayPoints =
                         (e.daily_points ?? null) != null ? e.daily_points! : movementPts + streakBonus;
 
+                      const clearBtn = (activity: ClearActivityKey) =>
+                        isWithinAllowedPastRange(e.date) ? (
+                          <button
+                            type="button"
+                            onClick={() => void clearActivityForDate(e.date, activity)}
+                            disabled={busyClearKey === `${e.date}:${activity}`}
+                            className="p-1 rounded-md text-text-muted hover:text-rose-400 hover:bg-rose-500/10 disabled:opacity-40 touch-manipulation"
+                            aria-label={`Remove ${CLEAR_ACTIVITY_LABELS[activity]}`}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        ) : null;
+
                       return (
                         <li
                           key={e.date}
@@ -902,7 +944,7 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
                           </div>
                           <div className="space-y-1 pl-1">
                             {showStrength && (
-                              <div className="flex items-center justify-between text-sm text-text-secondary">
+                              <div className="flex items-center justify-between gap-2 text-sm text-text-secondary">
                                 <div className="flex items-center gap-2 min-w-0">
                                   <Dumbbell className="w-3.5 h-3.5 shrink-0" style={{ color: COLOR_WORKOUT }} />
                                   <span className="font-medium text-text-primary">Strength</span>
@@ -911,15 +953,18 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
                                     {e.workout_types?.length ? ` · ${e.workout_types.map(label).join(', ')}` : ''}
                                   </span>
                                 </div>
-                                {strengthPts > 0 && (
-                                  <span className="text-xs font-semibold text-text-primary whitespace-nowrap">
-                                    +{strengthPts} pts
-                                  </span>
-                                )}
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  {strengthPts > 0 && (
+                                    <span className="text-xs font-semibold text-text-primary whitespace-nowrap">
+                                      +{strengthPts} pts
+                                    </span>
+                                  )}
+                                  {clearBtn('strength')}
+                                </div>
                               </div>
                             )}
                             {showCardio && (
-                              <div className="flex items-center justify-between text-sm text-text-secondary">
+                              <div className="flex items-center justify-between gap-2 text-sm text-text-secondary">
                                 <div className="flex items-center gap-2 min-w-0">
                                   <Activity className="w-3.5 h-3.5 shrink-0" style={{ color: COLOR_CARDIO }} />
                                   <span className="font-medium text-text-primary">Cardio</span>
@@ -928,47 +973,55 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
                                     {e.cardio_type ? ` · ${label(e.cardio_type)}` : ''}
                                   </span>
                                 </div>
-                                {cardioPts > 0 && (
-                                  <span className="text-xs font-semibold text-text-primary whitespace-nowrap">
-                                    +{cardioPts} pts
-                                  </span>
-                                )}
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  {cardioPts > 0 && (
+                                    <span className="text-xs font-semibold text-text-primary whitespace-nowrap">
+                                      +{cardioPts} pts
+                                    </span>
+                                  )}
+                                  {clearBtn('cardio')}
+                                </div>
                               </div>
                             )}
                             {showSteps && (
-                              <div className="flex items-center justify-between text-sm text-text-secondary">
+                              <div className="flex items-center justify-between gap-2 text-sm text-text-secondary">
                                 <div className="flex items-center gap-2 min-w-0">
                                   <Activity className="w-3.5 h-3.5 shrink-0" style={{ color: COLOR_STEPS }} />
                                   <span className="font-medium text-text-primary">Steps</span>
                                   <span>{e.steps?.toLocaleString()} steps</span>
                                 </div>
-                                {stepsPts > 0 && (
-                                  <span className="text-xs font-semibold text-text-primary whitespace-nowrap">
-                                    +{stepsPts} pts
-                                  </span>
-                                )}
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  {stepsPts > 0 && (
+                                    <span className="text-xs font-semibold text-text-primary whitespace-nowrap">
+                                      +{stepsPts} pts
+                                    </span>
+                                  )}
+                                  {clearBtn('steps')}
+                                </div>
                               </div>
                             )}
                             {showWater && (
-                              <div className="flex items-center justify-between text-sm text-text-secondary">
+                              <div className="flex items-center justify-between gap-2 text-sm text-text-secondary">
                                 <div className="flex items-center gap-2 min-w-0">
                                   <Droplets className="w-3.5 h-3.5 shrink-0" style={{ color: COLOR_WATER }} />
                                   <span className="font-medium text-text-primary">Water</span>
                                   <span>{e.water_liters} L</span>
                                 </div>
+                                <div className="flex items-center gap-1.5 shrink-0">{clearBtn('water')}</div>
                               </div>
                             )}
                             {showSleepRow && (
-                              <div className="flex items-center justify-between text-sm text-text-secondary">
+                              <div className="flex items-center justify-between gap-2 text-sm text-text-secondary">
                                 <div className="flex items-center gap-2 min-w-0">
                                   <Moon className="w-3.5 h-3.5 shrink-0" style={{ color: COLOR_SLEEP }} />
                                   <span className="font-medium text-text-primary">Sleep</span>
                                   <span>{e.sleep_hours} h</span>
                                 </div>
+                                <div className="flex items-center gap-1.5 shrink-0">{clearBtn('sleep')}</div>
                               </div>
                             )}
                             {showProtein && (
-                              <div className="flex items-center justify-between text-sm text-text-secondary">
+                              <div className="flex items-center justify-between gap-2 text-sm text-text-secondary">
                                 <div className="flex items-center gap-2 min-w-0">
                                   <UtensilsCrossed className="w-3.5 h-3.5 shrink-0" style={{ color: COLOR_NUTRITION }} />
                                   <span className="font-medium text-text-primary">Protein</span>
@@ -977,39 +1030,44 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
                                     {e.protein_meal === true ? ' · meal' : ''}
                                   </span>
                                 </div>
+                                <div className="flex items-center gap-1.5 shrink-0">{clearBtn('protein')}</div>
                               </div>
                             )}
                             {showCals && (
-                              <div className="flex items-center justify-between text-sm text-text-secondary">
+                              <div className="flex items-center justify-between gap-2 text-sm text-text-secondary">
                                 <div className="flex items-center gap-2 min-w-0">
                                   <Gauge className="w-3.5 h-3.5 shrink-0 text-rose-400" />
                                   <span className="font-medium text-text-primary">Calories</span>
                                   <span>{e.calories_kcal?.toLocaleString()} kcal</span>
                                 </div>
+                                <div className="flex items-center gap-1.5 shrink-0">{clearBtn('calories')}</div>
                               </div>
                             )}
                             {showJunk && (
-                              <div className="flex items-center justify-between text-sm text-text-secondary">
+                              <div className="flex items-center justify-between gap-2 text-sm text-text-secondary">
                                 <div className="flex items-center gap-2 min-w-0">
                                   <span className="font-medium text-text-primary">Junk food</span>
                                   <span>{e.junk_food ? 'Yes' : 'No'}</span>
                                 </div>
+                                <div className="flex items-center gap-1.5 shrink-0">{clearBtn('junk')}</div>
                               </div>
                             )}
                             {showAlc && (
-                              <div className="flex items-center justify-between text-sm text-text-secondary">
+                              <div className="flex items-center justify-between gap-2 text-sm text-text-secondary">
                                 <div className="flex items-center gap-2 min-w-0">
                                   <span className="font-medium text-text-primary">Alcohol</span>
                                   <span>{label(e.alcohol!)}</span>
                                 </div>
+                                <div className="flex items-center gap-1.5 shrink-0">{clearBtn('alcohol')}</div>
                               </div>
                             )}
                             {showHome && (
-                              <div className="flex items-center justify-between text-sm text-text-secondary">
+                              <div className="flex items-center justify-between gap-2 text-sm text-text-secondary">
                                 <div className="flex items-center gap-2 min-w-0">
                                   <span className="font-medium text-text-primary">Home-cooked meals</span>
                                   <span>{e.home_cooked_meals}</span>
                                 </div>
+                                <div className="flex items-center gap-1.5 shrink-0">{clearBtn('home_cooked')}</div>
                               </div>
                             )}
                             {showStreak && (
