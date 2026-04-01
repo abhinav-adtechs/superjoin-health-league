@@ -9,7 +9,6 @@ import {
   Droplets,
   Moon,
   Activity,
-  Plus,
   CheckCircle2,
   Zap,
   ArrowRight,
@@ -552,7 +551,7 @@ export function DashboardTab({
           </div>
         </div>
 
-        {/* ── Section 2: Daily Completion Ring + CTA ───────────────────────────── */}
+        {/* ── Section 2: Daily Completion Ring ─────────────────────────────────── */}
         <div className="glass-card p-6">
           <div className="flex items-center justify-between mb-5">
             <h3 className="font-semibold text-text-primary">Today&apos;s Goals</h3>
@@ -778,18 +777,6 @@ export function DashboardTab({
               )}
             </div>
           </div>
-
-          {/* Inline log CTA */}
-          <div className="mt-6">
-            <button
-              type="button"
-              onClick={() => setModalType('full')}
-              className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-semibold text-sm text-white bg-accent-superjoin-orange hover:bg-primary-orange-dark active:scale-[0.98] transition-all shadow-md"
-            >
-              <Plus className="w-4 h-4" />
-              {todayEntry ? "Update Today's Entry" : "Start Today's Log"}
-            </button>
-          </div>
         </div>
 
         {/* ── Section 3: Remaining Today ───────────────────────────────────────── */}
@@ -804,17 +791,17 @@ export function DashboardTab({
                 You&apos;ve completed all your daily goals. Great work — rest up and do it again tomorrow.
               </p>
             ) : (
-              <ul className="space-y-3">
+              <ul className="space-y-2.5">
                 {remainingItems.map((item, i) => (
-                  <li key={i} className="flex items-center gap-3">
-                    <div className="w-7 h-7 rounded-full bg-surface-2 flex items-center justify-center flex-shrink-0">
+                  <li key={i} className="flex items-center gap-3 py-0.5">
+                    <div className="w-8 h-8 rounded-full bg-surface-2 flex items-center justify-center shrink-0">
                       {item.icon}
                     </div>
-                    <span className="text-sm text-text-secondary flex-1">{item.text}</span>
+                    <span className="text-sm text-text-secondary flex-1 min-w-0 leading-snug">{item.text}</span>
                     <button
                       type="button"
                       onClick={() => setModalType(item.modalType)}
-                      className="text-xs font-semibold text-accent-superjoin-orange hover:underline flex-shrink-0 transition-opacity"
+                      className="shrink-0 inline-flex items-center justify-center min-h-[36px] rounded-none border border-accent-superjoin-orange/35 bg-transparent px-3.5 text-sm font-medium text-accent-superjoin-orange transition-colors hover:border-accent-superjoin-orange/55 hover:bg-accent-superjoin-orange/[0.08] active:scale-[0.98] touch-manipulation"
                     >
                       Log
                     </button>

@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, ChevronDown, Calendar, Dumbbell, Utensils, Moon, Scale } from 'lucide-react';
+import { Plus, ChevronDown, Dumbbell, Utensils, Moon, Scale } from 'lucide-react';
 import { LogEntryModal, type EntryType } from './LogEntryModal';
 import type { Profile } from '@/lib/types';
 
@@ -11,7 +11,6 @@ const ENTRY_OPTIONS: { type: EntryType; label: string; icon: typeof Dumbbell }[]
   { type: 'meal_recovery', label: 'Log Food', icon: Utensils },
   { type: 'sleep', label: 'Log Sleep', icon: Moon },
   { type: 'weight', label: 'Log Weight', icon: Scale },
-  { type: 'full', label: 'Log full day', icon: Calendar },
 ];
 
 interface NewEntryCTAProps {
