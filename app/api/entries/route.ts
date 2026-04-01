@@ -27,7 +27,7 @@ function isValidDate(dateStr: string): boolean {
   return !isNaN(d.getTime());
 }
 
-const MAX_DAYS_BACK = 7;
+const MAX_DAYS_BACK = 4;
 
 function isWithinAllowedPastRange(dateStr: string, maxDaysBack: number = MAX_DAYS_BACK): boolean {
   const d = new Date(dateStr + 'T12:00:00');
@@ -83,7 +83,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid date' }, { status: 400 });
   }
   if (!isWithinAllowedPastRange(date)) {
-    return NextResponse.json({ error: 'Date must be today or up to 7 days in the past' }, { status: 400 });
+    return NextResponse.json({ error: 'Date must be today or up to 4 days in the past' }, { status: 400 });
   }
 
   // Merge with existing entry so multiple logs per day (movement, meal, sleep) combine

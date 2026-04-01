@@ -174,7 +174,7 @@ export function LogEntryModal({ entryType, profile, onClose, onSuccess }: LogEnt
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isWithinAllowedPastRange(date)) {
-      setMessage({ type: 'error', text: 'Date must be today or up to 7 days in the past.' });
+      setMessage({ type: 'error', text: 'Date must be today or up to 4 days in the past.' });
       return;
     }
     setSaving(true);

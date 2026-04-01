@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react';
 
-const MAX_DAYS_BACK = 7;
+const MAX_DAYS_BACK = 4;
 
 function localDateStr(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
