@@ -239,7 +239,7 @@ export function LeaderboardTopLadder({
               const behind = leaderRaw - s;
 
               return (
-                <li key={r.user.id} className="rounded-xl border border-white/8 bg-white/[0.02] px-2 py-2.5 sm:px-3">
+                <li key={r.user.id} className="rounded-xl border border-white/8 bg-white/[0.02] md:bg-surface-1 px-2 py-2.5 sm:px-3">
                   <div className="flex items-start gap-2 sm:gap-3">
                     <RankBadge rank={r.rank} />
                     <LadderAvatar userId={r.user.id} name={r.user.display_name} url={r.user.avatar_url} sizeClass="w-8 h-8" />

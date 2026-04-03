@@ -1,3 +1,5 @@
+import { createClient } from '@/lib/supabase/client';
+
 /**
  * API base URL for fetch() calls.
  * - Web (Next.js dev/server or same-origin deploy): use '' so relative /api works.
@@ -20,4 +22,13 @@ export function getApiFetchOptions(init?: RequestInit): RequestInit {
 /** Full URL for an API path (path should start with /). */
 export function apiUrl(path: string): string {
   return getApiBaseUrl() + (path.startsWith('/') ? path : '/' + path);
+}
+
+/** Attach Supabase access token so Route Handlers see the user when cookies are missing (common in WebViews / hybrid). */
+export async function getAuthHeaders(): Promise<Record<string, string>> {
+  if (typeof window === 'undefined') return {};
+  const supabase = createClient();
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.access_token) return {};
+  return { Authorization: `Bearer ${session.access_token}` };
 }

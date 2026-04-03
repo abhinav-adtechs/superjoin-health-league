@@ -112,19 +112,40 @@ function mealsLogNonEmpty(meals_log: unknown): boolean {
   return true;
 }
 
-/** Align with LogEntryTab hasMovement / hasNutrition / hasHydration / hasSleepLog + meals_log. */
-export function isDailyEntryEmpty(e: DailyEntryRow): boolean {
-  if (e.workout_done === true || e.cardio_done === true) return false;
+/**
+ * True when there is nothing left worth keeping a daily_entries row for (delete row, don't PATCH zeros).
+ * Also treats orphan movement fields (duration/types with workout_done false) as non-empty.
+ */
+function rowHasNoRemainingLogData(e: DailyEntryRow): boolean {
+  if (e.workout_done === true) return false;
+  if (e.cardio_done === true) return false;
   if (e.steps != null && Number(e.steps) > 0) return false;
   if (e.water_liters != null && Number(e.water_liters) > 0) return false;
   if (e.sleep_hours != null && Number(e.sleep_hours) > 0) return false;
+  if (e.sleep_quality != null) return false;
+
+  // Orphan workout/cardio data without flags true still means "has a row"
+  if (e.workout_duration != null && Number(e.workout_duration) > 0) return false;
+  if (Array.isArray(e.workout_types) && e.workout_types.length > 0) return false;
+  if (e.cardio_duration != null && Number(e.cardio_duration) > 0) return false;
+  if (e.cardio_type != null && String(e.cardio_type).length > 0) return false;
 
   if (Number(e.protein_qty ?? 0) > 0 || e.protein_meal === true) return false;
   if (Number(e.calories_kcal ?? 0) > 0) return false;
-  if (e.junk_food != null) return false;
-  if (e.alcohol != null) return false;
+  if (e.junk_food === true) return false;
+  if (e.alcohol != null && e.alcohol !== 'zero') return false;
   if (Number(e.home_cooked_meals ?? 0) > 0) return false;
   if (mealsLogNonEmpty(e.meals_log)) return false;
 
   return true;
+}
+
+/**
+ * After removing one log slice (any `ClearActivityKey`: water, sleep, strength, etc.), if no other
+ * meaningful data remains for that calendar day, DELETE the entire `daily_entries` row instead of
+ * PATCHing a ghost row. This applies whenever the user was effectively deleting “the only thing
+ * logged that day,” regardless of which slice type it was.
+ */
+export function shouldDeleteEntireDailyRowAfterClear(cleared: DailyEntryRow): boolean {
+  return rowHasNoRemainingLogData(cleared);
 }

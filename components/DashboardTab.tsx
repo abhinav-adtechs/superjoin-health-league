@@ -413,7 +413,7 @@ function GoalsBoxPanel({
         matrixLabel: 'text-[9px]',
         matrixValue: 'text-sm',
         grid: 'mt-4 grid grid-cols-2 gap-3 max-w-4xl mx-auto',
-        barSection: 'space-y-3 rounded-xl border border-white/10 bg-surface-1/30 px-4 py-3 max-w-4xl mx-auto',
+        barSection: 'space-y-3 rounded-xl border border-white/10 bg-surface-1/30 md:bg-surface-1 px-4 py-3 max-w-4xl mx-auto',
         barRow: 'h-3',
         barLabel: 'text-xs',
         toggle: '',
@@ -427,15 +427,15 @@ function GoalsBoxPanel({
         matrixLabel: 'text-[8px]',
         matrixValue: 'text-[11px]',
         grid: 'mt-3 grid grid-cols-2 gap-2',
-        barSection: 'space-y-2.5 rounded-xl border border-white/10 bg-surface-1/30 px-3 py-2.5',
+        barSection: 'space-y-2.5 rounded-xl border border-white/10 bg-surface-1/30 md:bg-surface-1 px-3 py-2.5',
         barRow: 'h-2.5',
         barLabel: 'text-[11px]',
-        toggle: 'mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-white/12 bg-surface-1/40 py-2 text-[11px] font-medium text-text-secondary transition-colors hover:bg-surface-2/60 active:scale-[0.99]',
+        toggle: 'mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-white/12 bg-surface-1/40 md:bg-surface-1 py-2 text-[11px] font-medium text-text-secondary transition-colors hover:bg-surface-2/60 active:scale-[0.99]',
       };
 
   return (
     <div className={isDesktop ? 'space-y-4' : 'space-y-3'}>
-      <div className={`border border-white/10 bg-surface-2/30 ${d.card}`}>
+      <div className={d.card}>
         <div className="flex items-center justify-between gap-2">
           <p className="text-[10px] font-medium uppercase tracking-wide text-text-muted">Daily average</p>
           <p className={`${d.av} font-semibold tabular-nums ${progressPctToneClass(overallDailyPct, false)}`}>
@@ -478,7 +478,7 @@ function GoalsBoxPanel({
               <div
                 key={row.id}
                 className={`grid min-h-0 grid-cols-2 grid-rows-2 gap-x-2 gap-y-1.5 rounded-lg border p-2 ${
-                  row.dim ? 'border-white/5 bg-surface-2/30 opacity-80' : 'border-white/10 bg-surface-1/50'
+                  row.dim ? 'border-white/5 bg-surface-2/30 md:bg-surface-2 opacity-80' : 'border-white/10 bg-surface-1/50 md:bg-surface-1'
                 }`}
               >
                 <div className="flex min-w-0 flex-col justify-center">
@@ -1043,7 +1043,7 @@ export function DashboardTab({
                   <button
                     type="button"
                     onClick={onOpenLeaderboard}
-                    className="inline-flex items-center gap-0.5 rounded-md border border-white/15 bg-surface-0/40 px-2 py-1 text-[10px] font-medium text-text-muted transition hover:border-accent-superjoin-orange/30 hover:bg-accent-superjoin-orange/10 hover:text-accent-superjoin-orange active:scale-[0.98]"
+                    className="inline-flex items-center gap-0.5 rounded-md border border-white/15 bg-surface-0/40 md:bg-surface-0 px-2 py-1 text-[10px] font-medium text-text-muted transition hover:border-accent-superjoin-orange/30 hover:bg-accent-superjoin-orange/10 hover:text-accent-superjoin-orange active:scale-[0.98]"
                   >
                     League
                     <ArrowRight className="h-2.5 w-2.5 shrink-0" aria-hidden />
@@ -1102,7 +1102,7 @@ export function DashboardTab({
                   <button
                     type="button"
                     onClick={onOpenLeaderboard}
-                    className="inline-flex items-center justify-center gap-1 rounded-lg border border-white/15 bg-surface-0/30 px-2.5 py-1.5 text-xs font-medium text-text-muted transition hover:border-accent-superjoin-orange/30 hover:bg-accent-superjoin-orange/10 hover:text-accent-superjoin-orange active:scale-[0.98]"
+                    className="inline-flex items-center justify-center gap-1 rounded-lg border border-white/15 bg-surface-0/30 md:bg-surface-0 px-2.5 py-1.5 text-xs font-medium text-text-muted transition hover:border-accent-superjoin-orange/30 hover:bg-accent-superjoin-orange/10 hover:text-accent-superjoin-orange active:scale-[0.98]"
                   >
                     Leaderboard
                     <ArrowRight className="h-3.5 w-3.5 shrink-0" aria-hidden />
@@ -1118,7 +1118,7 @@ export function DashboardTab({
         <div
           className={`glass-card p-3 md:p-6 transition-colors duration-200 ${
             goalsPeriod === 'yesterday'
-              ? 'border-violet-300/40 bg-gradient-to-br from-violet-50/95 via-slate-50/80 to-indigo-50/70 shadow-md shadow-violet-500/[0.07]'
+              ? 'border-violet-300/40 bg-gradient-to-br from-violet-50/95 via-slate-50/80 to-indigo-50/70 md:from-violet-50 md:via-slate-50 md:to-indigo-50 shadow-md shadow-violet-500/[0.07]'
               : ''
           }`}
         >
@@ -1153,8 +1153,8 @@ export function DashboardTab({
                       aria-labelledby="dashboard-goals-period"
                       className={`absolute left-0 top-[calc(100%+4px)] z-50 min-w-[12.5rem] overflow-hidden rounded-xl border py-1 shadow-lg ${
                         goalsPeriod === 'yesterday'
-                          ? 'border-violet-300/40 bg-violet-50/98 backdrop-blur-sm'
-                          : 'border-white/15 bg-surface-0/98 backdrop-blur-sm shadow-black/10'
+                          ? 'border-violet-300/40 bg-violet-50/98 md:bg-violet-50 backdrop-blur-sm md:backdrop-blur-none'
+                          : 'border-white/15 bg-surface-0/98 md:bg-surface-0 backdrop-blur-sm md:backdrop-blur-none shadow-black/10'
                       }`}
                     >
                       <button
@@ -1210,7 +1210,7 @@ export function DashboardTab({
                   All goals hit!
                 </span>
               )}
-              <div className="hidden md:inline-flex rounded-lg border border-white/10 bg-surface-1/60 p-0.5 shadow-sm" role="group" aria-label="Goals layout">
+              <div className="hidden md:inline-flex rounded-lg border border-white/10 bg-surface-1 p-0.5 shadow-sm" role="group" aria-label="Goals layout">
                 <button
                   type="button"
                   aria-label="Box layout"

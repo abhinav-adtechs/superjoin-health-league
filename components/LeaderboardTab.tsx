@@ -708,7 +708,7 @@ export function LeaderboardTab({
           </div>
         ) : (
           <>
-            <div className="px-4 py-3 sm:px-5 border-b border-white/10 bg-surface-2/30">
+            <div className="px-4 py-3 sm:px-5 border-b border-white/10 bg-surface-2/30 md:bg-surface-2">
               <div className="flex items-center gap-2">
                 <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-accent-superjoin-orange/15 border border-accent-superjoin-orange/25">
                   <Trophy className="h-4 w-4 text-accent-superjoin-orange" aria-hidden />
@@ -725,7 +725,7 @@ export function LeaderboardTab({
             </div>
             {data.rankings.length > 10 && (
               <>
-                <div className="px-4 py-2 border-b border-white/10 bg-surface-2/20">
+                <div className="px-4 py-2 border-b border-white/10 bg-surface-2/20 md:bg-surface-2">
                   <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted">Rank 11 and below</p>
                 </div>
                 <ul className="divide-y divide-white/10">

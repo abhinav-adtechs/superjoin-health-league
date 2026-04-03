@@ -1,12 +1,19 @@
-import { createClient } from '@/lib/supabase/server';
+import { getSupabaseWithUser } from '@/lib/supabase/server';
 import { createServiceRoleClient } from '@/lib/supabase/admin';
 import { NextResponse } from 'next/server';
 import {
   applyClearActivity,
   isClearActivityKey,
-  isDailyEntryEmpty,
+  shouldDeleteEntireDailyRowAfterClear,
 } from '@/lib/clearEntryActivity';
-import { isValidDate, isWithinAllowedPastRange } from '@/lib/entryDateWindow';
+import {
+  isValidDate,
+  isWithinAllowedPastRange,
+  MAX_DELETE_DAYS_BACK,
+  isDateWithinAnchorRange,
+  isWithinAllowedPastRangeUtcSlack,
+  normalizeYmd,
+} from '@/lib/entryDateWindow';
 import { calculateDailyPoints, isGoalCrushDay } from '@/lib/points';
 import type { AgeBracket } from '@/lib/types';
 import {
@@ -16,7 +23,6 @@ import {
   sendDM,
 } from '@/lib/slack';
 import { sendPushToUser } from '@/lib/push';
-
 const ALLOWED_FIELDS = [
   'workout_done', 'workout_duration', 'workout_types', 'cardio_done', 'cardio_duration', 'cardio_type',
   'steps', 'water_liters', 'home_cooked_meals', 'protein_meal', 'protein_qty', 'junk_food', 'meals_log', 'alcohol',
@@ -28,6 +34,32 @@ const ALLOWED_FIELDS = [
 // Fields that accumulate across multiple logs per day (add new value on top of existing)
 const ADDITIVE_FIELDS = new Set<string>(['water_liters', 'protein_qty', 'calories_kcal', 'steps', 'home_cooked_meals']);
 
+/** Columns we may write on PATCH clear (no id/created_at/date/user_id in body — filtered by .eq). */
+const DAILY_ENTRY_PATCH_COLUMNS = [
+  'workout_done', 'workout_duration', 'workout_types', 'cardio_done', 'cardio_duration', 'cardio_type',
+  'steps', 'water_liters', 'home_cooked_meals', 'protein_meal', 'protein_qty', 'junk_food', 'meals_log', 'alcohol',
+  'sleep_hours', 'sleep_quality', 'calories_kcal', 'daily_points', 'is_goal_crush_day', 'scored_with_goal',
+] as const;
+
+function buildDailyEntryPatchPayload(
+  cleared: Record<string, unknown>,
+  computed: { daily_points: number; is_goal_crush_day: boolean; scored_with_goal: unknown },
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const key of DAILY_ENTRY_PATCH_COLUMNS) {
+    if (key === 'daily_points') {
+      out.daily_points = computed.daily_points;
+    } else if (key === 'is_goal_crush_day') {
+      out.is_goal_crush_day = computed.is_goal_crush_day;
+    } else if (key === 'scored_with_goal') {
+      out.scored_with_goal = computed.scored_with_goal;
+    } else {
+      out[key] = cleared[key];
+    }
+  }
+  return out;
+}
+
 function weekStart(d: Date): string {
   const day = d.getDay();
   const diff = d.getDate() - day + (day === 0 ? -6 : 1);
@@ -37,8 +69,7 @@ function weekStart(d: Date): string {
 }
 
 export async function GET(request: Request) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { supabase, user } = await getSupabaseWithUser(request);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { searchParams } = new URL(request.url);
@@ -59,8 +90,7 @@ export async function GET(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { supabase, user } = await getSupabaseWithUser(request);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   let body: unknown;
@@ -72,12 +102,35 @@ export async function PATCH(request: Request) {
   if (!body || typeof body !== 'object') {
     return NextResponse.json({ error: 'Invalid body' }, { status: 400 });
   }
-  const { date, activity } = body as { date?: unknown; activity?: unknown };
+  const { date, activity, client_today } = body as {
+    date?: unknown;
+    activity?: unknown;
+    client_today?: unknown;
+  };
   if (typeof date !== 'string' || !isValidDate(date)) {
     return NextResponse.json({ error: 'Invalid date' }, { status: 400 });
   }
-  if (!isWithinAllowedPastRange(date)) {
-    return NextResponse.json({ error: 'Date must be today or up to 4 days in the past' }, { status: 400 });
+  const dateNorm = normalizeYmd(date);
+  if (!dateNorm) {
+    return NextResponse.json({ error: 'Invalid date' }, { status: 400 });
+  }
+  const anchorStr =
+    typeof client_today === 'string'
+      ? normalizeYmd(client_today)
+      : null;
+  const anchorOk = anchorStr != null && isValidDate(anchorStr);
+  if (anchorOk && anchorStr) {
+    if (!isDateWithinAnchorRange(dateNorm, anchorStr, MAX_DELETE_DAYS_BACK)) {
+      return NextResponse.json(
+        { error: 'You can only remove entries for today and the past 2 days' },
+        { status: 400 },
+      );
+    }
+  } else if (!isWithinAllowedPastRangeUtcSlack(dateNorm, MAX_DELETE_DAYS_BACK)) {
+    return NextResponse.json(
+      { error: 'You can only remove entries for today and the past 2 days' },
+      { status: 400 },
+    );
   }
   if (!isClearActivityKey(activity)) {
     return NextResponse.json({ error: 'Invalid activity' }, { status: 400 });
@@ -87,7 +140,7 @@ export async function PATCH(request: Request) {
     .from('daily_entries')
     .select('*')
     .eq('user_id', user.id)
-    .eq('date', date)
+    .eq('date', dateNorm)
     .maybeSingle();
 
   if (fetchErr) return NextResponse.json({ error: fetchErr.message }, { status: 500 });
@@ -117,46 +170,69 @@ export async function PATCH(request: Request) {
 
   const cleared = applyClearActivity(existing as Record<string, unknown>, activity);
 
-  if (isDailyEntryEmpty(cleared)) {
-    const { error: delErr } = await supabase
+  // If this slice was the last meaningful log for the day, delete the row (any activity type — not PATCH a ghost row).
+  if (shouldDeleteEntireDailyRowAfterClear(cleared)) {
+    let { error: delErr } = await supabase
       .from('daily_entries')
       .delete()
       .eq('user_id', user.id)
-      .eq('date', date);
+      .eq('date', dateNorm);
+    if (delErr) {
+      // Older environments may not yet have the DELETE RLS policy. We already authenticated the
+      // caller and scope the delete to their own row, so retry with service role to keep
+      // single-entry clears working until the migration is present everywhere.
+      const admin = createServiceRoleClient();
+      const retry = await admin
+        .from('daily_entries')
+        .delete()
+        .eq('user_id', user.id)
+        .eq('date', dateNorm);
+      delErr = retry.error;
+    }
     if (delErr) return NextResponse.json({ error: delErr.message }, { status: 500 });
-    return NextResponse.json({ deleted: true, date, points_delta: -prevDailyPoints });
+    return NextResponse.json({ deleted: true, date: dateNorm, points_delta: -prevDailyPoints });
   }
 
-  const entry: Record<string, unknown> = {
+  const entryForPoints: Record<string, unknown> = {
     ...cleared,
     user_id: user.id,
-    date,
+    date: dateNorm,
     scored_with_goal: profile?.fitness_goal ?? null,
   };
 
-  entry.daily_points = calculateDailyPoints(
-    entry as Parameters<typeof calculateDailyPoints>[0],
+  const daily_points = calculateDailyPoints(
+    entryForPoints as Parameters<typeof calculateDailyPoints>[0],
     ageBracket,
     profileForPoints,
   );
-  entry.is_goal_crush_day = isGoalCrushDay(
-    entry as Parameters<typeof isGoalCrushDay>[0],
+  const is_goal_crush_day = isGoalCrushDay(
+    entryForPoints as Parameters<typeof isGoalCrushDay>[0],
     profile ?? {},
-    entry.daily_points as number,
+    daily_points,
   );
+
+  const patchPayload = buildDailyEntryPatchPayload(cleared, {
+    daily_points,
+    is_goal_crush_day,
+    scored_with_goal: profile?.fitness_goal ?? null,
+  });
 
   let { data, error } = await supabase
     .from('daily_entries')
-    .upsert(entry, { onConflict: 'user_id,date', ignoreDuplicates: false })
+    .update(patchPayload)
+    .eq('user_id', user.id)
+    .eq('date', dateNorm)
     .select()
     .single();
 
-  if (error && 'is_goal_crush_day' in entry) {
-    const { is_goal_crush_day: _dropped, ...entryWithoutCrush } = entry as Record<string, unknown> & { is_goal_crush_day: unknown };
+  if (error && 'is_goal_crush_day' in patchPayload) {
+    const { is_goal_crush_day: _dropped, ...withoutCrush } = patchPayload as Record<string, unknown> & { is_goal_crush_day: unknown };
     void _dropped;
     const retry = await supabase
       .from('daily_entries')
-      .upsert(entryWithoutCrush, { onConflict: 'user_id,date', ignoreDuplicates: false })
+      .update(withoutCrush)
+      .eq('user_id', user.id)
+      .eq('date', dateNorm)
       .select()
       .single();
     data = retry.data;
@@ -170,8 +246,7 @@ export async function PATCH(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { supabase, user } = await getSupabaseWithUser(request);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const body = await request.json();

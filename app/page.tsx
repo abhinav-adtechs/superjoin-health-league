@@ -506,7 +506,7 @@ export default function Home() {
       >
         {/* Profile, goal, key metrics */}
         <div
-          className={`shrink-0 border-b border-white/25 bg-white/15 backdrop-blur-md safe-area-top transition-[padding] duration-200 ${sidebarPinned ? 'px-3 pt-3 pb-3' : 'px-1.5 pt-3 pb-2'}`}
+          className={`shrink-0 border-b border-slate-200/80 bg-surface-1 safe-area-top transition-[padding] duration-200 ${sidebarPinned ? 'px-3 pt-3 pb-3' : 'px-1.5 pt-3 pb-2'}`}
         >
           <button
             type="button"
@@ -514,7 +514,7 @@ export default function Home() {
               setActiveTab('settings');
               setSettingsSection('profile');
             }}
-            className={`w-full rounded-xl text-left transition-colors hover:bg-white/45 focus-visible:outline focus-visible:ring-2 focus-visible:ring-offset-1 ${sidebarPinned ? 'p-2' : 'flex justify-center px-1 py-2 group-hover:justify-start group-hover:px-2'}`}
+            className={`w-full rounded-xl text-left transition-colors hover:bg-slate-200/80 focus-visible:outline focus-visible:ring-2 focus-visible:ring-offset-1 ${sidebarPinned ? 'p-2' : 'flex justify-center px-1 py-2 group-hover:justify-start group-hover:px-2'}`}
             style={{ ['--tw-ring-color' as string]: goalTheme.primary }}
             aria-label="Open profile and goals"
           >
@@ -553,14 +553,14 @@ export default function Home() {
           </button>
 
           <div
-            className={`mt-3 grid grid-cols-3 gap-1 rounded-xl border border-white/35 bg-white/20 backdrop-blur-md p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.5)] ${sidebarPinned ? '' : 'hidden group-hover:grid'}`}
+            className={`mt-3 grid grid-cols-3 gap-1 rounded-xl border border-slate-200/90 bg-surface-0 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] ${sidebarPinned ? '' : 'hidden group-hover:grid'}`}
           >
             <div className="flex flex-col items-center gap-0.5 min-w-0 text-center">
               <Scale className="w-3 h-3 text-text-muted shrink-0" aria-hidden />
               <span className="text-[9px] font-semibold uppercase tracking-wide text-text-muted">Weight</span>
               <span className="text-[11px] font-bold text-text-primary tabular-nums truncate w-full">{weightLabel}</span>
             </div>
-            <div className="flex flex-col items-center gap-0.5 min-w-0 text-center border-x border-white/25">
+            <div className="flex flex-col items-center gap-0.5 min-w-0 text-center border-x border-slate-200/80">
               <Ruler className="w-3 h-3 text-text-muted shrink-0" aria-hidden />
               <span className="text-[9px] font-semibold uppercase tracking-wide text-text-muted">Height</span>
               <span className="text-[11px] font-bold text-text-primary tabular-nums truncate w-full">{heightLabel}</span>
@@ -577,6 +577,17 @@ export default function Home() {
           >
             Superjoin <span className="font-semibold text-accent-superjoin-orange">Health OS</span>
           </p>
+        </div>
+        {/* New entry — desktop sidebar only (mobile uses bottom dock FAB) */}
+        <div
+          className={`shrink-0 border-b border-slate-200/80 bg-surface-1 ${sidebarPinned ? 'px-2.5 py-3' : 'px-2 py-2.5'}`}
+        >
+          <NewEntryCTA
+            profile={profile ?? null}
+            onSuccess={() => { loadUser(); setEntryRefresh((r) => r + 1); }}
+            placement="sidebar"
+            sidebarPinned={sidebarPinned}
+          />
         </div>
         {/* Nav items */}
         <nav
@@ -610,8 +621,8 @@ export default function Home() {
                       onClick={() => { setActiveTab('settings'); setSettingsSection(s.id); }}
                       className={`w-full flex items-center gap-2 pl-10 pr-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors ${
                         activeTab === 'settings' && settingsSection === s.id
-                          ? 'text-accent-superjoin-orange bg-white/35 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.4)]'
-                          : 'text-text-muted hover:text-text-secondary hover:bg-white/25'
+                          ? 'text-accent-superjoin-orange bg-slate-200/90 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.5)]'
+                          : 'text-text-muted hover:text-text-secondary hover:bg-slate-200/60'
                       }`}
                     >
                       <s.icon className="w-3.5 h-3.5 shrink-0" />
@@ -624,7 +635,7 @@ export default function Home() {
           ))}
         </nav>
         {/* Point System trigger */}
-        <div className={`border-t border-white/25 py-2.5 shrink-0 bg-white/10 backdrop-blur-md ${sidebarPinned ? 'px-2.5' : 'px-2'}`}>
+        <div className={`border-t border-slate-200/80 py-2.5 shrink-0 bg-surface-1 ${sidebarPinned ? 'px-2.5' : 'px-2'}`}>
           <button
             onClick={() => setPointsSheetOpen(true)}
             className={`sidebar-nav-item ${pointsSheetOpen ? 'active' : ''} ${sidebarPinned ? '' : 'sidebar-nav-item--rail'}`}
@@ -640,10 +651,10 @@ export default function Home() {
         </div>
 
         {/* Pin / collapse toggle */}
-        <div className={`border-t border-white/25 pt-2 pb-3 shrink-0 bg-white/10 backdrop-blur-md ${sidebarPinned ? 'px-2.5' : 'px-2'}`}>
+        <div className={`border-t border-slate-200/80 pt-2 pb-3 shrink-0 bg-surface-1 ${sidebarPinned ? 'px-2.5' : 'px-2'}`}>
           <button
             onClick={() => setSidebarPinned((p) => !p)}
-            className={`sidebar-nav-item h-10 rounded-lg border border-transparent text-text-muted hover:text-text-secondary hover:bg-white/35 hover:border-white/35 transition-colors w-full ${sidebarPinned ? '' : 'sidebar-nav-item--rail'}`}
+            className={`sidebar-nav-item h-10 rounded-lg border border-transparent text-text-muted hover:text-text-secondary hover:bg-slate-200/80 hover:border-slate-300/80 transition-colors w-full ${sidebarPinned ? '' : 'sidebar-nav-item--rail'}`}
             title={sidebarPinned ? 'Collapse sidebar' : 'Expand sidebar'}
           >
             <span className="w-5 h-5 flex items-center justify-center shrink-0">
@@ -711,7 +722,6 @@ export default function Home() {
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${refreshingApp ? 'animate-spin' : ''}`} />
                 </button>
-                <NewEntryCTA profile={profile ?? null} onSuccess={() => { loadUser(); setEntryRefresh((r) => r + 1); }} />
                 <div className="flex items-center gap-1.5 pl-1 pr-2 py-1 rounded-full bg-surface-1 border border-white/10">
                   <button
                     type="button"
@@ -815,24 +825,47 @@ export default function Home() {
 
       {/* ── Mobile Bottom Navigation ── hidden on desktop */}
       <nav className="bottom-nav md:hidden fixed bottom-0 left-0 right-0 z-40">
-        <div className="bottom-nav-liquid">
-          {TABS.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`bottom-nav-item ${activeTab === tab.id ? 'active' : ''}`}
-            >
-              <tab.icon className="w-[22px] h-[22px]" />
-              <span>{tab.shortLabel}</span>
-            </button>
-          ))}
+        <div className="bottom-nav-liquid bottom-nav-with-fab gap-1">
+          <div className="flex min-w-0 flex-1 gap-1">
+            {TABS.slice(0, 2).map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                className={`bottom-nav-item ${activeTab === tab.id ? 'active' : ''}`}
+              >
+                <tab.icon className="w-[22px] h-[22px]" />
+                <span>{tab.shortLabel}</span>
+              </button>
+            ))}
+          </div>
+          <div className="relative flex w-[4.75rem] shrink-0 flex-col items-center justify-end overflow-visible bg-transparent pb-0.5">
+            <NewEntryCTA
+              profile={profile ?? null}
+              onSuccess={() => { loadUser(); setEntryRefresh((r) => r + 1); }}
+              placement="mobileDock"
+            />
+          </div>
+          <div className="flex min-w-0 flex-1 gap-1">
+            {TABS.slice(2, 4).map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                className={`bottom-nav-item ${activeTab === tab.id ? 'active' : ''}`}
+              >
+                <tab.icon className="w-[22px] h-[22px]" />
+                <span>{tab.shortLabel}</span>
+              </button>
+            ))}
+          </div>
         </div>
       </nav>
 
       {/* ── Command Palette — desktop only, Ctrl+/ ── */}
       {commandPaletteOpen && (
         <div
-          className="hidden md:flex fixed inset-0 z-[60] items-start justify-center pt-24 bg-black/20 backdrop-blur-sm"
+          className="hidden md:flex fixed inset-0 z-[60] items-start justify-center pt-24 bg-slate-900/55 backdrop-blur-none"
           onClick={() => { setCommandPaletteOpen(false); setPaletteQuery(''); setPaletteIdx(0); }}
         >
           <div

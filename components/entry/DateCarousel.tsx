@@ -51,7 +51,7 @@ export function DateCarousel({ value, onChange, className = '' }: DateCarouselPr
         type="button"
         onClick={() => go(1)}
         disabled={currentIndex >= DATE_OPTIONS.length - 1}
-        className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl border border-white/10 bg-surface-0/50 text-text-muted hover:bg-black/5 hover:text-text-primary disabled:opacity-40 disabled:pointer-events-none touch-manipulation"
+        className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl border border-white/10 bg-surface-0/50 md:bg-surface-0 text-text-muted hover:bg-black/5 hover:text-text-primary disabled:opacity-40 disabled:pointer-events-none touch-manipulation"
         aria-label="Older date"
       >
         <span className="text-lg font-medium">←</span>
@@ -64,7 +64,7 @@ export function DateCarousel({ value, onChange, className = '' }: DateCarouselPr
         type="button"
         onClick={() => go(-1)}
         disabled={currentIndex <= 0}
-        className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl border border-white/10 bg-surface-0/50 text-text-muted hover:bg-black/5 hover:text-text-primary disabled:opacity-40 disabled:pointer-events-none touch-manipulation"
+        className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl border border-white/10 bg-surface-0/50 md:bg-surface-0 text-text-muted hover:bg-black/5 hover:text-text-primary disabled:opacity-40 disabled:pointer-events-none touch-manipulation"
         aria-label="More recent date"
       >
         <span className="text-lg font-medium">→</span>

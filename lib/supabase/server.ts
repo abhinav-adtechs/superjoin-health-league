@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
+import { getBearerAccessToken } from '@/lib/supabase/bearer-auth';
 
 export async function createClient() {
   const cookieStore = await cookies();
@@ -24,4 +25,20 @@ export async function createClient() {
       },
     },
   });
+}
+
+/**
+ * Resolve the signed-in user for Route Handlers (cookie session or Bearer).
+ * Important: `getUser(jwt)` does NOT fall back to cookies if the JWT is expired or invalid.
+ * Clients often send a stale Bearer from `getSession()` while `sb-*` cookies are still valid.
+ */
+export async function getSupabaseWithUser(request: Request) {
+  const supabase = await createClient();
+  const jwt = getBearerAccessToken(request);
+  if (jwt) {
+    const { data: { user } } = await supabase.auth.getUser(jwt);
+    if (user) return { supabase, user };
+  }
+  const { data: { user } } = await supabase.auth.getUser();
+  return { supabase, user };
 }

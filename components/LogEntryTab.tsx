@@ -17,7 +17,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { apiUrl, getApiFetchOptions } from '@/lib/api';
+import { apiUrl, getApiFetchOptions, getAuthHeaders } from '@/lib/api';
 import { CalendarHistogram } from './CalendarHistogram';
 import { LogHistorySkeleton } from '@/components/LoadingScreen';
 import { getLoggingStreakBonus } from '@/lib/points';
@@ -26,7 +26,18 @@ import {
   CLEAR_ACTIVITY_LABELS,
   type ClearActivityKey,
 } from '@/lib/clearEntryActivity';
-import { isWithinAllowedPastRange } from '@/lib/entryDateWindow';
+import {
+  MAX_DELETE_DAYS_BACK,
+  getLocalDateString,
+  isDateWithinAnchorRange,
+  normalizeYmd,
+} from '@/lib/entryDateWindow';
+
+/** Canonical YYYY-MM-DD for API rows (ISO timestamps from Supabase break string compares and delete keys). */
+function normalizeEntryRow<T extends { date: string }>(row: T): T {
+  const y = normalizeYmd(row.date) ?? row.date;
+  return { ...row, date: y };
+}
 
 type ProjectionResponse = {
   rank: number;
@@ -229,21 +240,26 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
   const [categoryFilter, setCategoryFilter] = useState<LogCategoryFilter>('all');
   const [visibleWeeks, setVisibleWeeks] = useState(8);
   const [busyClearKey, setBusyClearKey] = useState<string | null>(null);
+  /** Anchor for delete UI: today + previous 2 days only. */
+  const todayLocalForDelete = getLocalDateString();
 
   async function clearActivityForDate(date: string, activity: ClearActivityKey) {
     const label = CLEAR_ACTIVITY_LABELS[activity];
     if (!confirm(`Remove ${label} log for this day?`)) return;
-    const k = `${date}:${activity}`;
+    const dateKey = normalizeYmd(date) ?? date;
+    const k = `${dateKey}:${activity}`;
     setBusyClearKey(k);
     try {
+      const authHeaders = await getAuthHeaders();
       const res = await fetch(apiUrl('/api/entries'), getApiFetchOptions({
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ date, activity }),
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
+        body: JSON.stringify({ date: dateKey, activity, client_today: getLocalDateString() }),
       }));
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        alert((data as { error?: string }).error || 'Failed to remove');
+        const msg = (data as { error?: string }).error || `Could not remove (${res.status})`;
+        alert(msg);
         return;
       }
       onSuccess();
@@ -281,28 +297,38 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
       `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     const from = localDate(start);
     const to = localDate(end);
-    Promise.all([
-      fetch(apiUrl(`/api/entries/history?from=${from}&to=${to}`), { ...getApiFetchOptions(), cache: 'no-store' }).then((r) => r.json()),
-      fetch(apiUrl('/api/weight/history'), { ...getApiFetchOptions(), cache: 'no-store' }).then((r) => r.json()),
-    ])
-      .then(([data, wh]) => {
+
+    void (async () => {
+      const authHeaders = await getAuthHeaders();
+      const baseHeaders = { ...authHeaders };
+      try {
+        const [entriesRes, weightRes] = await Promise.all([
+          fetch(
+            apiUrl(`/api/entries/history?from=${from}&to=${to}`),
+            getApiFetchOptions({ cache: 'no-store', headers: baseHeaders }),
+          ),
+          fetch(apiUrl('/api/weight/history'), getApiFetchOptions({ cache: 'no-store', headers: baseHeaders })),
+        ]);
+        const data = await entriesRes.json().catch(() => []);
+        const wh = await weightRes.json().catch(() => []);
         if (cancelled) return;
         const list = Array.isArray(data) ? data : [];
-        setEntries(list);
+        setEntries(list.map((row: EntryRow) => normalizeEntryRow(row)));
         const weights = Array.isArray(wh) ? wh : [];
         setWeightHistory(
           weights
             .filter((x: { week_start?: string; weight_kg?: number }) => x.week_start && typeof x.weight_kg === 'number')
             .map((x: { week_start: string; weight_kg: number }) => ({ week_start: x.week_start, weight_kg: x.weight_kg }))
         );
-      })
-      .catch(() => {
+      } catch {
         if (!cancelled) {
           setEntries([]);
           setWeightHistory([]);
         }
-      })
-      .finally(() => { if (!cancelled) setLoading(false); });
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
     return () => { cancelled = true; };
   }, [refreshTrigger]);
 
@@ -628,7 +654,7 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
         {(projection || rankInsights.myRank != null) ? (
           <div className="space-y-3 text-sm">
             {/* This month block */}
-            <div className="rounded-lg bg-surface-2/50 p-3 space-y-2">
+            <div className="rounded-lg bg-surface-2/50 md:bg-surface-2 p-3 space-y-2">
               <div className="text-[10px] font-semibold text-text-muted uppercase tracking-wide mb-1">This month</div>
 
               {/* Monthly rank */}
@@ -893,12 +919,18 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
                         (e.daily_points ?? null) != null ? e.daily_points! : movementPts + streakBonus;
 
                       const clearBtn = (activity: ClearActivityKey) =>
-                        isWithinAllowedPastRange(e.date) ? (
+                        isDateWithinAnchorRange(e.date, todayLocalForDelete, MAX_DELETE_DAYS_BACK) ? (
                           <button
                             type="button"
-                            onClick={() => void clearActivityForDate(e.date, activity)}
+                            onPointerDown={(ev) => {
+                              ev.stopPropagation();
+                            }}
+                            onClick={(ev) => {
+                              ev.stopPropagation();
+                              void clearActivityForDate(e.date, activity);
+                            }}
                             disabled={busyClearKey === `${e.date}:${activity}`}
-                            className="p-1 rounded-md text-text-muted hover:text-rose-400 hover:bg-rose-500/10 disabled:opacity-40 touch-manipulation"
+                            className="relative z-10 p-1 rounded-md text-text-muted hover:text-rose-400 hover:bg-rose-500/10 disabled:opacity-40 touch-manipulation"
                             aria-label={`Remove ${CLEAR_ACTIVITY_LABELS[activity]}`}
                           >
                             <Trash2 className="w-3.5 h-3.5" />

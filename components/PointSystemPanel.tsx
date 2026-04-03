@@ -408,7 +408,7 @@ export function PointSystemSheet({ open, onClose, profile }: { open: boolean; on
       {/* Backdrop */}
       {open && (
         <div
-          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm"
+          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm md:bg-slate-900/65 md:backdrop-blur-none"
           onClick={onClose}
           aria-hidden
         />
