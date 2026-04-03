@@ -147,7 +147,9 @@ function getMondayOfWeek(d: Date): string {
 
 function clampPct(value: number | null | undefined, goal: number | null | undefined): number {
   if (!goal || goal <= 0 || value == null) return 0;
-  return Math.min(Math.round((value / goal) * 100), 100);
+  const n = Math.round((Number(value) / Number(goal)) * 100);
+  if (!Number.isFinite(n)) return 0;
+  return Math.min(n, 100);
 }
 
 /** Collapsed goal cards: % color — red when behind (<35%), amber mid, green strong / complete. */
@@ -209,7 +211,8 @@ function computeGoalMetrics(entry: DailyEntry | null, profile: Profile): GoalMet
     if (cal != null) {
       const fg = profile.fitness_goal ?? 'stay_active';
       if (fg === 'lose_weight') {
-        caloriePct = Math.min(100, Math.round((profile.goal_calories_day / Math.max(cal, 1)) * 100));
+        const raw = Math.min(100, Math.round((profile.goal_calories_day / Math.max(cal, 1)) * 100));
+        caloriePct = Number.isFinite(raw) ? raw : 0;
       } else {
         caloriePct = clampPct(cal, profile.goal_calories_day);
       }
@@ -229,12 +232,15 @@ function computeGoalMetrics(entry: DailyEntry | null, profile: Profile): GoalMet
   if (caloriePct !== null) activeDailyPcts.push(caloriePct);
   if (stepsPct !== null) activeDailyPcts.push(stepsPct);
 
+  const safePcts = activeDailyPcts.filter((p) => Number.isFinite(p));
   const overallDailyPct =
-    activeDailyPcts.length > 0
-      ? Math.round(activeDailyPcts.reduce((a, b) => a + b, 0) / activeDailyPcts.length)
-      : entry
-        ? Math.min(Math.round(((entry.daily_points ?? 0) / 85) * 100), 100)
-        : 0;
+    safePcts.length > 0
+      ? Math.round(safePcts.reduce((a, b) => a + b, 0) / safePcts.length)
+      : activeDailyPcts.length > 0
+        ? 0
+        : entry
+          ? Math.min(Math.round(((entry.daily_points ?? 0) / 85) * 100), 100)
+          : 0;
 
   return {
     waterPct,
@@ -332,7 +338,8 @@ function CircleRing({
 }) {
   const r = (size - strokeWidth) / 2;
   const circ = 2 * Math.PI * r;
-  const offset = circ * (1 - Math.min(Math.max(pct, 0), 100) / 100);
+  const safePct = Number.isFinite(pct) ? Math.min(100, Math.max(0, pct)) : 0;
+  const offset = circ * (1 - safePct / 100);
   return (
     <svg
       width={size}
@@ -459,7 +466,7 @@ function GoalsBoxPanel({
                   key={row.id}
                   className="h-full min-w-[3px] border-r border-white/25 last:border-r-0"
                   style={{
-                    flex: Math.max(1, Math.round(row.pct)),
+                    flex: Math.max(1, Number.isFinite(row.pct) ? Math.round(row.pct) : 0),
                     backgroundColor: row.fill,
                   }}
                 />
@@ -635,50 +642,57 @@ export function DashboardTab({
     let cancelled = false;
     async function load() {
       setLoading(true);
-      const today = getLocalDateStr(new Date());
-      const yest = new Date();
-      yest.setDate(yest.getDate() - 1);
-      const yesterdayStr = getLocalDateStr(yest);
-      const monday = getMondayOfWeek(new Date());
-      const d = new Date();
-      const monthStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      const [entryRes, yesterdayRes, weeklyRes, streakRes, lbRes, monthLbRes] = await Promise.all([
-        fetch(apiUrl(`/api/entries?date=${today}`), getApiFetchOptions()),
-        fetch(apiUrl(`/api/entries?date=${yesterdayStr}`), getApiFetchOptions()),
-        fetch(apiUrl(`/api/entries/history?from=${monday}&to=${today}`), getApiFetchOptions()),
-        fetch(apiUrl('/api/streaks/me'), getApiFetchOptions()),
-        fetch(apiUrl('/api/leaderboard?view=weekly'), getApiFetchOptions()),
-        fetch(apiUrl(`/api/leaderboard?view=monthly&month=${monthStr}`), getApiFetchOptions()),
-      ]);
-      if (cancelled) return;
-      const [entryData, yesterdayData, weeklyData, streakData, lbData, monthLbData] = await Promise.all([
-        entryRes.json().catch(() => null),
-        yesterdayRes.json().catch(() => null),
-        weeklyRes.json().catch(() => []),
-        streakRes.json().catch(() => ({})),
-        lbRes.json().catch(() => ({})),
-        monthLbRes.json().catch(() => ({})),
-      ]);
-      setTodayEntry(entryData?.id ? (entryData as DailyEntry) : null);
-      setYesterdayEntry(yesterdayData?.id ? (yesterdayData as DailyEntry) : null);
-      setWeeklyEntries(Array.isArray(weeklyData) ? (weeklyData as DailyEntry[]) : []);
-      setLoggingStreak(streakData.logging_streak ?? 0);
-      setGoalCrushStreak(streakData.goal_crush_streak ?? 0);
-      setWeekLogDays(streakData.week_log_days ?? 0);
-      setWeeklyGoalsHit(streakData.weekly_goals_hit ?? 'none');
-      const myEntry = lbData.rankings?.find(
-        (r: { user: { display_name: string }; rank: number; score: { total_points: number } }) =>
-          r.user.display_name === profile.display_name,
-      );
-      setRank(myEntry?.rank ?? null);
-      setWeeklyPoints(myEntry?.score?.total_points ?? 0);
-      const myMonthEntry = monthLbData.rankings?.find(
-        (r: { user: { display_name: string }; rank: number; score: { total_points: number } }) =>
-          r.user.display_name === profile.display_name,
-      );
-      setMonthRank(myMonthEntry?.rank ?? null);
-      setMonthlyPoints(myMonthEntry?.score?.total_points ?? 0);
-      setLoading(false);
+      try {
+        const today = getLocalDateStr(new Date());
+        const yest = new Date();
+        yest.setDate(yest.getDate() - 1);
+        const yesterdayStr = getLocalDateStr(yest);
+        const monday = getMondayOfWeek(new Date());
+        const d = new Date();
+        const monthStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        const [entryRes, yesterdayRes, weeklyRes, streakRes, lbRes, monthLbRes] = await Promise.all([
+          fetch(apiUrl(`/api/entries?date=${today}`), getApiFetchOptions()),
+          fetch(apiUrl(`/api/entries?date=${yesterdayStr}`), getApiFetchOptions()),
+          fetch(apiUrl(`/api/entries/history?from=${monday}&to=${today}`), getApiFetchOptions()),
+          fetch(apiUrl('/api/streaks/me'), getApiFetchOptions()),
+          fetch(apiUrl('/api/leaderboard?view=weekly'), getApiFetchOptions()),
+          fetch(apiUrl(`/api/leaderboard?view=monthly&month=${monthStr}`), getApiFetchOptions()),
+        ]);
+        if (cancelled) return;
+        const [entryData, yesterdayData, weeklyData, streakData, lbData, monthLbData] = await Promise.all([
+          entryRes.json().catch(() => null),
+          yesterdayRes.json().catch(() => null),
+          weeklyRes.json().catch(() => []),
+          streakRes.json().catch(() => ({})),
+          lbRes.json().catch(() => ({})),
+          monthLbRes.json().catch(() => ({})),
+        ]);
+        if (cancelled) return;
+        setTodayEntry(entryData?.id ? (entryData as DailyEntry) : null);
+        setYesterdayEntry(yesterdayData?.id ? (yesterdayData as DailyEntry) : null);
+        setWeeklyEntries(Array.isArray(weeklyData) ? (weeklyData as DailyEntry[]) : []);
+        setLoggingStreak(streakData.logging_streak ?? 0);
+        setGoalCrushStreak(streakData.goal_crush_streak ?? 0);
+        setWeekLogDays(streakData.week_log_days ?? 0);
+        setWeeklyGoalsHit(streakData.weekly_goals_hit ?? 'none');
+        const name = profile.display_name;
+        const myEntry = lbData.rankings?.find(
+          (r: { user: { display_name: string }; rank: number; score: { total_points: number } }) =>
+            r.user.display_name === name,
+        );
+        setRank(myEntry?.rank ?? null);
+        setWeeklyPoints(myEntry?.score?.total_points ?? 0);
+        const myMonthEntry = monthLbData.rankings?.find(
+          (r: { user: { display_name: string }; rank: number; score: { total_points: number } }) =>
+            r.user.display_name === name,
+        );
+        setMonthRank(myMonthEntry?.rank ?? null);
+        setMonthlyPoints(myMonthEntry?.score?.total_points ?? 0);
+      } catch (e) {
+        console.error('Dashboard load failed:', e);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     }
     load();
     return () => {
@@ -733,6 +747,18 @@ export function DashboardTab({
   const trackProtein = !foodMode || foodMode === 'protein_only' || foodMode === 'both';
   const trackCalories = foodMode === 'calories_only' || foodMode === 'both';
   const trackSteps = (profile.goal_steps_day ?? 0) > 0;
+  const showProteinFoodGoal = trackProtein && !!profile.goal_protein_g_day;
+  const showCalorieFoodGoal = trackCalories && !!profile.goal_calories_day;
+  const dualFoodGoals = showProteinFoodGoal && showCalorieFoodGoal;
+  const ringSizeFoodGoals = trackSteps || dualFoodGoals ? 52 : 60;
+  const strokeFoodGoals = trackSteps || dualFoodGoals ? 6 : 7;
+  /** Circles row: 1–2 food rings (or placeholder) + water + sleep + workout + optional steps */
+  const goalRingsGridClass =
+    dualFoodGoals && trackSteps
+      ? 'grid-cols-6 max-w-md'
+      : dualFoodGoals || trackSteps
+        ? 'grid-cols-5 max-w-sm'
+        : 'grid-cols-4 max-w-xs';
 
   const todayMetrics = computeGoalMetrics(todayEntry, profile);
   const goalsEntry = goalsPeriod === 'yesterday' ? yesterdayEntry : todayEntry;
@@ -769,7 +795,7 @@ export function DashboardTab({
     goalText: string;
   };
   const mobileGoalRowsUnsorted: MobileGoalRow[] = [];
-  if (trackProtein && profile.goal_protein_g_day) {
+  if (showProteinFoodGoal) {
     const logged = (goalsEntry as DailyEntry & { protein_qty?: number | null })?.protein_qty ?? 0;
     mobileGoalRowsUnsorted.push({
       id: 'protein',
@@ -782,7 +808,8 @@ export function DashboardTab({
       currentText: `${Math.round(logged)} g`,
       goalText: `${profile.goal_protein_g_day} g`,
     });
-  } else if (trackCalories && profile.goal_calories_day) {
+  }
+  if (showCalorieFoodGoal) {
     const cal = (goalsEntry as DailyEntry & { calories_kcal?: number | null })?.calories_kcal ?? 0;
     mobileGoalRowsUnsorted.push({
       id: 'calories',
@@ -790,12 +817,13 @@ export function DashboardTab({
       title: 'Calories',
       Icon: Utensils,
       pct: caloriePct ?? 0,
-      fill: '#f59e0b',
+      fill: '#ea580c',
       dim: false,
       currentText: `${cal ? Math.round(cal).toLocaleString() : '0'} kcal`,
-      goalText: `${profile.goal_calories_day.toLocaleString()} kcal`,
+      goalText: `${(profile.goal_calories_day ?? 0).toLocaleString()} kcal`,
     });
-  } else {
+  }
+  if (!showProteinFoodGoal && !showCalorieFoodGoal) {
     mobileGoalRowsUnsorted.push({
       id: 'food',
       sortOrder: 1,
@@ -1297,70 +1325,84 @@ export function DashboardTab({
             )}
 
             {/* Category mini rings */}
-            <div className={`grid gap-3 w-full ${trackSteps ? 'grid-cols-5 max-w-sm' : 'grid-cols-4 max-w-xs'}`}>
-              {/* Protein or Calorie ring */}
-              <div className="flex flex-col items-center gap-1.5">
-                {trackProtein && profile.goal_protein_g_day ? (
-                  <>
-                    <div className="relative">
-                      <CircleRing pct={proteinPct ?? 0} size={trackSteps ? 52 : 60} strokeWidth={trackSteps ? 6 : 7} color="#f59e0b" />
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <Utensils className="w-4 h-4 text-text-muted" />
-                      </div>
+            <div className={`grid gap-3 w-full ${goalRingsGridClass}`}>
+              {/* Protein ring (when tracking + goal set) */}
+              {showProteinFoodGoal && (
+                <div className="flex flex-col items-center gap-1.5">
+                  <div className="relative">
+                    <CircleRing
+                      pct={proteinPct ?? 0}
+                      size={ringSizeFoodGoals}
+                      strokeWidth={strokeFoodGoals}
+                      color="#f59e0b"
+                    />
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <Utensils className="w-4 h-4 text-text-muted" />
                     </div>
-                    <span className="text-[11px] font-medium text-text-secondary">Protein</span>
-                    <span className="text-[11px] font-semibold text-text-primary tabular-nums">{proteinPct ?? 0}%</span>
-                    <span className="text-[10px] leading-tight text-center tabular-nums">
-                      <span className="font-semibold text-text-primary">
-                        {(goalsEntry as DailyEntry & { protein_qty?: number | null })?.protein_qty ?? 0}g
-                      </span>
-                      <span className="font-normal text-text-muted"> / </span>
-                      <span className="font-normal text-text-muted">{profile.goal_protein_g_day}g</span>
+                  </div>
+                  <span className="text-[11px] font-medium text-text-secondary">Protein</span>
+                  <span className="text-[11px] font-semibold text-text-primary tabular-nums">{proteinPct ?? 0}%</span>
+                  <span className="text-[10px] leading-tight text-center tabular-nums">
+                    <span className="font-semibold text-text-primary">
+                      {(goalsEntry as DailyEntry & { protein_qty?: number | null })?.protein_qty ?? 0}g
                     </span>
-                  </>
-                ) : trackCalories && profile.goal_calories_day ? (
-                  <>
-                    <div className="relative">
-                      <CircleRing pct={caloriePct ?? 0} size={trackSteps ? 52 : 60} strokeWidth={trackSteps ? 6 : 7} color="#f59e0b" />
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <Utensils className="w-4 h-4 text-text-muted" />
-                      </div>
+                    <span className="font-normal text-text-muted"> / </span>
+                    <span className="font-normal text-text-muted">{profile.goal_protein_g_day}g</span>
+                  </span>
+                </div>
+              )}
+
+              {/* Calories ring (when tracking + goal set) */}
+              {showCalorieFoodGoal && (
+                <div className="flex flex-col items-center gap-1.5">
+                  <div className="relative">
+                    <CircleRing
+                      pct={caloriePct ?? 0}
+                      size={ringSizeFoodGoals}
+                      strokeWidth={strokeFoodGoals}
+                      color="#ea580c"
+                    />
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <Utensils className="w-4 h-4 text-text-muted" />
                     </div>
-                    <span className="text-[11px] font-medium text-text-secondary">Calories</span>
-                    <span className="text-[11px] font-semibold text-text-primary tabular-nums">{caloriePct ?? 0}%</span>
-                    <span className="text-[10px] leading-tight text-center tabular-nums">
-                      <span className="font-semibold text-text-primary">
-                        {(goalsEntry as DailyEntry & { calories_kcal?: number | null })?.calories_kcal ?? 0} kcal
-                      </span>
-                      <span className="font-normal text-text-muted"> / </span>
-                      <span className="font-normal text-text-muted">
-                        {profile.goal_calories_day.toLocaleString()} kcal
-                      </span>
+                  </div>
+                  <span className="text-[11px] font-medium text-text-secondary">Calories</span>
+                  <span className="text-[11px] font-semibold text-text-primary tabular-nums">{caloriePct ?? 0}%</span>
+                  <span className="text-[10px] leading-tight text-center tabular-nums">
+                    <span className="font-semibold text-text-primary">
+                      {(goalsEntry as DailyEntry & { calories_kcal?: number | null })?.calories_kcal ?? 0} kcal
                     </span>
-                  </>
-                ) : (
-                  <>
-                    <div className={`relative opacity-30`}>
-                      <svg width={trackSteps ? 52 : 60} height={trackSteps ? 52 : 60} viewBox="0 0 60 60">
-                        <circle cx={30} cy={30} r={26.5} fill="none" stroke="#e2e8f0" strokeWidth={7} />
-                      </svg>
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <Utensils className="w-4 h-4 text-text-muted" />
-                      </div>
+                    <span className="font-normal text-text-muted"> / </span>
+                    <span className="font-normal text-text-muted">
+                      {(profile.goal_calories_day ?? 0).toLocaleString()} kcal
+                    </span>
+                  </span>
+                </div>
+              )}
+
+              {/* Food placeholder when neither macro goal is set */}
+              {!showProteinFoodGoal && !showCalorieFoodGoal && (
+                <div className="flex flex-col items-center gap-1.5">
+                  <div className="relative opacity-30">
+                    <svg width={ringSizeFoodGoals} height={ringSizeFoodGoals} viewBox="0 0 60 60">
+                      <circle cx={30} cy={30} r={26.5} fill="none" stroke="#e2e8f0" strokeWidth={7} />
+                    </svg>
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <Utensils className="w-4 h-4 text-text-muted" />
                     </div>
-                    <span className="text-[11px] font-medium text-text-secondary">Food</span>
-                    <span className="text-[11px] text-text-muted">–</span>
-                  </>
-                )}
-              </div>
+                  </div>
+                  <span className="text-[11px] font-medium text-text-secondary">Food</span>
+                  <span className="text-[11px] text-text-muted">–</span>
+                </div>
+              )}
 
               {/* Water */}
               <div className="flex flex-col items-center gap-1.5">
                 <div className={`relative ${!profile.goal_water_liters ? 'opacity-30' : ''}`}>
                   {profile.goal_water_liters ? (
-                    <CircleRing pct={waterPct} size={trackSteps ? 52 : 60} strokeWidth={trackSteps ? 6 : 7} color="#2563eb" />
+                    <CircleRing pct={waterPct} size={ringSizeFoodGoals} strokeWidth={strokeFoodGoals} color="#2563eb" />
                   ) : (
-                    <svg width={trackSteps ? 52 : 60} height={trackSteps ? 52 : 60} viewBox="0 0 60 60">
+                    <svg width={ringSizeFoodGoals} height={ringSizeFoodGoals} viewBox="0 0 60 60">
                       <circle cx={30} cy={30} r={26.5} fill="none" stroke="#e2e8f0" strokeWidth={7} />
                     </svg>
                   )}
@@ -1389,9 +1431,9 @@ export function DashboardTab({
               <div className="flex flex-col items-center gap-1.5">
                 <div className={`relative ${!sleepGoal ? 'opacity-30' : ''}`}>
                   {sleepGoal ? (
-                    <CircleRing pct={sleepPct} size={trackSteps ? 52 : 60} strokeWidth={trackSteps ? 6 : 7} color="#7c3aed" />
+                    <CircleRing pct={sleepPct} size={ringSizeFoodGoals} strokeWidth={strokeFoodGoals} color="#7c3aed" />
                   ) : (
-                    <svg width={trackSteps ? 52 : 60} height={trackSteps ? 52 : 60} viewBox="0 0 60 60">
+                    <svg width={ringSizeFoodGoals} height={ringSizeFoodGoals} viewBox="0 0 60 60">
                       <circle cx={30} cy={30} r={26.5} fill="none" stroke="#e2e8f0" strokeWidth={7} />
                     </svg>
                   )}
@@ -1418,9 +1460,9 @@ export function DashboardTab({
               <div className="flex flex-col items-center gap-1.5">
                 <div className={`relative ${!profile.goal_workout_days_week ? 'opacity-30' : ''}`}>
                   {profile.goal_workout_days_week ? (
-                    <CircleRing pct={workoutPct} size={trackSteps ? 52 : 60} strokeWidth={trackSteps ? 6 : 7} color="#FF6B35" />
+                    <CircleRing pct={workoutPct} size={ringSizeFoodGoals} strokeWidth={strokeFoodGoals} color="#FF6B35" />
                   ) : (
-                    <svg width={trackSteps ? 52 : 60} height={trackSteps ? 52 : 60} viewBox="0 0 60 60">
+                    <svg width={ringSizeFoodGoals} height={ringSizeFoodGoals} viewBox="0 0 60 60">
                       <circle cx={30} cy={30} r={26.5} fill="none" stroke="#e2e8f0" strokeWidth={7} />
                     </svg>
                   )}

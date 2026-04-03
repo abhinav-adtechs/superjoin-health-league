@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useLayoutEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Plus, ChevronDown, Dumbbell, Utensils, Moon, Scale } from 'lucide-react';
 import { LogEntryModal, type EntryType } from './LogEntryModal';
 import type { Profile } from '@/lib/types';
@@ -52,11 +53,17 @@ function useMobile() {
   return isMobile;
 }
 
+/** Below modal overlay (9999); above sidebar chrome (z-40). */
+const PORTAL_MENU_Z = 5000;
+
 export function NewEntryCTA({ profile, onSuccess, placement = 'desktop', sidebarPinned = true }: NewEntryCTAProps) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [modalType, setModalType] = useState<EntryType | null>(null);
   const [mounted, setMounted] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuPortalRef = useRef<HTMLDivElement>(null);
+  const [portalMenuStyle, setPortalMenuStyle] = useState<React.CSSProperties>({});
   const isMobile = useMobile();
 
   useEffect(() => {
@@ -65,22 +72,69 @@ export function NewEntryCTA({ profile, onSuccess, placement = 'desktop', sidebar
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+      const t = e.target as Node;
+      if (placement === 'mobileDock') {
+        if (dropdownRef.current && !dropdownRef.current.contains(t)) setDropdownOpen(false);
+        return;
+      }
+      if (placement === 'desktop' || placement === 'sidebar') {
+        if (triggerRef.current?.contains(t)) return;
+        if (menuPortalRef.current?.contains(t)) return;
         setDropdownOpen(false);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  }, [placement]);
+
+  useLayoutEffect(() => {
+    if (!dropdownOpen || placement === 'mobileDock') return;
+    if (placement !== 'desktop' && placement !== 'sidebar') return;
+
+    function update() {
+      const el = triggerRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      if (placement === 'sidebar' && !sidebarPinned) {
+        setPortalMenuStyle({
+          position: 'fixed',
+          top: rect.top,
+          left: rect.right + 8,
+          minWidth: 200,
+          zIndex: PORTAL_MENU_Z,
+        });
+      } else {
+        setPortalMenuStyle({
+          position: 'fixed',
+          top: rect.bottom + 8,
+          left: rect.left,
+          width: Math.max(rect.width, 200),
+          minWidth: 200,
+          zIndex: PORTAL_MENU_Z,
+        });
+      }
+    }
+
+    update();
+    window.addEventListener('resize', update);
+    window.addEventListener('scroll', update, true);
+    const ro = new ResizeObserver(update);
+    if (triggerRef.current) ro.observe(triggerRef.current);
+    return () => {
+      window.removeEventListener('resize', update);
+      window.removeEventListener('scroll', update, true);
+      ro.disconnect();
+    };
+  }, [dropdownOpen, placement, sidebarPinned]);
 
   useEffect(() => {
-    if (!dropdownOpen || placement !== 'mobileDock') return;
+    if (!dropdownOpen) return;
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') setDropdownOpen(false);
     }
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [dropdownOpen, placement]);
+  }, [dropdownOpen]);
 
   const openModal = (type: EntryType) => {
     setDropdownOpen(false);
@@ -97,6 +151,35 @@ export function NewEntryCTA({ profile, onSuccess, placement = 'desktop', sidebar
   ) : null;
 
   const arcRadiusPx = 112;
+
+  const portalDropdown =
+    mounted &&
+    dropdownOpen &&
+    (placement === 'desktop' || placement === 'sidebar') &&
+    typeof document !== 'undefined'
+      ? createPortal(
+          <div
+            ref={menuPortalRef}
+            style={portalMenuStyle}
+            className="rounded-xl border border-slate-300/90 bg-white py-1 shadow-xl shadow-slate-900/15 ring-1 ring-slate-900/10 animate-fade-up"
+            role="menu"
+          >
+            {ENTRY_OPTIONS.map(({ type, label, icon: Icon }) => (
+              <button
+                key={type}
+                type="button"
+                role="menuitem"
+                onClick={() => openModal(type)}
+                className="w-full flex items-center gap-3 px-4 py-2.5 text-left text-sm text-text-primary hover:bg-black/5 transition-colors first:rounded-t-xl last:rounded-b-xl"
+              >
+                <Icon className="w-4 h-4 text-text-muted shrink-0" />
+                {label}
+              </button>
+            ))}
+          </div>,
+          document.body
+        )
+      : null;
 
   if (placement === 'mobileDock' && mounted && isMobile) {
     const angles = arcAngles(ENTRY_OPTIONS.length);
@@ -164,34 +247,12 @@ export function NewEntryCTA({ profile, onSuccess, placement = 'desktop', sidebar
     );
   }
 
-  const desktopDropdownMenu = (
-    <div
-      style={{ backgroundColor: '#ffffff' }}
-      className={`rounded-xl border border-slate-300/90 shadow-xl shadow-slate-900/15 ring-1 ring-slate-900/10 py-1 z-[100] animate-fade-up ${
-        placement === 'sidebar' && !sidebarPinned
-          ? 'absolute left-full top-0 ml-2 min-w-[200px]'
-          : 'absolute top-full left-0 right-0 mt-2 min-w-[200px]'
-      }`}
-    >
-      {ENTRY_OPTIONS.map(({ type, label, icon: Icon }) => (
-        <button
-          key={type}
-          type="button"
-          onClick={() => openModal(type)}
-          className="w-full flex items-center gap-3 px-4 py-2.5 text-left text-sm text-text-primary hover:bg-black/5 transition-colors first:rounded-t-xl last:rounded-b-xl"
-        >
-          <Icon className="w-4 h-4 text-text-muted shrink-0" />
-          {label}
-        </button>
-      ))}
-    </div>
-  );
-
   if (placement === 'desktop') {
     return (
       <>
-        <div className="relative" ref={dropdownRef}>
+        <div className="relative">
           <button
+            ref={triggerRef}
             type="button"
             onClick={() => setDropdownOpen((o) => !o)}
             className="btn-primary flex items-center gap-2 shadow-md hover:shadow-lg transition-shadow"
@@ -202,8 +263,8 @@ export function NewEntryCTA({ profile, onSuccess, placement = 'desktop', sidebar
             <span>New Entry</span>
             <ChevronDown className={`w-4 h-4 transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
           </button>
-          {dropdownOpen && desktopDropdownMenu}
         </div>
+        {portalDropdown}
         {modal}
       </>
     );
@@ -212,8 +273,9 @@ export function NewEntryCTA({ profile, onSuccess, placement = 'desktop', sidebar
   if (placement === 'sidebar') {
     return (
       <>
-        <div className="relative w-full" ref={dropdownRef}>
+        <div className="relative w-full">
           <button
+            ref={triggerRef}
             type="button"
             onClick={() => setDropdownOpen((o) => !o)}
             className={`btn-primary flex items-center shadow-md hover:shadow-lg transition-shadow w-full ${
@@ -243,8 +305,8 @@ export function NewEntryCTA({ profile, onSuccess, placement = 'desktop', sidebar
               }`}
             />
           </button>
-          {dropdownOpen && desktopDropdownMenu}
         </div>
+        {portalDropdown}
         {modal}
       </>
     );
