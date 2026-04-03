@@ -10,6 +10,7 @@ import {
   Info,
 } from 'lucide-react';
 import { apiUrl, getApiFetchOptions } from '@/lib/api';
+import { LeaderboardSkeleton } from '@/components/LoadingScreen';
 import type { LeaderboardView, LeaderboardResponse, FitnessGoal } from '@/lib/types';
 import { resolveAvatarUrl } from '@/lib/avatar-url';
 import {
@@ -419,9 +420,9 @@ function ScoringGuide({ profile }: { profile?: ProfileContext }) {
       {open && (
         <div className="border-t border-white/10">
           {loading ? (
-            <div className="px-4 py-4 space-y-2 animate-pulse">
+            <div className="px-4 py-4 space-y-2">
               {Array.from({ length: 6 }).map((_, i) => (
-                <div key={i} className="h-10 rounded-xl bg-surface-2/60" />
+                <div key={i} className="skeleton-shimmer h-10 rounded-xl" />
               ))}
             </div>
           ) : byCategory.size === 0 ? (
@@ -486,7 +487,7 @@ export function LeaderboardTab({
     return () => { cancelled = true; };
   }, [view, weekStart, selectedMonth]);
 
-  if (loading) return <div className="animate-pulse text-text-muted">Loading leaderboard…</div>;
+  if (loading) return <LeaderboardSkeleton />;
 
   if (error) {
     const isConfigError = error.toLowerCase().includes('supabase') || error.toLowerCase().includes('env') || error.toLowerCase().includes('missing');

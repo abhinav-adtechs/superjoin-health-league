@@ -27,9 +27,7 @@ export default function RootLayout({
       <body className="font-sans antialiased min-h-screen">
         <div className="mesh-bg" />
         <div className="noise-overlay" />
-        <div className="relative z-10 min-h-screen">
-          {children}
-        </div>
+        <div className="relative z-10 min-h-screen">{children}</div>
         <Analytics />
       </body>
     </html>

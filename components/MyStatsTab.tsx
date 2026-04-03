@@ -20,6 +20,7 @@ import {
 } from '@/lib/goal-defaults';
 import { dicebearAvatarUrl, dicebearAvatarPickerSeeds, resolveAvatarUrl } from '@/lib/avatar-url';
 import { FITNESS_GOAL_THEMES } from '@/lib/fitness-goal-theme';
+import { TabContentLoader } from '@/components/LoadingScreen';
 
 const FITNESS_GOAL_BADGES: Record<FitnessGoal, { label: string; color: string }> = Object.fromEntries(
   (Object.entries(FITNESS_GOAL_THEMES) as [FitnessGoal, { label: string; badgeClass: string }][]).map(
@@ -332,7 +333,7 @@ export function MyStatsTab({ profile, onSuccess }: { profile: Profile; onSuccess
     onSuccess?.();
   };
 
-  if (loading) return <div className="animate-pulse text-text-muted py-10">Loading your stats…</div>;
+  if (loading) return <TabContentLoader message="Loading your stats…" />;
 
   const weightKgForGoals = profile.current_weight ?? profile.starting_weight ?? 70;
 

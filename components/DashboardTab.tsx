@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, type ComponentType, type ReactNode, type ReactElement } from 'react';
 import {
   Flame,
   Target,
@@ -15,6 +15,9 @@ import {
   Utensils,
   Trophy,
   Footprints,
+  ChevronDown,
+  LayoutGrid,
+  Circle,
 } from 'lucide-react';
 import { apiUrl, getApiFetchOptions } from '@/lib/api';
 import { LogEntryModal, type EntryType } from './LogEntryModal';
@@ -147,6 +150,16 @@ function clampPct(value: number | null | undefined, goal: number | null | undefi
   return Math.min(Math.round((value / goal) * 100), 100);
 }
 
+/** Collapsed goal cards: % color — red when behind (<35%), amber mid, green strong / complete. */
+function progressPctToneClass(pct: number, dim: boolean): string {
+  if (dim) return 'text-text-muted';
+  const p = Math.min(100, Math.max(0, Math.round(pct)));
+  if (p < 35) return 'text-red-600';
+  if (p < 70) return 'text-amber-600';
+  if (p < 100) return 'text-emerald-600';
+  return 'text-emerald-600';
+}
+
 function getDayOfYear(d: Date): number {
   const start = new Date(d.getFullYear(), 0, 0);
   return Math.floor((d.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
@@ -156,6 +169,150 @@ function ringColor(pct: number): string {
   if (pct >= 80) return '#059669';
   if (pct >= 50) return '#d97706';
   return '#dc2626';
+}
+
+type GoalMetrics = {
+  waterPct: number;
+  sleepPct: number;
+  workoutDone: boolean;
+  workoutPct: number;
+  proteinPct: number | null;
+  caloriePct: number | null;
+  stepsPct: number | null;
+  overallDailyPct: number;
+  activeDailyPcts: number[];
+};
+
+function computeGoalMetrics(entry: DailyEntry | null, profile: Profile): GoalMetrics {
+  const sleepGoal = profile.goal_sleep_hours ?? profile.goal_sleep_hours_max;
+  const foodMode = profile.food_tracking_mode ?? null;
+  const trackProtein = !foodMode || foodMode === 'protein_only' || foodMode === 'both';
+  const trackCalories = foodMode === 'calories_only' || foodMode === 'both';
+  const trackSteps = (profile.goal_steps_day ?? 0) > 0;
+
+  const waterPct = clampPct(entry?.water_liters, profile.goal_water_liters);
+  const sleepPct = clampPct(entry?.sleep_hours, sleepGoal);
+  const workoutDone = !!(entry?.workout_done || entry?.cardio_done);
+  const workoutPct = workoutDone ? 100 : 0;
+
+  let proteinPct: number | null = null;
+  if (trackProtein && profile.goal_protein_g_day) {
+    proteinPct = clampPct(
+      (entry as DailyEntry & { protein_qty?: number | null })?.protein_qty,
+      profile.goal_protein_g_day,
+    );
+  }
+
+  let caloriePct: number | null = null;
+  if (trackCalories && profile.goal_calories_day) {
+    const cal = (entry as DailyEntry & { calories_kcal?: number | null })?.calories_kcal;
+    if (cal != null) {
+      const fg = profile.fitness_goal ?? 'stay_active';
+      if (fg === 'lose_weight') {
+        caloriePct = Math.min(100, Math.round((profile.goal_calories_day / Math.max(cal, 1)) * 100));
+      } else {
+        caloriePct = clampPct(cal, profile.goal_calories_day);
+      }
+    } else {
+      caloriePct = 0;
+    }
+  }
+
+  const stepsPct =
+    trackSteps && profile.goal_steps_day ? clampPct(entry?.steps, profile.goal_steps_day) : null;
+
+  const activeDailyPcts: number[] = [];
+  if (profile.goal_water_liters) activeDailyPcts.push(waterPct);
+  if (sleepGoal) activeDailyPcts.push(sleepPct);
+  if (profile.goal_workout_days_week) activeDailyPcts.push(workoutPct);
+  if (proteinPct !== null) activeDailyPcts.push(proteinPct);
+  if (caloriePct !== null) activeDailyPcts.push(caloriePct);
+  if (stepsPct !== null) activeDailyPcts.push(stepsPct);
+
+  const overallDailyPct =
+    activeDailyPcts.length > 0
+      ? Math.round(activeDailyPcts.reduce((a, b) => a + b, 0) / activeDailyPcts.length)
+      : entry
+        ? Math.min(Math.round(((entry.daily_points ?? 0) / 85) * 100), 100)
+        : 0;
+
+  return {
+    waterPct,
+    sleepPct,
+    workoutDone,
+    workoutPct,
+    proteinPct,
+    caloriePct,
+    stepsPct,
+    overallDailyPct,
+    activeDailyPcts,
+  };
+}
+
+type RemainingLine = { icon: ReactElement; text: string; modalType: EntryType };
+
+function computeRemainingItems(entry: DailyEntry | null, profile: Profile): RemainingLine[] {
+  const m = computeGoalMetrics(entry, profile);
+  const sleepGoal = profile.goal_sleep_hours ?? profile.goal_sleep_hours_max;
+  const foodMode = profile.food_tracking_mode ?? null;
+  const trackProtein = !foodMode || foodMode === 'protein_only' || foodMode === 'both';
+  const trackCalories = foodMode === 'calories_only' || foodMode === 'both';
+  const trackSteps = (profile.goal_steps_day ?? 0) > 0;
+
+  const items: RemainingLine[] = [];
+
+  if (profile.goal_water_liters && (entry?.water_liters ?? 0) < profile.goal_water_liters) {
+    const rem = (profile.goal_water_liters - (entry?.water_liters ?? 0)).toFixed(1);
+    items.push({
+      icon: <Droplets className="w-4 h-4 text-accent-blue" />,
+      text: `Drink ${rem} L more water`,
+      modalType: 'meal_recovery',
+    });
+  }
+  if (sleepGoal && !entry?.sleep_hours) {
+    items.push({
+      icon: <Moon className="w-4 h-4 text-accent-purple" />,
+      text: "Log last night's sleep",
+      modalType: 'sleep',
+    });
+  }
+  if (profile.goal_workout_days_week && !m.workoutDone) {
+    items.push({
+      icon: <Dumbbell className="w-4 h-4 text-accent-superjoin-orange" />,
+      text: "Log today's workout",
+      modalType: 'movement',
+    });
+  }
+  if (trackProtein && profile.goal_protein_g_day && m.proteinPct !== null && m.proteinPct < 100) {
+    const logged = (entry as DailyEntry & { protein_qty?: number | null })?.protein_qty ?? 0;
+    const rem = profile.goal_protein_g_day - logged;
+    items.push({
+      icon: <Utensils className="w-4 h-4 text-amber-500" />,
+      text: `Log ${rem}g more protein`,
+      modalType: 'meal_recovery',
+    });
+  }
+  if (trackCalories && profile.goal_calories_day && m.caloriePct !== null && m.caloriePct < 80) {
+    items.push({
+      icon: <Utensils className="w-4 h-4 text-amber-500" />,
+      text:
+        profile.fitness_goal === 'lose_weight'
+          ? 'Track your calorie intake today'
+          : 'Log your calorie intake to hit target',
+      modalType: 'meal_recovery',
+    });
+  }
+  if (trackSteps && profile.goal_steps_day && m.stepsPct !== null && m.stepsPct < 100) {
+    const logged = entry?.steps ?? 0;
+    const rem = profile.goal_steps_day - logged;
+    items.push({
+      icon: <Footprints className="w-4 h-4 text-amber-500" />,
+      text: rem > 0 ? `${rem.toLocaleString()} more steps to reach your goal` : 'Log your steps today',
+      modalType: 'movement',
+    });
+  }
+
+  return items;
 }
 
 // ── SVG Circle Ring ────────────────────────────────────────────────────────────
@@ -207,6 +364,232 @@ const INSIGHT_BADGE: Record<InsightColor, string> = {
   red: 'bg-accent-red/10 text-accent-red',
 };
 
+const DASHBOARD_GOALS_LAYOUT_KEY = 'dashboard-goals-layout';
+
+type BoxGoalRow = {
+  id: string;
+  sortOrder: number;
+  title: string;
+  Icon: ComponentType<{ className?: string }>;
+  pct: number;
+  fill: string;
+  dim: boolean;
+  currentText: string;
+  goalText: string;
+};
+
+/** Shared mobile + desktop “box” goals UI (matrix + optional bar collapse). */
+function GoalsBoxPanel({
+  variant,
+  showBarCollapse,
+  barExpanded,
+  onToggleBars,
+  rows,
+  compositeParts,
+  overallDailyPct,
+  streakChips,
+  avgCaptionDay = 'today',
+}: {
+  variant: 'mobile' | 'desktop';
+  showBarCollapse: boolean;
+  barExpanded: boolean;
+  onToggleBars: () => void;
+  rows: BoxGoalRow[];
+  compositeParts: BoxGoalRow[];
+  overallDailyPct: number;
+  streakChips: ReactNode;
+  /** Wording for the tiny caption under Daily average. */
+  avgCaptionDay?: 'today' | 'yesterday';
+}) {
+  const isDesktop = variant === 'desktop';
+  const showBars = !showBarCollapse || barExpanded;
+  const d = isDesktop
+    ? {
+        card: 'px-5 py-4 rounded-2xl',
+        av: 'text-2xl',
+        desc: 'text-[9px] mb-1 leading-tight',
+        barTrack: 'h-3.5',
+        matrixPct: 'text-xl',
+        matrixLabel: 'text-[9px]',
+        matrixValue: 'text-sm',
+        grid: 'mt-4 grid grid-cols-2 gap-3 max-w-4xl mx-auto',
+        barSection: 'space-y-3 rounded-xl border border-white/10 bg-surface-1/30 px-4 py-3 max-w-4xl mx-auto',
+        barRow: 'h-3',
+        barLabel: 'text-xs',
+        toggle: '',
+      }
+    : {
+        card: 'px-3 py-2.5 rounded-xl',
+        av: 'text-lg',
+        desc: 'text-[8px] mt-0.5 mb-1 leading-tight',
+        barTrack: 'h-3',
+        matrixPct: 'text-lg',
+        matrixLabel: 'text-[8px]',
+        matrixValue: 'text-[11px]',
+        grid: 'mt-3 grid grid-cols-2 gap-2',
+        barSection: 'space-y-2.5 rounded-xl border border-white/10 bg-surface-1/30 px-3 py-2.5',
+        barRow: 'h-2.5',
+        barLabel: 'text-[11px]',
+        toggle: 'mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-white/12 bg-surface-1/40 py-2 text-[11px] font-medium text-text-secondary transition-colors hover:bg-surface-2/60 active:scale-[0.99]',
+      };
+
+  return (
+    <div className={isDesktop ? 'space-y-4' : 'space-y-3'}>
+      <div className={`border border-white/10 bg-surface-2/30 ${d.card}`}>
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-[10px] font-medium uppercase tracking-wide text-text-muted">Daily average</p>
+          <p className={`${d.av} font-semibold tabular-nums ${progressPctToneClass(overallDailyPct, false)}`}>
+            {overallDailyPct}
+            <span className="text-xs font-semibold opacity-80">%</span>
+          </p>
+        </div>
+        <p className={`text-text-muted/75 ${d.desc}`}>
+          {avgCaptionDay === 'yesterday'
+            ? "Average of each goal's % toward that day's targets."
+            : "Average of each goal's % toward today's targets."}
+        </p>
+        <div className={`relative ${d.barTrack} w-full overflow-hidden rounded-full bg-surface-3/90`}>
+          <div
+            className="absolute left-0 top-0 flex h-full overflow-hidden rounded-full transition-[width] duration-500"
+            style={{ width: `${Math.min(100, overallDailyPct)}%` }}
+          >
+            {compositeParts.length > 0 ? (
+              compositeParts.map((row) => (
+                <div
+                  key={row.id}
+                  className="h-full min-w-[3px] border-r border-white/25 last:border-r-0"
+                  style={{
+                    flex: Math.max(1, Math.round(row.pct)),
+                    backgroundColor: row.fill,
+                  }}
+                />
+              ))
+            ) : (
+              <div className="h-full w-full bg-surface-3" />
+            )}
+          </div>
+        </div>
+
+        <div className={d.grid}>
+          {rows.map((row) => {
+            const RowIcon = row.Icon;
+            const pct = Math.min(100, Math.round(row.pct));
+            return (
+              <div
+                key={row.id}
+                className={`grid min-h-0 grid-cols-2 grid-rows-2 gap-x-2 gap-y-1.5 rounded-lg border p-2 ${
+                  row.dim ? 'border-white/5 bg-surface-2/30 opacity-80' : 'border-white/10 bg-surface-1/50'
+                }`}
+              >
+                <div className="flex min-w-0 flex-col justify-center">
+                  <span className={`${d.matrixLabel} font-medium uppercase tracking-wide text-text-muted`}>Progress</span>
+                  <span
+                    className={`${d.matrixPct} tabular-nums leading-none ${row.dim ? 'font-normal' : 'font-semibold'} ${progressPctToneClass(pct, row.dim)}`}
+                  >
+                    {row.dim ? '—' : `${pct}%`}
+                  </span>
+                </div>
+                <div className="flex min-w-0 flex-col items-end justify-center text-right">
+                  <span className={`${d.matrixLabel} font-medium uppercase tracking-wide text-text-muted`}>Metric</span>
+                  <div className="flex max-w-full items-center justify-end gap-0.5">
+                    <RowIcon
+                      className={`h-3.5 w-3.5 shrink-0 ${row.dim ? 'text-text-muted/45' : 'text-text-muted'}`}
+                      aria-hidden
+                    />
+                    <span
+                      className={`truncate ${isDesktop ? 'text-xs' : 'text-[10px]'} font-medium leading-tight ${row.dim ? 'text-text-muted' : 'text-text-primary'}`}
+                    >
+                      {row.title}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex min-w-0 flex-col justify-end border-t border-white/5 pt-1">
+                  <span className="text-[8px] font-medium text-text-muted">Now</span>
+                  <span
+                    className={`${d.matrixValue} tabular-nums ${
+                      row.dim ? 'font-normal text-text-muted' : 'font-semibold text-text-primary'
+                    }`}
+                  >
+                    {row.currentText}
+                  </span>
+                </div>
+                <div className="flex min-w-0 flex-col items-end justify-end border-t border-white/5 pt-1 text-right">
+                  <span className="text-[8px] font-medium text-text-muted">Target</span>
+                  <span
+                    className={`${d.matrixValue} font-normal tabular-nums ${
+                      row.dim ? 'text-text-muted' : row.goalText === 'Not set' ? 'text-text-muted' : 'text-text-secondary'
+                    }`}
+                  >
+                    {row.goalText}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {showBarCollapse && (
+          <button
+            type="button"
+            onClick={onToggleBars}
+            aria-expanded={barExpanded}
+            className={d.toggle}
+          >
+            {barExpanded ? 'Hide progress bars' : 'Show progress bars'}
+            <ChevronDown
+              className={`h-4 w-4 shrink-0 text-text-muted transition-transform duration-200 ${barExpanded ? 'rotate-180' : ''}`}
+              aria-hidden
+            />
+          </button>
+        )}
+      </div>
+
+      {showBars && (
+        <div className={d.barSection}>
+          {rows.map((row) => {
+            const RowIcon = row.Icon;
+            const pct = Math.min(100, Math.round(row.pct));
+            return (
+              <div key={`bar-${row.id}`} className={row.dim ? 'opacity-75' : ''}>
+                <div className="mb-1 flex items-center justify-between gap-2">
+                  <div className="flex min-w-0 items-center gap-1.5">
+                    <RowIcon
+                      className={`h-3.5 w-3.5 shrink-0 ${row.dim ? 'text-text-muted/45' : 'text-text-muted'}`}
+                      aria-hidden
+                    />
+                    <span className={`${d.barLabel} font-medium ${row.dim ? 'text-text-muted' : 'text-text-primary'}`}>
+                      {row.title}
+                    </span>
+                  </div>
+                  <span
+                    className={`shrink-0 ${d.barLabel} tabular-nums ${
+                      row.dim ? 'font-normal text-text-muted' : 'font-semibold text-text-secondary'
+                    }`}
+                  >
+                    {row.dim ? '—' : `${pct}%`}
+                  </span>
+                </div>
+                <div className={`${d.barRow} w-full overflow-hidden rounded-full bg-surface-3/90`}>
+                  <div
+                    className="h-full rounded-full transition-[width] duration-500 ease-out"
+                    style={{
+                      width: row.dim ? '0%' : `${pct}%`,
+                      backgroundColor: row.dim ? '#e2e8f0' : row.fill,
+                      minWidth: !row.dim && pct > 0 ? '4px' : undefined,
+                    }}
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <div className={`flex flex-wrap justify-center gap-1.5 ${isDesktop ? 'pt-1' : 'pt-0.5'}`}>{streakChips}</div>
+    </div>
+  );
+}
+
 // ── Main Component ─────────────────────────────────────────────────────────────
 
 export function DashboardTab({
@@ -221,6 +604,10 @@ export function DashboardTab({
   onOpenLeaderboard?: () => void;
 }) {
   const [todayEntry, setTodayEntry] = useState<DailyEntry | null>(null);
+  const [yesterdayEntry, setYesterdayEntry] = useState<DailyEntry | null>(null);
+  const [goalsPeriod, setGoalsPeriod] = useState<'today' | 'yesterday'>('today');
+  const [goalsPeriodMenuOpen, setGoalsPeriodMenuOpen] = useState(false);
+  const goalsPeriodMenuRef = useRef<HTMLDivElement>(null);
   const [weeklyEntries, setWeeklyEntries] = useState<DailyEntry[]>([]);
   const [loggingStreak, setLoggingStreak] = useState(0);
   const [goalCrushStreak, setGoalCrushStreak] = useState(0);
@@ -233,6 +620,14 @@ export function DashboardTab({
   const [loading, setLoading] = useState(true);
   const [modalType, setModalType] = useState<EntryType | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  /** Mobile: detailed per-goal bars hidden until user expands */
+  const [mobileGoalsExpanded, setMobileGoalsExpanded] = useState(false);
+  /** Desktop (md+): circle rings vs box matrix — persisted */
+  const [desktopGoalsView, setDesktopGoalsView] = useState<'circles' | 'box'>(() => {
+    if (typeof window === 'undefined') return 'box';
+    const v = localStorage.getItem(DASHBOARD_GOALS_LAYOUT_KEY);
+    return v === 'circles' ? 'circles' : 'box';
+  });
 
   // ── Data loading ─────────────────────────────────────────────────────────────
 
@@ -241,25 +636,31 @@ export function DashboardTab({
     async function load() {
       setLoading(true);
       const today = getLocalDateStr(new Date());
+      const yest = new Date();
+      yest.setDate(yest.getDate() - 1);
+      const yesterdayStr = getLocalDateStr(yest);
       const monday = getMondayOfWeek(new Date());
       const d = new Date();
       const monthStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      const [entryRes, weeklyRes, streakRes, lbRes, monthLbRes] = await Promise.all([
+      const [entryRes, yesterdayRes, weeklyRes, streakRes, lbRes, monthLbRes] = await Promise.all([
         fetch(apiUrl(`/api/entries?date=${today}`), getApiFetchOptions()),
+        fetch(apiUrl(`/api/entries?date=${yesterdayStr}`), getApiFetchOptions()),
         fetch(apiUrl(`/api/entries/history?from=${monday}&to=${today}`), getApiFetchOptions()),
         fetch(apiUrl('/api/streaks/me'), getApiFetchOptions()),
         fetch(apiUrl('/api/leaderboard?view=weekly'), getApiFetchOptions()),
         fetch(apiUrl(`/api/leaderboard?view=monthly&month=${monthStr}`), getApiFetchOptions()),
       ]);
       if (cancelled) return;
-      const [entryData, weeklyData, streakData, lbData, monthLbData] = await Promise.all([
+      const [entryData, yesterdayData, weeklyData, streakData, lbData, monthLbData] = await Promise.all([
         entryRes.json().catch(() => null),
+        yesterdayRes.json().catch(() => null),
         weeklyRes.json().catch(() => []),
         streakRes.json().catch(() => ({})),
         lbRes.json().catch(() => ({})),
         monthLbRes.json().catch(() => ({})),
       ]);
       setTodayEntry(entryData?.id ? (entryData as DailyEntry) : null);
+      setYesterdayEntry(yesterdayData?.id ? (yesterdayData as DailyEntry) : null);
       setWeeklyEntries(Array.isArray(weeklyData) ? (weeklyData as DailyEntry[]) : []);
       setLoggingStreak(streakData.logging_streak ?? 0);
       setGoalCrushStreak(streakData.goal_crush_streak ?? 0);
@@ -285,6 +686,28 @@ export function DashboardTab({
     };
   }, [profile.display_name, refreshKey, refreshTrigger]);
 
+  useEffect(() => {
+    localStorage.setItem(DASHBOARD_GOALS_LAYOUT_KEY, desktopGoalsView);
+  }, [desktopGoalsView]);
+
+  useEffect(() => {
+    if (!goalsPeriodMenuOpen) return;
+    const onPointerDown = (e: MouseEvent) => {
+      if (goalsPeriodMenuRef.current && !goalsPeriodMenuRef.current.contains(e.target as Node)) {
+        setGoalsPeriodMenuOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setGoalsPeriodMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [goalsPeriodMenuOpen]);
+
   // ── Computed values ───────────────────────────────────────────────────────────
 
   const now = new Date();
@@ -305,117 +728,141 @@ export function DashboardTab({
     day: 'numeric',
   });
 
-  // Daily goal percentages
-  const waterPct = clampPct(todayEntry?.water_liters, profile.goal_water_liters);
   const sleepGoal = profile.goal_sleep_hours ?? profile.goal_sleep_hours_max;
-  const sleepPct = clampPct(todayEntry?.sleep_hours, sleepGoal);
-  const workoutDone = !!(todayEntry?.workout_done || todayEntry?.cardio_done);
-  const workoutPct = workoutDone ? 100 : 0;
-
-  // Food mode
   const foodMode = profile.food_tracking_mode ?? null;
   const trackProtein = !foodMode || foodMode === 'protein_only' || foodMode === 'both';
   const trackCalories = foodMode === 'calories_only' || foodMode === 'both';
-
-  // Protein and calorie rings
-  const proteinPct = trackProtein && profile.goal_protein_g_day
-    ? clampPct((todayEntry as DailyEntry & { protein_qty?: number | null })?.protein_qty, profile.goal_protein_g_day)
-    : null;
-
-  // Calorie pct: directional
-  let caloriePct: number | null = null;
-  if (trackCalories && profile.goal_calories_day) {
-    const cal = (todayEntry as DailyEntry & { calories_kcal?: number | null })?.calories_kcal;
-    if (cal != null) {
-      const fg = profile.fitness_goal ?? 'stay_active';
-      if (fg === 'lose_weight') {
-        // lower is better — show as "how close to budget without going over"
-        caloriePct = Math.min(100, Math.round((profile.goal_calories_day / Math.max(cal, 1)) * 100));
-      } else {
-        caloriePct = clampPct(cal, profile.goal_calories_day);
-      }
-    } else {
-      caloriePct = 0;
-    }
-  }
-
-  // Steps tracking
   const trackSteps = (profile.goal_steps_day ?? 0) > 0;
-  const stepsPct = trackSteps && profile.goal_steps_day
-    ? clampPct(todayEntry?.steps, profile.goal_steps_day)
-    : null;
 
-  // Overall daily completion: average of all goals that are set
-  const activeDailyPcts: number[] = [];
-  if (profile.goal_water_liters) activeDailyPcts.push(waterPct);
-  if (sleepGoal) activeDailyPcts.push(sleepPct);
-  if (profile.goal_workout_days_week) activeDailyPcts.push(workoutPct);
-  if (proteinPct !== null) activeDailyPcts.push(proteinPct);
-  if (caloriePct !== null) activeDailyPcts.push(caloriePct);
-  if (stepsPct !== null) activeDailyPcts.push(stepsPct);
+  const todayMetrics = computeGoalMetrics(todayEntry, profile);
+  const goalsEntry = goalsPeriod === 'yesterday' ? yesterdayEntry : todayEntry;
+  const goalsMetrics = computeGoalMetrics(goalsEntry, profile);
 
-  const overallDailyPct =
-    activeDailyPcts.length > 0
-      ? Math.round(activeDailyPcts.reduce((a, b) => a + b, 0) / activeDailyPcts.length)
-      : todayEntry
-        ? Math.min(Math.round(((todayEntry.daily_points ?? 0) / 85) * 100), 100)
-        : 0;
+  const {
+    waterPct,
+    sleepPct,
+    workoutDone,
+    workoutPct,
+    proteinPct,
+    caloriePct,
+    stepsPct,
+    overallDailyPct,
+  } = goalsMetrics;
 
-  const hasGoals = activeDailyPcts.length > 0;
-
-  // Remaining today
-  type RemainingItem = { icon: JSX.Element; text: string; modalType: EntryType };
-  const remainingItems: RemainingItem[] = [];
-
-  if (profile.goal_water_liters && (todayEntry?.water_liters ?? 0) < profile.goal_water_liters) {
-    const rem = (profile.goal_water_liters - (todayEntry?.water_liters ?? 0)).toFixed(1);
-    remainingItems.push({
-      icon: <Droplets className="w-4 h-4 text-accent-blue" />,
-      text: `Drink ${rem} L more water`,
-      modalType: 'meal_recovery',
-    });
-  }
-  if (sleepGoal && !todayEntry?.sleep_hours) {
-    remainingItems.push({
-      icon: <Moon className="w-4 h-4 text-accent-purple" />,
-      text: "Log last night's sleep",
-      modalType: 'sleep',
-    });
-  }
-  if (profile.goal_workout_days_week && !workoutDone) {
-    remainingItems.push({
-      icon: <Dumbbell className="w-4 h-4 text-accent-superjoin-orange" />,
-      text: "Log today's workout",
-      modalType: 'movement',
-    });
-  }
-  if (trackProtein && profile.goal_protein_g_day && proteinPct !== null && proteinPct < 100) {
-    const logged = (todayEntry as DailyEntry & { protein_qty?: number | null })?.protein_qty ?? 0;
-    const rem = profile.goal_protein_g_day - logged;
-    remainingItems.push({
-      icon: <Utensils className="w-4 h-4 text-amber-500" />,
-      text: `Log ${rem}g more protein`,
-      modalType: 'meal_recovery',
-    });
-  }
-  if (trackCalories && profile.goal_calories_day && caloriePct !== null && caloriePct < 80) {
-    remainingItems.push({
-      icon: <Utensils className="w-4 h-4 text-amber-500" />,
-      text: profile.fitness_goal === 'lose_weight' ? 'Track your calorie intake today' : 'Log your calorie intake to hit target',
-      modalType: 'meal_recovery',
-    });
-  }
-  if (trackSteps && profile.goal_steps_day && stepsPct !== null && stepsPct < 100) {
-    const logged = todayEntry?.steps ?? 0;
-    const rem = profile.goal_steps_day - logged;
-    remainingItems.push({
-      icon: <Footprints className="w-4 h-4 text-amber-500" />,
-      text: rem > 0 ? `${rem.toLocaleString()} more steps to reach your goal` : 'Log your steps today',
-      modalType: 'movement',
-    });
-  }
-
+  const hasGoals = todayMetrics.activeDailyPcts.length > 0;
+  const remainingItems = computeRemainingItems(todayEntry, profile);
   const allGoalsMet = hasGoals && remainingItems.length === 0;
+
+  const remainingForGoalsView = computeRemainingItems(goalsEntry, profile);
+  const allGoalsMetForGoalsView = hasGoals && remainingForGoalsView.length === 0;
+
+  /** Mobile: sorted goal rows with current vs goal text + individual bars + composite summary. */
+  type MobileGoalRow = {
+    id: string;
+    sortOrder: number;
+    title: string;
+    Icon: ComponentType<{ className?: string }>;
+    pct: number;
+    fill: string;
+    dim: boolean;
+    currentText: string;
+    goalText: string;
+  };
+  const mobileGoalRowsUnsorted: MobileGoalRow[] = [];
+  if (trackProtein && profile.goal_protein_g_day) {
+    const logged = (goalsEntry as DailyEntry & { protein_qty?: number | null })?.protein_qty ?? 0;
+    mobileGoalRowsUnsorted.push({
+      id: 'protein',
+      sortOrder: 1,
+      title: 'Protein',
+      Icon: Utensils,
+      pct: proteinPct ?? 0,
+      fill: '#f59e0b',
+      dim: false,
+      currentText: `${Math.round(logged)} g`,
+      goalText: `${profile.goal_protein_g_day} g`,
+    });
+  } else if (trackCalories && profile.goal_calories_day) {
+    const cal = (goalsEntry as DailyEntry & { calories_kcal?: number | null })?.calories_kcal ?? 0;
+    mobileGoalRowsUnsorted.push({
+      id: 'calories',
+      sortOrder: 1,
+      title: 'Calories',
+      Icon: Utensils,
+      pct: caloriePct ?? 0,
+      fill: '#f59e0b',
+      dim: false,
+      currentText: `${cal ? Math.round(cal).toLocaleString() : '0'} kcal`,
+      goalText: `${profile.goal_calories_day.toLocaleString()} kcal`,
+    });
+  } else {
+    mobileGoalRowsUnsorted.push({
+      id: 'food',
+      sortOrder: 1,
+      title: 'Food',
+      Icon: Utensils,
+      pct: 0,
+      fill: '#94a3b8',
+      dim: true,
+      currentText: '—',
+      goalText: 'Not set',
+    });
+  }
+  mobileGoalRowsUnsorted.push({
+    id: 'water',
+    sortOrder: 2,
+    title: 'Water',
+    Icon: Droplets,
+    pct: profile.goal_water_liters ? waterPct : 0,
+    fill: '#2563eb',
+    dim: !profile.goal_water_liters,
+    currentText: profile.goal_water_liters ? `${(goalsEntry?.water_liters ?? 0).toFixed(1)} L` : '—',
+    goalText: profile.goal_water_liters ? `${profile.goal_water_liters} L` : 'Not set',
+  });
+  mobileGoalRowsUnsorted.push({
+    id: 'sleep',
+    sortOrder: 3,
+    title: 'Sleep',
+    Icon: Moon,
+    pct: sleepGoal ? sleepPct : 0,
+    fill: '#7c3aed',
+    dim: !sleepGoal,
+    currentText:
+      sleepGoal && goalsEntry?.sleep_hours != null ? `${Number(goalsEntry.sleep_hours).toFixed(1)} h` : '—',
+    goalText: sleepGoal ? `${sleepGoal} h` : 'Not set',
+  });
+  mobileGoalRowsUnsorted.push({
+    id: 'workout',
+    sortOrder: 4,
+    title: 'Workout',
+    Icon: Dumbbell,
+    pct: profile.goal_workout_days_week ? workoutPct : 0,
+    fill: '#FF6B35',
+    dim: !profile.goal_workout_days_week,
+    currentText: profile.goal_workout_days_week ? (workoutDone ? 'Logged' : 'Not logged') : '—',
+    goalText: profile.goal_workout_days_week
+      ? goalsPeriod === 'yesterday'
+        ? '1 session'
+        : '1 session today'
+      : 'Not set',
+  });
+  if (trackSteps && profile.goal_steps_day) {
+    const st = goalsEntry?.steps ?? 0;
+    const g = profile.goal_steps_day ?? 0;
+    mobileGoalRowsUnsorted.push({
+      id: 'steps',
+      sortOrder: 5,
+      title: 'Steps',
+      Icon: Footprints,
+      pct: stepsPct ?? 0,
+      fill: '#ea580c',
+      dim: false,
+      currentText: st.toLocaleString(),
+      goalText: g.toLocaleString(),
+    });
+  }
+  const mobileGoalRows = [...mobileGoalRowsUnsorted].sort((a, b) => a.sortOrder - b.sortOrder);
+  const mobileCompositeParts = mobileGoalRows.filter((r) => !r.dim);
 
   // Streak status helpers
   const loggingStreakAtRisk = !todayEntry && loggingStreak > 0;
@@ -444,6 +891,84 @@ export function DashboardTab({
 
   const insight = BLUEPRINT_INSIGHTS[getDayOfYear(new Date()) % BLUEPRINT_INSIGHTS.length];
 
+  const mobileStreakChipsForGoals = (
+    <>
+      {loggingStreakAtRisk ? (
+        <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-accent-red/10 border border-accent-red/20">
+          <Flame className="w-3 h-3 text-accent-red" />
+          <span className="text-[10px] font-semibold text-accent-red">{loggingStreak}d · log</span>
+        </div>
+      ) : loggingStreakSafe ? (
+        <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-accent-orange/10 border border-accent-orange/20">
+          <Flame className="w-3 h-3 text-accent-orange" />
+          <span className="text-[10px] font-semibold text-accent-orange">{loggingStreak}d</span>
+          <CheckCircle2 className="w-2.5 h-2.5 text-accent-green" />
+        </div>
+      ) : loggingStreak === 0 && !todayEntry ? (
+        <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-surface-2 border border-surface-3">
+          <Flame className="w-3 h-3 text-text-muted" />
+          <span className="text-[10px] font-medium text-text-muted">Start streak</span>
+        </div>
+      ) : null}
+      {goalCrushAtRisk ? (
+        <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-accent-superjoin-orange/10 border border-accent-superjoin-orange/20">
+          <Zap className="w-3 h-3 text-accent-superjoin-orange" />
+          <span className="text-[10px] font-semibold text-accent-superjoin-orange">{goalCrushStreak}d crush</span>
+        </div>
+      ) : goalCrushSafe ? (
+        <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-accent-gold/10 border border-accent-gold/20">
+          <Zap className="w-3 h-3 text-accent-gold" />
+          <span className="text-[10px] font-semibold text-accent-gold">{goalCrushStreak}d crush</span>
+          <CheckCircle2 className="w-2.5 h-2.5 text-accent-green" />
+        </div>
+      ) : goalCrushStreak === 0 && allGoalsMet ? (
+        <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-accent-gold/10 border border-accent-gold/20">
+          <Zap className="w-3 h-3 text-accent-gold" />
+          <span className="text-[10px] font-semibold text-accent-gold">Crush day</span>
+        </div>
+      ) : null}
+    </>
+  );
+
+  const desktopStreakChipsForGoals = (
+    <>
+      {loggingStreakAtRisk ? (
+        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-accent-red/10 border border-accent-red/20">
+          <Flame className="w-3.5 h-3.5 text-accent-red" />
+          <span className="text-xs font-semibold text-accent-red">{loggingStreak}d streak · log now!</span>
+        </div>
+      ) : loggingStreakSafe ? (
+        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-accent-orange/10 border border-accent-orange/20">
+          <Flame className="w-3.5 h-3.5 text-accent-orange" />
+          <span className="text-xs font-semibold text-accent-orange">{loggingStreak}d streak</span>
+          <CheckCircle2 className="w-3 h-3 text-accent-green" />
+        </div>
+      ) : loggingStreak === 0 && !todayEntry ? (
+        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-surface-2 border border-surface-3">
+          <Flame className="w-3.5 h-3.5 text-text-muted" />
+          <span className="text-xs font-medium text-text-muted">Start a streak today</span>
+        </div>
+      ) : null}
+      {goalCrushAtRisk ? (
+        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-accent-superjoin-orange/10 border border-accent-superjoin-orange/20">
+          <Zap className="w-3.5 h-3.5 text-accent-superjoin-orange" />
+          <span className="text-xs font-semibold text-accent-superjoin-orange">{goalCrushStreak}d crush · finish goals!</span>
+        </div>
+      ) : goalCrushSafe ? (
+        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-accent-gold/10 border border-accent-gold/20">
+          <Zap className="w-3.5 h-3.5 text-accent-gold" />
+          <span className="text-xs font-semibold text-accent-gold">{goalCrushStreak}d goal crush</span>
+          <CheckCircle2 className="w-3 h-3 text-accent-green" />
+        </div>
+      ) : goalCrushStreak === 0 && allGoalsMet ? (
+        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-accent-gold/10 border border-accent-gold/20">
+          <Zap className="w-3.5 h-3.5 text-accent-gold" />
+          <span className="text-xs font-semibold text-accent-gold">Goal crush day!</span>
+        </div>
+      ) : null}
+    </>
+  );
+
   // ── Handlers ─────────────────────────────────────────────────────────────────
 
   const handleLogSuccess = () => {
@@ -456,16 +981,16 @@ export function DashboardTab({
 
   if (loading) {
     return (
-      <div className="space-y-5 animate-pulse">
+      <div className="space-y-5" role="status" aria-busy="true" aria-label="Loading dashboard">
         <div className="space-y-3">
-          <div className="hidden md:block h-10 w-56 rounded-lg bg-surface-2" />
-          <div className="h-11 md:h-32 w-full max-w-2xl rounded-xl md:rounded-2xl bg-surface-2" />
+          <div className="hidden md:block skeleton-shimmer h-10 w-56 rounded-lg" />
+          <div className="skeleton-shimmer h-11 w-full max-w-2xl rounded-xl md:h-32 md:rounded-2xl" />
         </div>
-        <div className="h-72 rounded-2xl bg-surface-2" />
-        <div className="h-36 rounded-2xl bg-surface-2" />
-        <div className="h-40 rounded-2xl bg-surface-2" />
-        <div className="h-20 rounded-2xl bg-surface-2" />
-        <div className="hidden md:block h-32 rounded-2xl bg-surface-2" />
+        <div className="skeleton-shimmer h-32 rounded-2xl md:h-72" />
+        <div className="skeleton-shimmer h-36 rounded-2xl" />
+        <div className="skeleton-shimmer h-40 rounded-2xl" />
+        <div className="skeleton-shimmer h-20 rounded-2xl" />
+        <div className="hidden md:block skeleton-shimmer h-32 rounded-2xl" />
       </div>
     );
   }
@@ -541,7 +1066,7 @@ export function DashboardTab({
                 </div>
                 <div className="min-w-0 space-y-1.5">
                   <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-accent-superjoin-orange/90">
-                    This month&apos;s league
+                    {"This month's league"}
                   </p>
                   <h3 className="text-2xl xl:text-3xl font-black tracking-tight leading-none">
                     <span className="bg-gradient-to-r from-accent-superjoin-orange via-amber-500 to-amber-600 bg-clip-text text-transparent">
@@ -590,15 +1115,86 @@ export function DashboardTab({
         </div>
 
         {/* ── Section 2: Daily Completion Ring ─────────────────────────────────── */}
-        <div className="glass-card p-6">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between mb-5">
+        <div
+          className={`glass-card p-3 md:p-6 transition-colors duration-200 ${
+            goalsPeriod === 'yesterday'
+              ? 'border-violet-300/40 bg-gradient-to-br from-violet-50/95 via-slate-50/80 to-indigo-50/70 shadow-md shadow-violet-500/[0.07]'
+              : ''
+          }`}
+        >
+          <div className="mb-3 flex flex-col gap-2 md:mb-5 md:flex-row md:items-center md:justify-between">
             <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
-                <h3 className="font-semibold text-text-primary">Today&apos;s Goals</h3>
-                <span className="md:hidden text-sm font-medium text-text-secondary">{firstName}</span>
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <div className="relative min-w-0" ref={goalsPeriodMenuRef}>
+                  <button
+                    type="button"
+                    id="dashboard-goals-period"
+                    aria-haspopup="listbox"
+                    aria-expanded={goalsPeriodMenuOpen}
+                    aria-label="Choose day for goals"
+                    onClick={() => setGoalsPeriodMenuOpen((o) => !o)}
+                    className={`inline-flex max-w-full min-w-0 items-center gap-0.5 rounded-lg border border-transparent py-0.5 pl-0 pr-1 text-left text-sm font-semibold transition-colors hover:border-white/10 hover:bg-surface-1/50 md:text-base ${
+                      goalsPeriod === 'yesterday' ? 'text-violet-950' : 'text-text-primary'
+                    }`}
+                  >
+                    <span className="truncate">
+                      {goalsPeriod === 'yesterday' ? "Yesterday's goals" : "Today's Goals"}
+                    </span>
+                    <ChevronDown
+                      className={`h-4 w-4 shrink-0 text-text-muted transition-transform duration-200 md:h-[1.125rem] md:w-[1.125rem] ${
+                        goalsPeriodMenuOpen ? 'rotate-180' : ''
+                      }`}
+                      aria-hidden
+                    />
+                  </button>
+                  {goalsPeriodMenuOpen && (
+                    <div
+                      role="listbox"
+                      aria-labelledby="dashboard-goals-period"
+                      className={`absolute left-0 top-[calc(100%+4px)] z-50 min-w-[12.5rem] overflow-hidden rounded-xl border py-1 shadow-lg ${
+                        goalsPeriod === 'yesterday'
+                          ? 'border-violet-300/40 bg-violet-50/98 backdrop-blur-sm'
+                          : 'border-white/15 bg-surface-0/98 backdrop-blur-sm shadow-black/10'
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        role="option"
+                        aria-selected={goalsPeriod === 'today'}
+                        onClick={() => {
+                          setGoalsPeriod('today');
+                          setGoalsPeriodMenuOpen(false);
+                        }}
+                        className={`flex w-full items-center px-3 py-2.5 text-left text-sm font-semibold md:text-base transition-colors ${
+                          goalsPeriod === 'today'
+                            ? 'bg-accent-superjoin-orange/12 text-accent-superjoin-orange'
+                            : 'text-text-primary hover:bg-surface-2/80'
+                        }`}
+                      >
+                        {"Today's Goals"}
+                      </button>
+                      <button
+                        type="button"
+                        role="option"
+                        aria-selected={goalsPeriod === 'yesterday'}
+                        onClick={() => {
+                          setGoalsPeriod('yesterday');
+                          setGoalsPeriodMenuOpen(false);
+                        }}
+                        className={`flex w-full items-center px-3 py-2.5 text-left text-sm font-semibold md:text-base transition-colors ${
+                          goalsPeriod === 'yesterday'
+                            ? 'bg-violet-200/50 text-violet-950'
+                            : 'text-text-primary hover:bg-violet-100/60'
+                        }`}
+                      >
+                        {"Yesterday's goals"}
+                      </button>
+                    </div>
+                  )}
+                </div>
                 {profile.fitness_goal && (
                   <span
-                    className={`text-xs font-semibold px-2.5 py-0.5 rounded-full ${
+                    className={`text-[10px] md:text-xs font-semibold px-2 py-0.5 md:px-2.5 rounded-full ${
                       FITNESS_GOAL_BADGES[profile.fitness_goal]?.color ?? 'bg-gray-100 text-gray-600 border border-gray-200'
                     }`}
                   >
@@ -607,15 +1203,75 @@ export function DashboardTab({
                 )}
               </div>
             </div>
-            {allGoalsMet && (
-              <span className="flex shrink-0 items-center gap-1.5 self-start text-xs font-semibold text-accent-green bg-accent-green/10 px-2.5 py-1 rounded-full">
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                All goals hit!
-              </span>
-            )}
+            <div className="flex flex-wrap items-center gap-2 md:justify-end">
+              {allGoalsMetForGoalsView && (
+                <span className="flex shrink-0 items-center gap-1 text-[10px] md:text-xs font-semibold text-accent-green bg-accent-green/10 px-2 py-0.5 md:px-2.5 md:py-1 rounded-full">
+                  <CheckCircle2 className="w-3 h-3 md:w-3.5 md:h-3.5" />
+                  All goals hit!
+                </span>
+              )}
+              <div className="hidden md:inline-flex rounded-lg border border-white/10 bg-surface-1/60 p-0.5 shadow-sm" role="group" aria-label="Goals layout">
+                <button
+                  type="button"
+                  aria-label="Box layout"
+                  onClick={() => setDesktopGoalsView('box')}
+                  className={`inline-flex items-center justify-center rounded-md p-2 transition-colors ${
+                    desktopGoalsView === 'box'
+                      ? 'bg-accent-superjoin-orange/15 text-accent-superjoin-orange shadow-sm border border-accent-superjoin-orange/25'
+                      : 'text-text-muted hover:text-text-secondary'
+                  }`}
+                >
+                  <LayoutGrid className="h-4 w-4 shrink-0" aria-hidden />
+                </button>
+                <button
+                  type="button"
+                  aria-label="Circle progress layout"
+                  onClick={() => setDesktopGoalsView('circles')}
+                  className={`inline-flex items-center justify-center rounded-md p-2 transition-colors ${
+                    desktopGoalsView === 'circles'
+                      ? 'bg-accent-superjoin-orange/15 text-accent-superjoin-orange shadow-sm border border-accent-superjoin-orange/25'
+                      : 'text-text-muted hover:text-text-secondary'
+                  }`}
+                >
+                  <Circle className="h-4 w-4 shrink-0" aria-hidden />
+                </button>
+              </div>
+            </div>
           </div>
 
-          <div className="flex flex-col items-center gap-6">
+          {/* Mobile: box UI + optional bar collapse */}
+          <div className="md:hidden">
+            <GoalsBoxPanel
+              variant="mobile"
+              showBarCollapse
+              barExpanded={mobileGoalsExpanded}
+              onToggleBars={() => setMobileGoalsExpanded((o) => !o)}
+              rows={mobileGoalRows}
+              compositeParts={mobileCompositeParts}
+              overallDailyPct={overallDailyPct}
+              streakChips={goalsPeriod === 'yesterday' ? null : mobileStreakChipsForGoals}
+              avgCaptionDay={goalsPeriod === 'yesterday' ? 'yesterday' : 'today'}
+            />
+          </div>
+
+          {/* Desktop: box layout (no show/hide — bars always visible) */}
+          <div className={desktopGoalsView === 'box' ? 'hidden md:block' : 'hidden'}>
+            <GoalsBoxPanel
+              variant="desktop"
+              showBarCollapse={false}
+              barExpanded
+              onToggleBars={() => {}}
+              rows={mobileGoalRows}
+              compositeParts={mobileCompositeParts}
+              overallDailyPct={overallDailyPct}
+              streakChips={goalsPeriod === 'yesterday' ? null : desktopStreakChipsForGoals}
+              avgCaptionDay={goalsPeriod === 'yesterday' ? 'yesterday' : 'today'}
+            />
+          </div>
+
+          <div
+            className={`hidden flex-col items-center gap-6 ${desktopGoalsView === 'circles' ? 'md:flex' : 'md:hidden'}`}
+          >
             {/* Big overall ring */}
             <div className="relative">
               <CircleRing
@@ -626,61 +1282,19 @@ export function DashboardTab({
                 trackColor="#e2e8f0"
               />
               <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                <span className="text-3xl font-bold text-text-primary leading-none">
+                <span className="text-3xl font-semibold text-text-primary leading-none tabular-nums">
                   {overallDailyPct}%
                 </span>
-                <span className="text-xs text-text-muted mt-1">complete</span>
+                <span className="text-xs font-medium text-text-muted mt-1">
+                  {goalsPeriod === 'yesterday' ? 'that day' : 'complete'}
+                </span>
               </div>
             </div>
 
-            {/* Streak status row */}
-            <div className="flex items-center justify-center gap-2.5 w-full flex-wrap">
-              {/* Logging streak */}
-              {loggingStreakAtRisk ? (
-                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-accent-red/10 border border-accent-red/20">
-                  <Flame className="w-3.5 h-3.5 text-accent-red" />
-                  <span className="text-xs font-semibold text-accent-red">
-                    {loggingStreak}d streak · log now!
-                  </span>
-                </div>
-              ) : loggingStreakSafe ? (
-                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-accent-orange/10 border border-accent-orange/20">
-                  <Flame className="w-3.5 h-3.5 text-accent-orange" />
-                  <span className="text-xs font-semibold text-accent-orange">
-                    {loggingStreak}d streak
-                  </span>
-                  <CheckCircle2 className="w-3 h-3 text-accent-green" />
-                </div>
-              ) : loggingStreak === 0 && !todayEntry ? (
-                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-surface-2 border border-surface-3">
-                  <Flame className="w-3.5 h-3.5 text-text-muted" />
-                  <span className="text-xs font-medium text-text-muted">Start a streak today</span>
-                </div>
-              ) : null}
-
-              {/* Goal crush streak */}
-              {goalCrushAtRisk ? (
-                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-accent-superjoin-orange/10 border border-accent-superjoin-orange/20">
-                  <Zap className="w-3.5 h-3.5 text-accent-superjoin-orange" />
-                  <span className="text-xs font-semibold text-accent-superjoin-orange">
-                    {goalCrushStreak}d crush · finish goals!
-                  </span>
-                </div>
-              ) : goalCrushSafe ? (
-                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-accent-gold/10 border border-accent-gold/20">
-                  <Zap className="w-3.5 h-3.5 text-accent-gold" />
-                  <span className="text-xs font-semibold text-accent-gold">
-                    {goalCrushStreak}d goal crush
-                  </span>
-                  <CheckCircle2 className="w-3 h-3 text-accent-green" />
-                </div>
-              ) : goalCrushStreak === 0 && allGoalsMet ? (
-                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-accent-gold/10 border border-accent-gold/20">
-                  <Zap className="w-3.5 h-3.5 text-accent-gold" />
-                  <span className="text-xs font-semibold text-accent-gold">Goal crush day!</span>
-                </div>
-              ) : null}
-            </div>
+            {/* Streak status row (today only — streaks are current, not historical) */}
+            {goalsPeriod !== 'yesterday' && (
+              <div className="flex items-center justify-center gap-2.5 w-full flex-wrap">{desktopStreakChipsForGoals}</div>
+            )}
 
             {/* Category mini rings */}
             <div className={`grid gap-3 w-full ${trackSteps ? 'grid-cols-5 max-w-sm' : 'grid-cols-4 max-w-xs'}`}>
@@ -695,9 +1309,13 @@ export function DashboardTab({
                       </div>
                     </div>
                     <span className="text-[11px] font-medium text-text-secondary">Protein</span>
-                    <span className="text-[11px] font-semibold text-text-primary">{proteinPct ?? 0}%</span>
-                    <span className="text-[10px] text-text-muted leading-tight text-center">
-                      {(todayEntry as DailyEntry & { protein_qty?: number | null })?.protein_qty ?? 0}g / {profile.goal_protein_g_day}g
+                    <span className="text-[11px] font-semibold text-text-primary tabular-nums">{proteinPct ?? 0}%</span>
+                    <span className="text-[10px] leading-tight text-center tabular-nums">
+                      <span className="font-semibold text-text-primary">
+                        {(goalsEntry as DailyEntry & { protein_qty?: number | null })?.protein_qty ?? 0}g
+                      </span>
+                      <span className="font-normal text-text-muted"> / </span>
+                      <span className="font-normal text-text-muted">{profile.goal_protein_g_day}g</span>
                     </span>
                   </>
                 ) : trackCalories && profile.goal_calories_day ? (
@@ -709,9 +1327,15 @@ export function DashboardTab({
                       </div>
                     </div>
                     <span className="text-[11px] font-medium text-text-secondary">Calories</span>
-                    <span className="text-[11px] font-semibold text-text-primary">{caloriePct ?? 0}%</span>
-                    <span className="text-[10px] text-text-muted leading-tight text-center">
-                      {(todayEntry as DailyEntry & { calories_kcal?: number | null })?.calories_kcal ?? 0} kcal
+                    <span className="text-[11px] font-semibold text-text-primary tabular-nums">{caloriePct ?? 0}%</span>
+                    <span className="text-[10px] leading-tight text-center tabular-nums">
+                      <span className="font-semibold text-text-primary">
+                        {(goalsEntry as DailyEntry & { calories_kcal?: number | null })?.calories_kcal ?? 0} kcal
+                      </span>
+                      <span className="font-normal text-text-muted"> / </span>
+                      <span className="font-normal text-text-muted">
+                        {profile.goal_calories_day.toLocaleString()} kcal
+                      </span>
                     </span>
                   </>
                 ) : (
@@ -747,9 +1371,13 @@ export function DashboardTab({
                 <span className="text-[11px] font-medium text-text-secondary">Water</span>
                 {profile.goal_water_liters ? (
                   <>
-                    <span className="text-[11px] font-semibold text-text-primary">{waterPct}%</span>
-                    <span className="text-[10px] text-text-muted leading-tight text-center">
-                      {(todayEntry?.water_liters ?? 0).toFixed(1)} / {profile.goal_water_liters}L
+                    <span className="text-[11px] font-semibold text-text-primary tabular-nums">{waterPct}%</span>
+                    <span className="text-[10px] leading-tight text-center tabular-nums">
+                      <span className="font-semibold text-text-primary">
+                        {(goalsEntry?.water_liters ?? 0).toFixed(1)}
+                      </span>
+                      <span className="font-normal text-text-muted"> / </span>
+                      <span className="font-normal text-text-muted">{profile.goal_water_liters}L</span>
                     </span>
                   </>
                 ) : (
@@ -774,9 +1402,11 @@ export function DashboardTab({
                 <span className="text-[11px] font-medium text-text-secondary">Sleep</span>
                 {sleepGoal ? (
                   <>
-                    <span className="text-[11px] font-semibold text-text-primary">{sleepPct}%</span>
-                    <span className="text-[10px] text-text-muted leading-tight text-center">
-                      {(todayEntry?.sleep_hours ?? 0)}h / {sleepGoal}h
+                    <span className="text-[11px] font-semibold text-text-primary tabular-nums">{sleepPct}%</span>
+                    <span className="text-[10px] leading-tight text-center tabular-nums">
+                      <span className="font-semibold text-text-primary">{(goalsEntry?.sleep_hours ?? 0)}h</span>
+                      <span className="font-normal text-text-muted"> / </span>
+                      <span className="font-normal text-text-muted">{sleepGoal}h</span>
                     </span>
                   </>
                 ) : (
@@ -801,9 +1431,15 @@ export function DashboardTab({
                 <span className="text-[11px] font-medium text-text-secondary">Workout</span>
                 {profile.goal_workout_days_week ? (
                   <>
-                    <span className="text-[11px] font-semibold text-text-primary">{workoutDone ? '100%' : '0%'}</span>
-                    <span className="text-[10px] text-text-muted leading-tight text-center">
-                      {workoutDone ? '1' : '0'} / 1 today
+                    <span className="text-[11px] font-semibold text-text-primary tabular-nums">
+                      {workoutDone ? '100%' : '0%'}
+                    </span>
+                    <span className="text-[10px] leading-tight text-center">
+                      <span className="font-semibold text-text-primary">{workoutDone ? '1' : '0'}</span>
+                      <span className="font-normal text-text-muted"> / </span>
+                      <span className="font-normal text-text-muted">
+                        {goalsPeriod === 'yesterday' ? '1 session' : '1 today'}
+                      </span>
                     </span>
                   </>
                 ) : (
@@ -821,9 +1457,15 @@ export function DashboardTab({
                     </div>
                   </div>
                   <span className="text-[11px] font-medium text-text-secondary">Steps</span>
-                  <span className="text-[11px] font-semibold text-text-primary">{stepsPct ?? 0}%</span>
-                  <span className="text-[10px] text-text-muted leading-tight text-center">
-                    {(todayEntry?.steps ?? 0).toLocaleString()} / {(profile.goal_steps_day ?? 0).toLocaleString()}
+                  <span className="text-[11px] font-semibold text-text-primary tabular-nums">{stepsPct ?? 0}%</span>
+                  <span className="text-[10px] leading-tight text-center tabular-nums">
+                    <span className="font-semibold text-text-primary">
+                      {(goalsEntry?.steps ?? 0).toLocaleString()}
+                    </span>
+                    <span className="font-normal text-text-muted"> / </span>
+                    <span className="font-normal text-text-muted">
+                      {(profile.goal_steps_day ?? 0).toLocaleString()}
+                    </span>
                   </span>
                 </div>
               )}
@@ -840,7 +1482,9 @@ export function DashboardTab({
             </h3>
             {allGoalsMet ? (
               <p className="text-sm text-text-secondary">
-                You&apos;ve completed all your daily goals. Great work — rest up and do it again tomorrow.
+                {
+                  "You've completed all your daily goals. Great work — rest up and do it again tomorrow."
+                }
               </p>
             ) : (
               <ul className="space-y-2.5">
@@ -947,7 +1591,7 @@ export function DashboardTab({
                 </div>
                 <div className="flex-1 min-w-0">
                   {monthRank === 1 ? (
-                    <p className="text-sm font-medium text-text-primary">You&apos;re at the top!</p>
+                    <p className="text-sm font-medium text-text-primary">{"You're at the top!"}</p>
                   ) : (
                     <p className="text-sm text-text-secondary">
                       <span className="font-semibold text-text-primary">Rank #{monthRank}</span> this month

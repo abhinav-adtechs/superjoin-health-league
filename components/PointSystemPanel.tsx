@@ -9,6 +9,7 @@ import type { ScoringRule } from '@/app/api/scoring-rules/route';
 import type { FoodTrackingMode, FitnessGoal } from '@/lib/types';
 import { apiUrl, getApiFetchOptions } from '@/lib/api';
 import { FITNESS_GOAL_THEMES } from '@/lib/fitness-goal-theme';
+import { RulesListSkeleton } from '@/components/LoadingScreen';
 
 export type ProfileContext = {
   fitness_goal?: FitnessGoal | null;
@@ -438,11 +439,7 @@ export function PointSystemSheet({ open, onClose, profile }: { open: boolean; on
         {/* Scrollable content */}
         <div className="flex-1 overflow-y-auto p-4 edge-safe-bottom space-y-6">
           {loading ? (
-            <div className="space-y-2 animate-pulse">
-              {Array.from({ length: 8 }).map((_, i) => (
-                <div key={i} className="h-10 rounded-xl bg-surface-2/60" />
-              ))}
-            </div>
+            <RulesListSkeleton rows={8} />
           ) : byCategory.size === 0 ? (
             <p className="text-sm text-text-muted">Unable to load scoring rules.</p>
           ) : (

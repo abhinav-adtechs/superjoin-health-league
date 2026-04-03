@@ -4,6 +4,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { apiUrl, getApiFetchOptions } from '@/lib/api';
 import type { WorkoutGoalType } from '@/lib/types';
 import { parseGoalWorkoutTypes } from '@/lib/workout-goals';
+import { CalendarHistogramSkeleton } from '@/components/LoadingScreen';
 
 export type EntryRow = {
   date: string;
@@ -378,7 +379,7 @@ export function CalendarHistogram({
     };
   }, [entries, goals]);
 
-  if (loading) return <div className="animate-pulse h-64 rounded-xl bg-surface-2/50" />;
+  if (loading) return <CalendarHistogramSkeleton />;
 
   return (
     <div className="space-y-4 min-w-0 w-full">

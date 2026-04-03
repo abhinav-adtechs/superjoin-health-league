@@ -17,6 +17,7 @@ import { PointSystemSheet } from '@/components/PointSystemPanel';
 import type { Profile } from '@/lib/types';
 import { resolveAvatarUrl } from '@/lib/avatar-url';
 import { applyFitnessGoalTheme, getGoalTheme } from '@/lib/fitness-goal-theme';
+import { AppLoadingScreen } from '@/components/LoadingScreen';
 
 /** True when the profile has no usable goal targets yet (DB dummy migration fills these for most users). */
 function profileNeedsGoals(p: Profile): boolean {
@@ -265,17 +266,13 @@ export default function Home() {
 
   // Keep shell loading while profile is in flight for signed-in users (`undefined` = fetch not completed for this session).
   if (loading || (user && profile === undefined)) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-pulse text-text-muted font-medium">Loading…</div>
-      </div>
-    );
+    return <AppLoadingScreen />;
   }
 
   // Guest mode: leaderboard + rules only
   if (!user && isGuest) {
     return (
-      <>
+      <div className="relative z-10 min-h-screen w-full">
         <header className="sticky top-0 z-50 safe-area-top border-b border-white/20 bg-surface-0/80 backdrop-blur-xl">
           <div className="max-w-5xl mx-auto px-4 sm:px-6 py-3 sm:py-4">
             <div className="flex items-center justify-between gap-3">
@@ -319,13 +316,13 @@ export default function Home() {
             </p>
           </div>
         </footer>
-      </>
+      </div>
     );
   }
 
   if (!user) {
     return (
-      <>
+      <div className="relative z-10 min-h-screen w-full">
         <header className="sticky top-0 z-50 safe-area-top border-b border-white/20 bg-surface-0/80 backdrop-blur-xl">
           <div className="max-w-5xl mx-auto px-4 sm:px-6 py-3 sm:py-4">
             <div className="flex items-center justify-between gap-3">
@@ -381,7 +378,7 @@ export default function Home() {
             </p>
           </footer>
         </main>
-      </>
+      </div>
     );
   }
 
@@ -399,7 +396,7 @@ export default function Home() {
     Date.now() - new Date(profile.pin_set_at).getTime() > 60 * 24 * 60 * 60 * 1000;
   if (user && profile && profile.must_change_pin) {
     return (
-      <>
+      <div className="relative z-10 min-h-screen w-full">
         <header className="sticky top-0 z-50 safe-area-top border-b border-white/20 bg-surface-0/80 backdrop-blur-xl">
           <div className="max-w-5xl mx-auto px-4 sm:px-6 py-4">
             <div className="flex items-center gap-3">
@@ -416,7 +413,7 @@ export default function Home() {
             <SetPinForm onSuccess={loadUser} pinExpired={!!pinExpired} />
           </div>
         </main>
-      </>
+      </div>
     );
   }
 
@@ -501,23 +498,15 @@ export default function Home() {
       {/* ── Desktop Sidebar — fixed left, hidden on mobile ── */}
       <aside
         data-sidebar-rail={sidebarPinned ? undefined : 'true'}
-        className={`hidden md:flex flex-col fixed left-0 top-0 bottom-0 z-40 overflow-hidden group transition-[width] duration-200 ease-in-out border-r border-slate-200/70 bg-gradient-to-b from-white via-surface-1 to-surface-2/40 backdrop-blur-xl rounded-r-2xl ${sidebarPinned ? 'w-64' : 'w-16 hover:w-64'}`}
+        className={`glass-sidebar hidden md:flex flex-col fixed left-0 top-0 bottom-0 z-40 min-h-0 overflow-x-hidden overflow-y-hidden group transition-[width] duration-200 ease-in-out ${sidebarPinned ? 'w-64' : 'w-16 hover:w-64'}`}
         style={{
-          boxShadow: `
-            8px 0 32px -12px rgba(15, 23, 42, 0.14),
-            4px 0 16px -8px rgba(15, 23, 42, 0.08),
-            0 0 0 1px rgba(255, 255, 255, 0.65) inset,
-            12px 0 40px -16px rgba(${goalTheme.primaryRgb}, 0.18)
-          `,
-          borderLeftColor: goalTheme.primary,
-          borderLeftWidth: 3,
-          borderLeftStyle: 'solid',
-          backgroundImage: `linear-gradient(165deg, rgba(${goalTheme.primaryRgb}, 0.09) 0%, rgba(255,255,255,0.97) 38%, rgb(248 250 252) 100%)`,
+          ['--sidebar-accent-rgb' as string]: goalTheme.primaryRgb,
+          ['--sidebar-accent' as string]: goalTheme.primary,
         }}
       >
         {/* Profile, goal, key metrics */}
         <div
-          className={`shrink-0 border-b border-slate-200/60 bg-white/40 safe-area-top transition-[padding] duration-200 ${sidebarPinned ? 'px-3 pt-3 pb-3' : 'px-1.5 pt-3 pb-2'}`}
+          className={`shrink-0 border-b border-white/25 bg-white/15 backdrop-blur-md safe-area-top transition-[padding] duration-200 ${sidebarPinned ? 'px-3 pt-3 pb-3' : 'px-1.5 pt-3 pb-2'}`}
         >
           <button
             type="button"
@@ -525,7 +514,7 @@ export default function Home() {
               setActiveTab('settings');
               setSettingsSection('profile');
             }}
-            className={`w-full rounded-xl text-left transition-colors hover:bg-white/70 focus-visible:outline focus-visible:ring-2 focus-visible:ring-offset-1 ${sidebarPinned ? 'p-2' : 'flex justify-center px-1 py-2 group-hover:justify-start group-hover:px-2'}`}
+            className={`w-full rounded-xl text-left transition-colors hover:bg-white/45 focus-visible:outline focus-visible:ring-2 focus-visible:ring-offset-1 ${sidebarPinned ? 'p-2' : 'flex justify-center px-1 py-2 group-hover:justify-start group-hover:px-2'}`}
             style={{ ['--tw-ring-color' as string]: goalTheme.primary }}
             aria-label="Open profile and goals"
           >
@@ -564,14 +553,14 @@ export default function Home() {
           </button>
 
           <div
-            className={`mt-3 grid grid-cols-3 gap-1 rounded-xl border border-slate-200/60 bg-white/60 p-2 shadow-sm ${sidebarPinned ? '' : 'hidden group-hover:grid'}`}
+            className={`mt-3 grid grid-cols-3 gap-1 rounded-xl border border-white/35 bg-white/20 backdrop-blur-md p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.5)] ${sidebarPinned ? '' : 'hidden group-hover:grid'}`}
           >
             <div className="flex flex-col items-center gap-0.5 min-w-0 text-center">
               <Scale className="w-3 h-3 text-text-muted shrink-0" aria-hidden />
               <span className="text-[9px] font-semibold uppercase tracking-wide text-text-muted">Weight</span>
               <span className="text-[11px] font-bold text-text-primary tabular-nums truncate w-full">{weightLabel}</span>
             </div>
-            <div className="flex flex-col items-center gap-0.5 min-w-0 text-center border-x border-slate-200/50">
+            <div className="flex flex-col items-center gap-0.5 min-w-0 text-center border-x border-white/25">
               <Ruler className="w-3 h-3 text-text-muted shrink-0" aria-hidden />
               <span className="text-[9px] font-semibold uppercase tracking-wide text-text-muted">Height</span>
               <span className="text-[11px] font-bold text-text-primary tabular-nums truncate w-full">{heightLabel}</span>
@@ -591,7 +580,7 @@ export default function Home() {
         </div>
         {/* Nav items */}
         <nav
-          className={`flex-1 py-4 flex flex-col gap-1 overflow-y-auto overflow-x-hidden ${sidebarPinned ? 'px-2.5' : 'px-2'}`}
+          className={`flex-1 min-h-0 py-4 flex flex-col gap-1 overflow-y-auto overflow-x-hidden ${sidebarPinned ? 'px-2.5' : 'px-2'}`}
         >
           {TABS.map((tab) => (
             <div key={tab.id}>
@@ -621,8 +610,8 @@ export default function Home() {
                       onClick={() => { setActiveTab('settings'); setSettingsSection(s.id); }}
                       className={`w-full flex items-center gap-2 pl-10 pr-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors ${
                         activeTab === 'settings' && settingsSection === s.id
-                          ? 'text-accent-superjoin-orange bg-accent-superjoin-orange/10'
-                          : 'text-text-muted hover:text-text-secondary hover:bg-surface-1'
+                          ? 'text-accent-superjoin-orange bg-white/35 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.4)]'
+                          : 'text-text-muted hover:text-text-secondary hover:bg-white/25'
                       }`}
                     >
                       <s.icon className="w-3.5 h-3.5 shrink-0" />
@@ -635,7 +624,7 @@ export default function Home() {
           ))}
         </nav>
         {/* Point System trigger */}
-        <div className={`border-t border-slate-200/60 py-2.5 shrink-0 bg-white/30 ${sidebarPinned ? 'px-2.5' : 'px-2'}`}>
+        <div className={`border-t border-white/25 py-2.5 shrink-0 bg-white/10 backdrop-blur-md ${sidebarPinned ? 'px-2.5' : 'px-2'}`}>
           <button
             onClick={() => setPointsSheetOpen(true)}
             className={`sidebar-nav-item ${pointsSheetOpen ? 'active' : ''} ${sidebarPinned ? '' : 'sidebar-nav-item--rail'}`}
@@ -651,10 +640,10 @@ export default function Home() {
         </div>
 
         {/* Pin / collapse toggle */}
-        <div className={`border-t border-slate-200/60 pt-2 pb-3 shrink-0 bg-white/20 ${sidebarPinned ? 'px-2.5' : 'px-2'}`}>
+        <div className={`border-t border-white/25 pt-2 pb-3 shrink-0 bg-white/10 backdrop-blur-md ${sidebarPinned ? 'px-2.5' : 'px-2'}`}>
           <button
             onClick={() => setSidebarPinned((p) => !p)}
-            className={`sidebar-nav-item h-10 rounded-lg border border-transparent text-text-muted hover:text-text-secondary hover:bg-surface-2/90 hover:border-slate-200/50 transition-colors w-full ${sidebarPinned ? '' : 'sidebar-nav-item--rail'}`}
+            className={`sidebar-nav-item h-10 rounded-lg border border-transparent text-text-muted hover:text-text-secondary hover:bg-white/35 hover:border-white/35 transition-colors w-full ${sidebarPinned ? '' : 'sidebar-nav-item--rail'}`}
             title={sidebarPinned ? 'Collapse sidebar' : 'Expand sidebar'}
           >
             <span className="w-5 h-5 flex items-center justify-center shrink-0">
@@ -670,10 +659,10 @@ export default function Home() {
       </aside>
 
       {/* ── Everything else shifts right of the sidebar ── */}
-      <div className={`flex flex-col min-h-screen transition-[margin] duration-200 mobile-app-shell ${sidebarPinned ? 'md:ml-64' : 'md:ml-16'}`}>
+      <div className={`relative z-10 flex flex-col min-h-screen transition-[margin] duration-200 mobile-app-shell ${sidebarPinned ? 'md:ml-64' : 'md:ml-16'}`}>
 
         {/* Header */}
-        <header className="sticky top-0 z-30 safe-area-top border-b border-white/20 bg-surface-0/80 backdrop-blur-xl mobile-app-header">
+        <header className="liquid-header sticky top-0 z-30 safe-area-top mobile-app-header">
           <div className="max-w-5xl mx-auto px-4 sm:px-6">
             <div className="h-14 sm:h-16 flex items-center justify-between gap-2 sm:gap-3">
               {/* Logo — mobile only (desktop shows in sidebar) */}
@@ -826,7 +815,7 @@ export default function Home() {
 
       {/* ── Mobile Bottom Navigation ── hidden on desktop */}
       <nav className="bottom-nav md:hidden fixed bottom-0 left-0 right-0 z-40">
-        <div className="flex items-stretch">
+        <div className="bottom-nav-liquid">
           {TABS.map((tab) => (
             <button
               key={tab.id}

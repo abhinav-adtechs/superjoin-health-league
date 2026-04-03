@@ -23,6 +23,7 @@ import {
   Zap,
   Plug2,
 } from 'lucide-react';
+import { IntegrationCardsSkeleton } from '@/components/LoadingScreen';
 import { apiUrl, getApiFetchOptions } from '@/lib/api';
 import type { IntegrationStatus, SyncPreference } from '@/lib/types';
 import { requestHealthKitPermissions, isHealthKitAvailable, syncHealthKitToApi } from '@/lib/integrations/apple-health';
@@ -708,8 +709,9 @@ function ConnectedAccountsTabImpl() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-16">
-        <div className="animate-pulse text-text-muted font-medium text-sm">Loading connections…</div>
+      <div className="py-6 sm:py-8">
+        <p className="sr-only">Loading connections</p>
+        <IntegrationCardsSkeleton />
       </div>
     );
   }

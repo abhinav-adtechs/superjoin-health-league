@@ -19,6 +19,7 @@ import {
 import type { ReactNode } from 'react';
 import { apiUrl, getApiFetchOptions } from '@/lib/api';
 import { CalendarHistogram } from './CalendarHistogram';
+import { LogHistorySkeleton } from '@/components/LoadingScreen';
 import { getLoggingStreakBonus } from '@/lib/points';
 import type { Profile } from '@/lib/types';
 import {
@@ -794,7 +795,7 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
 
         {/* Week-grouped entries */}
         {loading ? (
-          <div className="animate-pulse text-text-muted text-sm">Loading…</div>
+          <LogHistorySkeleton />
         ) : weekGroups.length === 0 ? (
           <p className="text-sm text-text-muted">
             {categoryFilter === 'weight'
