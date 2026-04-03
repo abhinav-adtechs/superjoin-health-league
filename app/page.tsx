@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { apiUrl, getApiFetchOptions } from '@/lib/api';
-import { Heart, Activity, Dumbbell, Trophy, Settings, LogOut, ChevronLeft, Search, User, Bell, Plug2, BookOpen, LogIn } from 'lucide-react';
+import { Heart, Activity, Dumbbell, Trophy, Settings, LogOut, ChevronLeft, Search, User, Bell, Plug2, BookOpen, LogIn, RefreshCw, Scale, Ruler, Gauge } from 'lucide-react';
 
 import { DashboardTab } from '@/components/DashboardTab';
 import { LogEntryTab } from '@/components/LogEntryTab';
@@ -16,7 +16,7 @@ import { SetPinForm } from '@/components/SetPinForm';
 import { PointSystemSheet } from '@/components/PointSystemPanel';
 import type { Profile } from '@/lib/types';
 import { resolveAvatarUrl } from '@/lib/avatar-url';
-import { applyFitnessGoalTheme } from '@/lib/fitness-goal-theme';
+import { applyFitnessGoalTheme, getGoalTheme } from '@/lib/fitness-goal-theme';
 
 /** True when the profile has no usable goal targets yet (DB dummy migration fills these for most users). */
 function profileNeedsGoals(p: Profile): boolean {
@@ -69,6 +69,14 @@ function HealthGyan() {
   );
 }
 
+function formatSidebarBmi(weightKg: number | null | undefined, heightCm: number | null | undefined): string {
+  if (weightKg == null || weightKg <= 0 || heightCm == null || heightCm <= 0) return '—';
+  const h = heightCm / 100;
+  const v = weightKg / (h * h);
+  if (!Number.isFinite(v)) return '—';
+  return v.toFixed(1);
+}
+
 export default function Home() {
   const [user, setUser] = useState<{ id: string; email?: string } | null>(null);
   const [profile, setProfile] = useState<Profile | null | undefined>(undefined);
@@ -92,12 +100,17 @@ export default function Home() {
   const [entryRefresh, setEntryRefresh] = useState(0);
   /** When set from the dashboard month league CTA, leaderboard opens on monthly view for this YYYY-MM. */
   const [leaderboardOpenContext, setLeaderboardOpenContext] = useState<{ month: string } | null>(null);
-  const [sidebarPinned, setSidebarPinned] = useState(false);
+  const [sidebarPinned, setSidebarPinned] = useState(true);
   const [pointsSheetOpen, setPointsSheetOpen] = useState(false);
   const [guestPointsOpen, setGuestPointsOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState('');
   const [paletteIdx, setPaletteIdx] = useState(0);
+  const [refreshingApp, setRefreshingApp] = useState(false);
+
+  /** Tracks which user id `profile` belongs to. When the signed-in user id changes, clear profile to undefined so we don’t render with stale `null` from the logged-out branch (that bypassed the loading shell and crashed / blanked the app). */
+  const profileUserIdRef = useRef<string | null>(null);
+  const appReloadTimerRef = useRef<number | null>(null);
 
   const loadUser = useCallback(async () => {
     console.log('loadUser called');
@@ -109,6 +122,7 @@ export default function Home() {
         console.log('Supabase client created successfully');
       } catch (clientError) {
         console.error('Failed to create Supabase client:', clientError);
+        profileUserIdRef.current = null;
         setUser(null);
         setProfile(null);
         setLoading(false);
@@ -121,6 +135,7 @@ export default function Home() {
       
       if (authError) {
         console.error('Auth getUser error:', authError);
+        profileUserIdRef.current = null;
         setUser(null);
         setProfile(null);
         setLoading(false);
@@ -130,17 +145,26 @@ export default function Home() {
       setUser(u ?? null);
       
       if (!u) {
+        profileUserIdRef.current = null;
         setProfile(null);
         setLoading(false);
         return;
       }
-      
+
+      // New or different signed-in user: mark profile as not yet loaded for this user.
+      // If we keep `null` from the logged-out path, (user && profile === undefined) is false and the shell skips — main UI can render with profile=null and crash.
+      if (profileUserIdRef.current !== u.id) {
+        profileUserIdRef.current = u.id;
+        setProfile(undefined);
+      }
+
       try {
         const res = await fetch(apiUrl('/api/users/me'), getApiFetchOptions());
         if (!res.ok) {
           console.error('API /api/users/me error:', res.status, res.statusText);
           const errorData = await res.json().catch(() => ({}));
           console.error('Error details:', errorData);
+          profileUserIdRef.current = null;
           setUser(null);
           setProfile(null);
           setLoading(false);
@@ -150,6 +174,7 @@ export default function Home() {
         setProfile(data.profile ?? null);
       } catch (fetchError) {
         console.error('Fetch error:', fetchError);
+        profileUserIdRef.current = null;
         setUser(null);
         setProfile(null);
       } finally {
@@ -157,6 +182,7 @@ export default function Home() {
       }
     } catch (e) {
       console.error('loadUser exception:', e);
+      profileUserIdRef.current = null;
       setUser(null);
       setProfile(null);
       setLoading(false);
@@ -213,16 +239,31 @@ export default function Home() {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  useEffect(() => {
+    return () => {
+      if (appReloadTimerRef.current !== null && typeof window !== 'undefined') {
+        window.clearTimeout(appReloadTimerRef.current);
+      }
+    };
+  }, []);
+
+  const handleManualRefresh = useCallback(() => {
+    if (typeof window === 'undefined' || refreshingApp) return;
+    setRefreshingApp(true);
+    appReloadTimerRef.current = window.setTimeout(() => {
+      window.location.reload();
+    }, 150);
+  }, [refreshingApp]);
+
   const handleLogout = async () => {
     const supabase = createClient();
     await supabase.auth.signOut();
+    profileUserIdRef.current = null;
     setUser(null);
     setProfile(undefined);
   };
 
-  // Keep shell loading while profile is in flight for signed-in users. The 5s safety timeout can
-  // clear `loading` before /api/users/me returns, which would otherwise render Dashboard with
-  // profile undefined and crash on profile! assertions.
+  // Keep shell loading while profile is in flight for signed-in users (`undefined` = fetch not completed for this session).
   if (loading || (user && profile === undefined)) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -329,10 +370,12 @@ export default function Home() {
             </div>
           </div>
           <footer className="mt-8 sm:mt-12 pb-6 sm:pb-8 text-center space-y-3">
-            <p className="text-sm text-text-secondary max-w-md mx-auto">
+            <p className="hidden md:block text-sm text-text-secondary max-w-md mx-auto">
               Where health becomes a team sport. Fair scoring. Real results. Every step, workout, and healthy habit counts toward your team&apos;s success.
             </p>
-            <HealthGyan />
+            <div className="hidden md:block">
+              <HealthGyan />
+            </div>
             <p className="text-xs text-text-muted">
               Powered by <span className="font-semibold text-accent-superjoin-orange">Superjoin</span>
             </p>
@@ -445,38 +488,133 @@ export default function Home() {
     ? Math.min(paletteIdx, filteredPaletteItems.length - 1)
     : 0;
 
+  const goalTheme = getGoalTheme(profile!.fitness_goal);
+  const weightKg = profile!.current_weight ?? profile!.starting_weight;
+  const heightCm = profile!.height_cm;
+  const bmiStr = formatSidebarBmi(weightKg, heightCm);
+  const weightLabel =
+    weightKg != null && weightKg > 0 ? `${weightKg.toFixed(1)} kg` : '—';
+  const heightLabel = heightCm != null && heightCm > 0 ? `${Math.round(heightCm)} cm` : '—';
+
   return (
     <>
       {/* ── Desktop Sidebar — fixed left, hidden on mobile ── */}
       <aside
-        className={`hidden md:flex flex-col fixed left-0 top-0 bottom-0 z-40 border-r border-white/10 bg-surface-0/95 backdrop-blur-xl transition-[width] duration-200 ease-in-out overflow-hidden group ${sidebarPinned ? 'w-56' : 'w-14 hover:w-56'}`}
+        data-sidebar-rail={sidebarPinned ? undefined : 'true'}
+        className={`hidden md:flex flex-col fixed left-0 top-0 bottom-0 z-40 overflow-hidden group transition-[width] duration-200 ease-in-out border-r border-slate-200/70 bg-gradient-to-b from-white via-surface-1 to-surface-2/40 backdrop-blur-xl rounded-r-2xl ${sidebarPinned ? 'w-64' : 'w-16 hover:w-64'}`}
+        style={{
+          boxShadow: `
+            8px 0 32px -12px rgba(15, 23, 42, 0.14),
+            4px 0 16px -8px rgba(15, 23, 42, 0.08),
+            0 0 0 1px rgba(255, 255, 255, 0.65) inset,
+            12px 0 40px -16px rgba(${goalTheme.primaryRgb}, 0.18)
+          `,
+          borderLeftColor: goalTheme.primary,
+          borderLeftWidth: 3,
+          borderLeftStyle: 'solid',
+          backgroundImage: `linear-gradient(165deg, rgba(${goalTheme.primaryRgb}, 0.09) 0%, rgba(255,255,255,0.97) 38%, rgb(248 250 252) 100%)`,
+        }}
       >
-        {/* Sidebar logo */}
-        <div className="flex items-center h-14 sm:h-16 px-2.5 border-b border-white/10 shrink-0 safe-area-top">
-          <div className="w-9 h-9 rounded-xl bg-accent-superjoin-orange/10 border border-accent-superjoin-orange/20 flex items-center justify-center shrink-0">
-            <Heart className="w-5 h-5 text-accent-superjoin-orange" />
+        {/* Profile, goal, key metrics */}
+        <div
+          className={`shrink-0 border-b border-slate-200/60 bg-white/40 safe-area-top transition-[padding] duration-200 ${sidebarPinned ? 'px-3 pt-3 pb-3' : 'px-1.5 pt-3 pb-2'}`}
+        >
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('settings');
+              setSettingsSection('profile');
+            }}
+            className={`w-full rounded-xl text-left transition-colors hover:bg-white/70 focus-visible:outline focus-visible:ring-2 focus-visible:ring-offset-1 ${sidebarPinned ? 'p-2' : 'flex justify-center px-1 py-2 group-hover:justify-start group-hover:px-2'}`}
+            style={{ ['--tw-ring-color' as string]: goalTheme.primary }}
+            aria-label="Open profile and goals"
+          >
+            <div
+              className={`flex items-center ${sidebarPinned ? 'items-start gap-3' : 'w-full justify-center gap-0 group-hover:justify-start group-hover:gap-3 group-hover:items-start'}`}
+            >
+              <div
+                className="shrink-0 rounded-full p-[2px] shadow-sm"
+                style={{
+                  background: `linear-gradient(135deg, ${goalTheme.primary}, ${goalTheme.primaryLight})`,
+                }}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={resolveAvatarUrl({
+                    userId: profile!.id,
+                    displayName: profile!.display_name,
+                    avatarUrl: profile!.avatar_url,
+                  })}
+                  alt=""
+                  className="w-10 h-10 rounded-full object-cover bg-surface-1 border-2 border-white"
+                />
+              </div>
+              <div
+                className={`min-w-0 transition-all duration-200 ${sidebarPinned ? 'flex-1 opacity-100' : 'max-w-0 flex-none overflow-hidden opacity-0 group-hover:max-w-[min(13rem,70vw)] group-hover:flex-1 group-hover:min-w-0 group-hover:opacity-100'}`}
+              >
+                <p className="text-sm font-semibold text-text-primary truncate leading-tight">{profile!.display_name}</p>
+                <span
+                  className={`mt-1.5 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide border shadow-sm ${goalTheme.badgeClass}`}
+                  title="Fitness goal"
+                >
+                  {goalTheme.label}
+                </span>
+              </div>
+            </div>
+          </button>
+
+          <div
+            className={`mt-3 grid grid-cols-3 gap-1 rounded-xl border border-slate-200/60 bg-white/60 p-2 shadow-sm ${sidebarPinned ? '' : 'hidden group-hover:grid'}`}
+          >
+            <div className="flex flex-col items-center gap-0.5 min-w-0 text-center">
+              <Scale className="w-3 h-3 text-text-muted shrink-0" aria-hidden />
+              <span className="text-[9px] font-semibold uppercase tracking-wide text-text-muted">Weight</span>
+              <span className="text-[11px] font-bold text-text-primary tabular-nums truncate w-full">{weightLabel}</span>
+            </div>
+            <div className="flex flex-col items-center gap-0.5 min-w-0 text-center border-x border-slate-200/50">
+              <Ruler className="w-3 h-3 text-text-muted shrink-0" aria-hidden />
+              <span className="text-[9px] font-semibold uppercase tracking-wide text-text-muted">Height</span>
+              <span className="text-[11px] font-bold text-text-primary tabular-nums truncate w-full">{heightLabel}</span>
+            </div>
+            <div className="flex flex-col items-center gap-0.5 min-w-0 text-center">
+              <Gauge className="w-3 h-3 text-text-muted shrink-0" aria-hidden />
+              <span className="text-[9px] font-semibold uppercase tracking-wide text-text-muted">BMI</span>
+              <span className="text-[11px] font-bold text-text-primary tabular-nums truncate w-full">{bmiStr}</span>
+            </div>
           </div>
-          <div className={`ml-3 whitespace-nowrap transition-opacity duration-150 ${sidebarPinned ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
-            <span className="text-sm font-bold text-text-primary">Superjoin </span>
-            <span className="text-sm font-bold text-accent-superjoin-orange">Health OS</span>
-          </div>
+
+          <p
+            className={`mt-2 text-center text-[10px] text-text-muted/90 transition-opacity duration-200 ${sidebarPinned ? 'opacity-100' : 'max-h-0 overflow-hidden opacity-0 group-hover:max-h-8 group-hover:opacity-100'}`}
+          >
+            Superjoin <span className="font-semibold text-accent-superjoin-orange">Health OS</span>
+          </p>
         </div>
         {/* Nav items */}
-        <nav className="flex-1 py-3 flex flex-col gap-0.5 px-2 overflow-hidden">
+        <nav
+          className={`flex-1 py-4 flex flex-col gap-1 overflow-y-auto overflow-x-hidden ${sidebarPinned ? 'px-2.5' : 'px-2'}`}
+        >
           {TABS.map((tab) => (
             <div key={tab.id}>
               <button
                 onClick={() => setActiveTab(tab.id)}
-                className={`sidebar-nav-item ${activeTab === tab.id ? 'active' : ''}`}
+                className={`sidebar-nav-item ${activeTab === tab.id ? 'active' : ''} ${sidebarPinned ? '' : 'sidebar-nav-item--rail'}`}
               >
-                <tab.icon className="w-5 h-5 shrink-0" />
-                <span className={`ml-3 text-sm font-medium whitespace-nowrap transition-opacity duration-150 ${sidebarPinned ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+                <tab.icon className="w-5 h-5 shrink-0 opacity-90" />
+                <span
+                  className={`text-sm font-medium whitespace-nowrap transition-all duration-200 ${sidebarPinned ? 'opacity-100' : 'max-w-0 overflow-hidden opacity-0 group-hover:max-w-[min(14rem,70vw)] group-hover:opacity-100'}`}
+                >
                   {tab.label}
                 </span>
               </button>
               {/* Settings sub-items — visible when sidebar is expanded */}
               {tab.id === 'settings' && (
-                <div className={`mt-0.5 flex flex-col gap-0.5 transition-opacity duration-150 ${sidebarPinned ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+                <div
+                  className={
+                    sidebarPinned
+                      ? 'mt-0.5 flex flex-col gap-0.5'
+                      : 'hidden group-hover:flex group-hover:mt-0.5 group-hover:flex-col group-hover:gap-0.5'
+                  }
+                >
                   {SETTINGS_SECTIONS.map((s) => (
                     <button
                       key={s.id}
@@ -497,37 +635,45 @@ export default function Home() {
           ))}
         </nav>
         {/* Point System trigger */}
-        <div className="border-t border-white/10 px-2 py-2 shrink-0">
+        <div className={`border-t border-slate-200/60 py-2.5 shrink-0 bg-white/30 ${sidebarPinned ? 'px-2.5' : 'px-2'}`}>
           <button
             onClick={() => setPointsSheetOpen(true)}
-            className={`sidebar-nav-item ${pointsSheetOpen ? 'active' : ''}`}
+            className={`sidebar-nav-item ${pointsSheetOpen ? 'active' : ''} ${sidebarPinned ? '' : 'sidebar-nav-item--rail'}`}
             title="Point System"
           >
-            <BookOpen className="w-5 h-5 shrink-0" />
-            <span className={`ml-3 text-sm font-medium whitespace-nowrap transition-opacity duration-150 ${sidebarPinned ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+            <BookOpen className="w-5 h-5 shrink-0 opacity-90" />
+            <span
+              className={`text-sm font-medium whitespace-nowrap transition-all duration-200 ${sidebarPinned ? 'opacity-100' : 'max-w-0 overflow-hidden opacity-0 group-hover:max-w-[min(14rem,70vw)] group-hover:opacity-100'}`}
+            >
               Point System
             </span>
           </button>
         </div>
 
         {/* Pin / collapse toggle */}
-        <button
-          onClick={() => setSidebarPinned((p) => !p)}
-          className="flex items-center pl-5 pr-3 h-10 border-t border-white/10 text-text-muted hover:text-text-secondary hover:bg-surface-1 transition-colors shrink-0"
-          title={sidebarPinned ? 'Collapse sidebar' : 'Pin sidebar open'}
-        >
-          <ChevronLeft className={`w-4 h-4 shrink-0 transition-transform duration-200 ${sidebarPinned ? '' : 'rotate-180'}`} />
-          <span className={`ml-3 text-xs whitespace-nowrap font-medium transition-opacity duration-150 ${sidebarPinned ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
-            Collapse
-          </span>
-        </button>
+        <div className={`border-t border-slate-200/60 pt-2 pb-3 shrink-0 bg-white/20 ${sidebarPinned ? 'px-2.5' : 'px-2'}`}>
+          <button
+            onClick={() => setSidebarPinned((p) => !p)}
+            className={`sidebar-nav-item h-10 rounded-lg border border-transparent text-text-muted hover:text-text-secondary hover:bg-surface-2/90 hover:border-slate-200/50 transition-colors w-full ${sidebarPinned ? '' : 'sidebar-nav-item--rail'}`}
+            title={sidebarPinned ? 'Collapse sidebar' : 'Expand sidebar'}
+          >
+            <span className="w-5 h-5 flex items-center justify-center shrink-0">
+              <ChevronLeft className={`w-4 h-4 transition-transform duration-200 ${sidebarPinned ? '' : 'rotate-180'}`} />
+            </span>
+            <span
+              className={`text-xs whitespace-nowrap font-medium transition-all duration-200 ${sidebarPinned ? 'opacity-100' : 'max-w-0 overflow-hidden opacity-0 group-hover:max-w-[min(14rem,70vw)] group-hover:opacity-100'}`}
+            >
+              {sidebarPinned ? 'Collapse' : 'Expand'}
+            </span>
+          </button>
+        </div>
       </aside>
 
       {/* ── Everything else shifts right of the sidebar ── */}
-      <div className={`flex flex-col min-h-screen transition-[margin] duration-200 ${sidebarPinned ? 'md:ml-56' : 'md:ml-14'}`}>
+      <div className={`flex flex-col min-h-screen transition-[margin] duration-200 mobile-app-shell ${sidebarPinned ? 'md:ml-64' : 'md:ml-16'}`}>
 
         {/* Header */}
-        <header className="sticky top-0 z-30 safe-area-top border-b border-white/20 bg-surface-0/80 backdrop-blur-xl">
+        <header className="sticky top-0 z-30 safe-area-top border-b border-white/20 bg-surface-0/80 backdrop-blur-xl mobile-app-header">
           <div className="max-w-5xl mx-auto px-4 sm:px-6">
             <div className="h-14 sm:h-16 flex items-center justify-between gap-2 sm:gap-3">
               {/* Logo — mobile only (desktop shows in sidebar) */}
@@ -540,8 +686,8 @@ export default function Home() {
                   <span className="text-sm font-bold text-accent-superjoin-orange truncate">Health OS</span>
                 </div>
               </div>
-              {/* Current section — centered on mobile (matches desktop sidebar context), left on md+ */}
-              <div className="flex-1 min-w-0 md:flex-none flex justify-center md:justify-start md:ml-0">
+              {/* Current section — desktop only (sidebar context); hidden on mobile where bottom nav + header are crowded */}
+              <div className="hidden md:flex flex-1 min-w-0 md:flex-none justify-center md:justify-start md:ml-0">
                 <span className="text-sm font-semibold text-text-primary truncate text-center md:text-left px-1">
                   {TABS.find((t) => t.id === activeTab)?.label}
                 </span>
@@ -565,6 +711,16 @@ export default function Home() {
                   aria-label="Open point system"
                 >
                   <BookOpen className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={handleManualRefresh}
+                  disabled={refreshingApp}
+                  className="md:hidden flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-surface-1 border border-white/10 text-text-muted hover:text-text-secondary disabled:opacity-70 text-xs transition-colors"
+                  title="Refresh app"
+                  aria-label="Refresh app"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${refreshingApp ? 'animate-spin' : ''}`} />
                 </button>
                 <NewEntryCTA profile={profile ?? null} onSuccess={() => { loadUser(); setEntryRefresh((r) => r + 1); }} />
                 <div className="flex items-center gap-1.5 pl-1 pr-2 py-1 rounded-full bg-surface-1 border border-white/10">
@@ -607,61 +763,65 @@ export default function Home() {
         </header>
 
         {/* Main content */}
-        <main className="flex-1 min-h-0 max-w-5xl mx-auto w-full px-4 sm:px-6 py-6 sm:py-10 pb-28 md:pb-10">
-          {activeTab === 'dashboard' && (
-            <DashboardTab
-              profile={profile!}
-              onRefresh={loadUser}
-              refreshTrigger={entryRefresh}
-              onOpenLeaderboard={() => {
-                const d = new Date();
-                const month = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-                setLeaderboardOpenContext({ month });
-                setActiveTab('leaderboard');
-              }}
-            />
-          )}
-          {activeTab === 'log' && (
-            <LogEntryTab
-              profile={profile!}
-              onSuccess={() => {
-                loadUser();
-                setEntryRefresh((r) => r + 1);
-              }}
-              refreshTrigger={entryRefresh}
-            />
-          )}
-          {activeTab === 'leaderboard' && (
-            <LeaderboardTab
-              key={leaderboardOpenContext ? `lb-${leaderboardOpenContext.month}` : 'lb'}
-              initialView={leaderboardOpenContext ? 'monthly' : undefined}
-              initialMonth={leaderboardOpenContext?.month}
-              profile={profile ?? undefined}
-            />
-          )}
-          {activeTab === 'settings' && (
-            <SettingsTab
-              profile={profile!}
-              onSuccess={loadUser}
-              section={settingsSection}
-              onSectionChange={setSettingsSection}
-            />
-          )}
+        <main className="flex-1 min-h-0 mobile-app-content">
+          <div className="mobile-app-content-inner">
+            <div className="flex-1 max-w-5xl mx-auto w-full px-4 sm:px-6 pt-2 pb-6 sm:pt-10 sm:pb-10 md:pb-10">
+              {activeTab === 'dashboard' && (
+                <DashboardTab
+                  profile={profile!}
+                  onRefresh={loadUser}
+                  refreshTrigger={entryRefresh}
+                  onOpenLeaderboard={() => {
+                    const d = new Date();
+                    const month = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                    setLeaderboardOpenContext({ month });
+                    setActiveTab('leaderboard');
+                  }}
+                />
+              )}
+              {activeTab === 'log' && (
+                <LogEntryTab
+                  profile={profile!}
+                  onSuccess={() => {
+                    loadUser();
+                    setEntryRefresh((r) => r + 1);
+                  }}
+                  refreshTrigger={entryRefresh}
+                />
+              )}
+              {activeTab === 'leaderboard' && (
+                <LeaderboardTab
+                  key={leaderboardOpenContext ? `lb-${leaderboardOpenContext.month}` : 'lb'}
+                  initialView={leaderboardOpenContext ? 'monthly' : undefined}
+                  initialMonth={leaderboardOpenContext?.month}
+                  profile={profile ?? undefined}
+                />
+              )}
+              {activeTab === 'settings' && (
+                <SettingsTab
+                  profile={profile!}
+                  onSuccess={loadUser}
+                  section={settingsSection}
+                  onSectionChange={setSettingsSection}
+                />
+              )}
+            </div>
+
+            <footer className="hidden md:block border-t border-white/10">
+              <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
+                <p className="text-sm text-text-secondary text-center max-w-2xl mx-auto leading-relaxed">
+                  Superjoin Health OS turns health into a shared mission. Every step, workout, and healthy habit counts toward your team&apos;s success — fair scoring, real results.
+                </p>
+                <p className="text-xs text-text-muted text-center mt-4">
+                  Powered by <span className="font-semibold text-accent-superjoin-orange">Superjoin</span>
+                </p>
+              </div>
+            </footer>
+          </div>
         </main>
 
         {/* Point system slide-over — all screen sizes */}
         <PointSystemSheet open={pointsSheetOpen} onClose={() => setPointsSheetOpen(false)} profile={profile ?? undefined} />
-
-        <footer className="border-t border-white/10">
-          <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
-            <p className="text-sm text-text-secondary text-center max-w-2xl mx-auto leading-relaxed">
-              Superjoin Health OS turns health into a shared mission. Every step, workout, and healthy habit counts toward your team&apos;s success — fair scoring, real results.
-            </p>
-            <p className="text-xs text-text-muted text-center mt-4">
-              Powered by <span className="font-semibold text-accent-superjoin-orange">Superjoin</span>
-            </p>
-          </div>
-        </footer>
       </div>
 
       {/* ── Mobile Bottom Navigation ── hidden on desktop */}

@@ -27,9 +27,7 @@ const FITNESS_GOAL_BADGES: Record<FitnessGoal, { label: string; color: string }>
   ),
 ) as Record<FitnessGoal, { label: string; color: string }>;
 
-// ── Blueprint Insights ─────────────────────────────────────────────────────────
-// Specific, actionable directives from Bryan Johnson's Blueprint protocol.
-// Rotates daily — not vague motivation.
+// ── Blueprint Insights (desktop/tablet only in UI — see Section 6) ─────────────
 const BLUEPRINT_INSIGHTS = [
   {
     category: 'Sleep',
@@ -201,8 +199,6 @@ function CircleRing({
     </svg>
   );
 }
-
-// ── Insight badge colors ───────────────────────────────────────────────────────
 
 const INSIGHT_BADGE: Record<InsightColor, string> = {
   blue: 'bg-accent-blue/10 text-accent-blue',
@@ -446,7 +442,6 @@ export function DashboardTab({
   const hasWeeklyGoals =
     !!(profile.goal_workout_days_week || profile.goal_workout_mins_week);
 
-  // Blueprint insight of the day
   const insight = BLUEPRINT_INSIGHTS[getDayOfYear(new Date()) % BLUEPRINT_INSIGHTS.length];
 
   // ── Handlers ─────────────────────────────────────────────────────────────────
@@ -463,14 +458,14 @@ export function DashboardTab({
     return (
       <div className="space-y-5 animate-pulse">
         <div className="space-y-3">
-          <div className="h-10 w-56 rounded-lg bg-surface-2" />
-          <div className="h-36 sm:h-32 w-full max-w-2xl rounded-2xl bg-surface-2" />
+          <div className="hidden md:block h-10 w-56 rounded-lg bg-surface-2" />
+          <div className="h-11 md:h-32 w-full max-w-2xl rounded-xl md:rounded-2xl bg-surface-2" />
         </div>
         <div className="h-72 rounded-2xl bg-surface-2" />
         <div className="h-36 rounded-2xl bg-surface-2" />
         <div className="h-40 rounded-2xl bg-surface-2" />
         <div className="h-20 rounded-2xl bg-surface-2" />
-        <div className="h-32 rounded-2xl bg-surface-2" />
+        <div className="hidden md:block h-32 rounded-2xl bg-surface-2" />
       </div>
     );
   }
@@ -479,25 +474,67 @@ export function DashboardTab({
     <>
       <div className="space-y-5 animate-fade-up">
 
-        {/* ── Section 1: Greeting ──────────────────────────────────────────────── */}
-        <div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <h2 className="text-2xl font-bold text-text-primary">
-              {greeting}, {firstName}
-            </h2>
-            {profile.fitness_goal && (
-              <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-full ${FITNESS_GOAL_BADGES[profile.fitness_goal]?.color ?? 'bg-gray-100 text-gray-600 border border-gray-200'}`}>
-                {FITNESS_GOAL_BADGES[profile.fitness_goal]?.label}
-              </span>
-            )}
+        {/* ── Greeting + month league (one block so mobile layout doesn’t inherit stray gaps) ── */}
+        <div className="space-y-3 md:space-y-4">
+          {/* Greeting — desktop only (no “Good morning/evening” on mobile) */}
+          <div className="hidden md:block">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="text-2xl font-bold text-text-primary">
+                {greeting}, {firstName}
+              </h2>
+            </div>
           </div>
 
-          <div className="mt-4 relative overflow-hidden rounded-2xl border-2 border-accent-superjoin-orange/35 bg-surface-1 shadow-lg shadow-accent-superjoin-orange/15 w-full min-w-0">
+          {/* Month league: mobile = slim inline strip; desktop = hero card ───────── */}
+          <div>
+          {/* Mobile: slim strip — same gradient title as desktop hero + meta · rank · CTA */}
+          <div className="md:hidden relative overflow-hidden rounded-xl border border-accent-superjoin-orange/30 bg-surface-1 shadow-md shadow-accent-superjoin-orange/10 px-3 py-2.5">
+            <div
+              className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_120%_80%_at_100%_-20%,rgba(249,115,22,0.2),transparent_55%),radial-gradient(ellipse_80%_50%_at_0%_100%,rgba(251,191,36,0.07),transparent_50%)]"
+              aria-hidden
+            />
+            <div className="relative flex items-center gap-2 min-w-0">
+              <div className="min-w-0 flex-1">
+                <p className="text-[13px] font-black leading-tight tracking-tight truncate">
+                  <span className="bg-gradient-to-r from-accent-superjoin-orange via-amber-500 to-amber-600 bg-clip-text text-transparent">
+                    {monthNameLong}
+                  </span>
+                  <span className="text-text-primary"> league</span>
+                  <span className="font-semibold text-text-muted"> · </span>
+                  <span className="font-bold tabular-nums text-accent-superjoin-orange">
+                    {dayOfMonth}/{daysInMonth}
+                  </span>
+                  <span className="font-normal text-text-muted"> · </span>
+                  <span className="font-semibold text-text-primary">{daysRemainingInMonth}d left</span>
+                </p>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                {monthRank != null ? (
+                  <span className="text-sm font-black tabular-nums text-accent-superjoin-orange">#{monthRank}</span>
+                ) : (
+                  <span className="text-xs font-semibold text-text-muted">—</span>
+                )}
+                {onOpenLeaderboard && (
+                  <button
+                    type="button"
+                    onClick={onOpenLeaderboard}
+                    className="inline-flex items-center gap-0.5 rounded-md border border-white/15 bg-surface-0/40 px-2 py-1 text-[10px] font-medium text-text-muted transition hover:border-accent-superjoin-orange/30 hover:bg-accent-superjoin-orange/10 hover:text-accent-superjoin-orange active:scale-[0.98]"
+                  >
+                    League
+                    <ArrowRight className="h-2.5 w-2.5 shrink-0" aria-hidden />
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Desktop: existing hero card */}
+          <div className="hidden md:block relative overflow-hidden rounded-2xl border-2 border-accent-superjoin-orange/35 bg-surface-1 shadow-lg shadow-accent-superjoin-orange/15 w-full min-w-0">
             <div
               className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_120%_80%_at_100%_-20%,rgba(249,115,22,0.22),transparent_55%),radial-gradient(ellipse_80%_50%_at_0%_100%,rgba(251,191,36,0.08),transparent_50%)]"
               aria-hidden
             />
-            <div className="relative flex flex-col gap-4 p-4 sm:p-5 sm:flex-row sm:items-center sm:justify-between sm:gap-6 min-w-0">
+            <div className="relative flex flex-row items-center justify-between gap-6 p-5 min-w-0">
               <div className="flex gap-3 min-w-0 flex-1">
                 <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-accent-superjoin-orange/20 border border-accent-superjoin-orange/35 shadow-inner">
                   <Trophy className="h-6 w-6 text-accent-superjoin-orange" aria-hidden />
@@ -506,57 +543,72 @@ export function DashboardTab({
                   <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-accent-superjoin-orange/90">
                     This month&apos;s league
                   </p>
-                  <h3 className="text-2xl sm:text-3xl font-black tracking-tight leading-none">
+                  <h3 className="text-2xl xl:text-3xl font-black tracking-tight leading-none">
                     <span className="bg-gradient-to-r from-accent-superjoin-orange via-amber-500 to-amber-600 bg-clip-text text-transparent">
                       {monthNameLong}
                     </span>
                     <span className="text-text-primary"> league</span>
                   </h3>
-                  <div className="flex flex-wrap sm:flex-nowrap items-center gap-x-2 gap-y-1 text-sm">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
                     <span className="font-bold tabular-nums text-accent-superjoin-orange shrink-0">
                       Day {dayOfMonth}/{daysInMonth}
                     </span>
                     <span className="text-text-muted/70 shrink-0">·</span>
-                    <span className="font-semibold text-text-primary sm:whitespace-nowrap">
+                    <span className="font-semibold text-text-primary whitespace-nowrap">
                       {daysRemainingInMonth} {daysRemainingInMonth === 1 ? 'day' : 'days'} left
                     </span>
                   </div>
-                  <p className="text-xs text-text-muted sm:whitespace-nowrap">{todayLabel}</p>
+                  <p className="text-xs text-text-muted whitespace-nowrap">{todayLabel}</p>
                 </div>
               </div>
 
-              <div className="flex flex-col gap-4 w-full min-w-0 items-stretch sm:w-auto sm:shrink-0 sm:items-end sm:min-w-[9.5rem] sm:text-right border-t border-white/10 pt-3 sm:border-t-0 sm:pt-0">
-                <div className="flex items-baseline gap-2 sm:flex-col sm:items-end sm:gap-0.5">
+              <div className="flex flex-col gap-4 items-end shrink-0 min-w-[9.5rem] text-right">
+                <div className="flex flex-col items-end leading-none">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted">Your rank</span>
                   {monthRank != null ? (
-                    <span className="text-3xl sm:text-4xl font-black tabular-nums leading-none text-accent-superjoin-orange drop-shadow-sm">
+                    <span className="mt-0.5 text-3xl lg:text-4xl font-black tabular-nums leading-none text-accent-superjoin-orange drop-shadow-sm">
                       #{monthRank}
                     </span>
                   ) : (
-                    <span className="text-lg font-bold text-text-muted">—</span>
+                    <span className="mt-0.5 text-lg font-bold text-text-muted">—</span>
                   )}
                 </div>
                 {onOpenLeaderboard && (
                   <button
                     type="button"
                     onClick={onOpenLeaderboard}
-                    className="inline-flex w-full sm:w-auto items-center justify-center gap-1.5 rounded-xl bg-accent-superjoin-orange px-3.5 py-2 text-sm font-bold text-white shadow-md shadow-accent-superjoin-orange/25 transition hover:brightness-110 active:scale-[0.98]"
+                    className="inline-flex items-center justify-center gap-1 rounded-lg border border-white/15 bg-surface-0/30 px-2.5 py-1.5 text-xs font-medium text-text-muted transition hover:border-accent-superjoin-orange/30 hover:bg-accent-superjoin-orange/10 hover:text-accent-superjoin-orange active:scale-[0.98]"
                   >
                     Leaderboard
-                    <ArrowRight className="h-4 w-4 shrink-0" aria-hidden />
+                    <ArrowRight className="h-3.5 w-3.5 shrink-0" aria-hidden />
                   </button>
                 )}
               </div>
             </div>
           </div>
+          </div>
         </div>
 
         {/* ── Section 2: Daily Completion Ring ─────────────────────────────────── */}
         <div className="glass-card p-6">
-          <div className="flex items-center justify-between mb-5">
-            <h3 className="font-semibold text-text-primary">Today&apos;s Goals</h3>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between mb-5">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+                <h3 className="font-semibold text-text-primary">Today&apos;s Goals</h3>
+                <span className="md:hidden text-sm font-medium text-text-secondary">{firstName}</span>
+                {profile.fitness_goal && (
+                  <span
+                    className={`text-xs font-semibold px-2.5 py-0.5 rounded-full ${
+                      FITNESS_GOAL_BADGES[profile.fitness_goal]?.color ?? 'bg-gray-100 text-gray-600 border border-gray-200'
+                    }`}
+                  >
+                    {FITNESS_GOAL_BADGES[profile.fitness_goal]?.label}
+                  </span>
+                )}
+              </div>
+            </div>
             {allGoalsMet && (
-              <span className="flex items-center gap-1.5 text-xs font-semibold text-accent-green bg-accent-green/10 px-2.5 py-1 rounded-full">
+              <span className="flex shrink-0 items-center gap-1.5 self-start text-xs font-semibold text-accent-green bg-accent-green/10 px-2.5 py-1 rounded-full">
                 <CheckCircle2 className="w-3.5 h-3.5" />
                 All goals hit!
               </span>
@@ -881,35 +933,37 @@ export function DashboardTab({
           </div>
         </div>
 
-        {/* ── Rank Trajectory (monthly league) ─────────────────────────────────── */}
+        {/* ── Rank Trajectory (monthly league) — desktop/tablet only; saves mobile scroll ── */}
         {monthRank != null && (
-          <div className="glass-card p-5">
-            <h3 className="font-semibold text-text-primary flex items-center gap-2 mb-3">
-              <TrendingUp className="w-4 h-4 text-accent-superjoin-orange" />
-              Rank Trajectory
-            </h3>
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-xl bg-accent-superjoin-orange/10 border border-accent-superjoin-orange/20 flex items-center justify-center shrink-0">
-                <span className="text-lg font-bold text-accent-superjoin-orange">#{monthRank}</span>
-              </div>
-              <div className="flex-1 min-w-0">
-                {monthRank === 1 ? (
-                  <p className="text-sm font-medium text-text-primary">You&apos;re at the top!</p>
-                ) : (
-                  <p className="text-sm text-text-secondary">
-                    <span className="font-semibold text-text-primary">Rank #{monthRank}</span> this month
+          <div className="hidden md:block">
+            <div className="glass-card p-5">
+              <h3 className="font-semibold text-text-primary flex items-center gap-2 mb-3">
+                <TrendingUp className="w-4 h-4 text-accent-superjoin-orange" />
+                Rank Trajectory
+              </h3>
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-xl bg-accent-superjoin-orange/10 border border-accent-superjoin-orange/20 flex items-center justify-center shrink-0">
+                  <span className="text-lg font-bold text-accent-superjoin-orange">#{monthRank}</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  {monthRank === 1 ? (
+                    <p className="text-sm font-medium text-text-primary">You&apos;re at the top!</p>
+                  ) : (
+                    <p className="text-sm text-text-secondary">
+                      <span className="font-semibold text-text-primary">Rank #{monthRank}</span> this month
+                    </p>
+                  )}
+                  <p className="text-xs text-text-muted mt-0.5">
+                    {monthlyPoints} pts · {profile.fitness_goal ? FITNESS_GOAL_BADGES[profile.fitness_goal]?.label : 'No goal set'}
                   </p>
-                )}
-                <p className="text-xs text-text-muted mt-0.5">
-                  {monthlyPoints} pts · {profile.fitness_goal ? FITNESS_GOAL_BADGES[profile.fitness_goal]?.label : 'No goal set'}
-                </p>
+                </div>
               </div>
+              {!hasGoals && (
+                <p className="mt-3 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                  Set daily goals in Profile &amp; Goals to get personalized rank-up guidance.
+                </p>
+              )}
             </div>
-            {!hasGoals && (
-              <p className="mt-3 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                Set daily goals in Profile &amp; Goals to get personalized rank-up guidance.
-              </p>
-            )}
           </div>
         )}
 
@@ -966,20 +1020,22 @@ export function DashboardTab({
           </div>
         </div>
 
-        {/* ── Section 6: Blueprint Insight of the Day ──────────────────────────── */}
-        <div className="glass-card p-5">
-          <div className="flex items-center gap-2 mb-3">
-            <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-full ${INSIGHT_BADGE[insight.categoryColor]}`}>
-              {insight.category}
-            </span>
-            <span className="text-xs text-text-muted">Blueprint · Bryan Johnson</span>
-          </div>
-          <p className="text-sm text-text-primary font-medium leading-relaxed">
-            &ldquo;{insight.text}&rdquo;
-          </p>
-          <div className="flex items-start gap-2 mt-4 pt-3 border-t border-surface-3">
-            <ArrowRight className="w-3.5 h-3.5 text-accent-superjoin-orange mt-0.5 flex-shrink-0" />
-            <p className="text-xs text-text-secondary">{insight.action}</p>
+        {/* ── Section 6: Blueprint insight — md+ only (hidden on mobile) ───────── */}
+        <div className="hidden md:block">
+          <div className="glass-card p-5">
+            <div className="flex items-center gap-2 mb-3">
+              <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-full ${INSIGHT_BADGE[insight.categoryColor]}`}>
+                {insight.category}
+              </span>
+              <span className="text-xs text-text-muted">Blueprint · Bryan Johnson</span>
+            </div>
+            <p className="text-sm text-text-primary font-medium leading-relaxed">
+              &ldquo;{insight.text}&rdquo;
+            </p>
+            <div className="flex items-start gap-2 mt-4 pt-3 border-t border-surface-3">
+              <ArrowRight className="w-3.5 h-3.5 text-accent-superjoin-orange mt-0.5 flex-shrink-0" />
+              <p className="text-xs text-text-secondary">{insight.action}</p>
+            </div>
           </div>
         </div>
 

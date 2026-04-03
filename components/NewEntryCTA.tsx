@@ -78,7 +78,7 @@ export function NewEntryCTA({ profile, onSuccess }: NewEntryCTAProps) {
   if (isMobile && mounted) {
     const fab = (
       <>
-        <div className="fixed bottom-[5.5rem] right-5 z-50" ref={dropdownRef}>
+        <div className="fixed right-5 z-50 mobile-fab-offset" ref={dropdownRef}>
           {dropdownOpen && (
             <div className="absolute bottom-full right-0 mb-3 min-w-[200px] rounded-xl border border-white/10 bg-white shadow-xl py-1 z-50 animate-fade-up">
               {ENTRY_OPTIONS.map(({ type, label, icon: Icon }) => (

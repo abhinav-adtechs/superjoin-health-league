@@ -749,7 +749,7 @@ export function LeaderboardTab({
                                 {r.user.display_name}
                               </span>
                               {isMe && (
-                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-primary-orange text-white leading-none flex-shrink-0">
+                                <span className="hidden sm:inline-flex text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-primary-orange text-white leading-none flex-shrink-0">
                                   YOU
                                 </span>
                               )}

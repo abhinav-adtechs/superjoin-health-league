@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { apiUrl, getApiFetchOptions } from '@/lib/api';
@@ -103,7 +103,8 @@ export function LogEntryModal({ entryType, profile, onClose, onSuccess }: LogEnt
   const [protein_qty, setProteinQty] = useState(0);
   const [calories_kcal, setCaloriesKcal] = useState(0);
   const [sleep_hours, setSleepHours] = useState(7);
-  const [sleepTouched, setSleepTouched] = useState(false);
+  /** False until slider moves or sleep step is shown; sleep-only modal starts true so default 7h still saves. */
+  const [sleepCommitted, setSleepCommitted] = useState(() => entryType === 'sleep');
 
   const [weight_kg, setWeightKg] = useState<number | null>(null);
 
@@ -122,6 +123,10 @@ export function LogEntryModal({ entryType, profile, onClose, onSuccess }: LogEnt
 
   const isWizard = entryType === 'full';
   const currentStep = WIZARD_STEPS[wizardStep];
+
+  useEffect(() => {
+    if (isWizard && currentStep === 'sleep') setSleepCommitted(true);
+  }, [isWizard, currentStep]);
 
   const buildPayload = (): Record<string, unknown> => {
     const payload: Record<string, unknown> = { date };
@@ -152,8 +157,8 @@ export function LogEntryModal({ entryType, profile, onClose, onSuccess }: LogEnt
         payload.calories_kcal = Math.round(calories_kcal);
       }
     }
-    if (includeSleep) {
-      if (sleepTouched && sleep_hours > 0) payload.sleep_hours = sleep_hours;
+    if (includeSleep && sleepCommitted && sleep_hours > 0) {
+      payload.sleep_hours = sleep_hours;
     }
     if (includeWeight && weight_kg != null && weight_kg > 0) {
       payload.weight_kg = weight_kg;
@@ -262,7 +267,18 @@ export function LogEntryModal({ entryType, profile, onClose, onSuccess }: LogEnt
     if ((isWizard && currentStep === 'sleep') || entryType === 'sleep') {
       return (
         <div className="py-2">
-          <SliderField label="Sleep hours" value={sleep_hours} min={4} max={12} step={0.5} onChange={(v) => { setSleepHours(v); setSleepTouched(true); }} unit=" h" />
+          <SliderField
+            label="Sleep hours"
+            value={sleep_hours}
+            min={4}
+            max={12}
+            step={0.5}
+            onChange={(v) => {
+              setSleepHours(v);
+              setSleepCommitted(true);
+            }}
+            unit=" h"
+          />
         </div>
       );
     }
@@ -310,7 +326,7 @@ export function LogEntryModal({ entryType, profile, onClose, onSuccess }: LogEnt
   };
 
   const renderQuickLog = () => (
-    <form onSubmit={handleSubmit} className="p-4 sm:px-5 pb-6 space-y-5 overflow-y-auto flex-1">
+    <form onSubmit={handleSubmit} className="p-4 sm:px-5 pb-6 edge-safe-bottom space-y-5 overflow-y-auto flex-1">
       <p className="text-xs text-text-muted">Only fill what you did — everything else stays blank.</p>
       <DateCarousel value={date} onChange={setDate} />
       {renderStepContent()}
@@ -362,7 +378,7 @@ export function LogEntryModal({ entryType, profile, onClose, onSuccess }: LogEnt
         {renderStepContent()}
       </div>
 
-      <div className="px-4 sm:px-5 pb-5 pt-3 space-y-3 shrink-0 border-t border-black/5">
+      <div className="px-4 sm:px-5 pb-5 pt-3 edge-safe-bottom space-y-3 shrink-0 border-t border-black/5">
         {renderSuccessMessage()}
         <div className="flex gap-2">
           <button
@@ -398,7 +414,7 @@ export function LogEntryModal({ entryType, profile, onClose, onSuccess }: LogEnt
   const modal = (
     <div className="modal-overlay entry-modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal-content entry-modal-content flex flex-col" onClick={(e) => e.stopPropagation()}>
-        <div className="sticky top-0 z-10 bg-white border-b border-black/5 rounded-t-2xl px-4 sm:px-5 py-4 flex items-center justify-between shrink-0">
+        <div className="sticky top-0 z-10 bg-white border-b border-black/5 rounded-t-2xl px-4 sm:px-5 py-4 edge-safe-top flex items-center justify-between shrink-0">
           <h2 className="text-lg font-bold text-text-primary">{ENTRY_TITLES[entryType]}</h2>
           <button
             type="button"

@@ -162,7 +162,7 @@ export function LeaderboardTopLadder({
           return (
             <div
               key={slot.r.user.id}
-              className={`flex flex-1 flex-col items-center justify-end rounded-2xl border border-white/10 bg-gradient-to-b from-white/[0.07] to-transparent px-2 pt-4 pb-3 sm:px-3 ${tier.h} ${
+              className={`flex flex-1 flex-col items-center justify-end rounded-2xl border border-white/10 bg-gradient-to-b from-white/[0.07] to-transparent px-1.5 pt-4 pb-3 sm:px-3 ${tier.h} ${
                 podiumSlots.length === 2 && slot.rank === 1 ? 'sm:flex-[1.15]' : ''
               }`}
             >
@@ -181,12 +181,12 @@ export function LeaderboardTopLadder({
                 </div>
               </div>
               <div className="w-full min-w-0 flex flex-col items-center gap-0.5">
-                <div className="flex flex-wrap items-center justify-center gap-1">
-                  <p className="text-xs sm:text-sm font-bold text-text-primary text-center truncate max-w-full">
+                <div className="flex flex-col items-center justify-center gap-1 sm:flex-row sm:flex-wrap">
+                  <p className="max-w-full text-center text-xs font-bold text-text-primary truncate sm:text-sm">
                     {slot.r.user.display_name}
                   </p>
                   {isMe && (
-                    <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-primary-orange text-white shrink-0">
+                    <span className="hidden sm:inline-flex text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-primary-orange text-white shrink-0">
                       YOU
                     </span>
                   )}
@@ -206,8 +206,8 @@ export function LeaderboardTopLadder({
                 <div className="flex justify-center min-h-[14px]">
                   <RankChange change={slot.r.rank_change} />
                 </div>
-                <div className="w-full mt-1 text-[10px] sm:text-[11px] leading-snug">
-                  <LeaderboardRowStats r={slot.r} isMe={isMe} className="justify-center mt-0" />
+                <div className="w-full mt-1 text-[10px] sm:text-[11px] leading-tight">
+                  <LeaderboardRowStats r={slot.r} isMe={isMe} compactOnMobile className="justify-center mt-0" />
                 </div>
                 <div className="w-full mt-2 h-1.5 rounded-full bg-white/10 overflow-hidden">
                   <div
@@ -216,7 +216,7 @@ export function LeaderboardTopLadder({
                   />
                 </div>
                 {slot.rank > 1 && (
-                  <p className="text-[10px] text-text-muted mt-1 tabular-nums text-center">
+                  <p className="mt-1 hidden text-[10px] text-center tabular-nums text-text-muted sm:block">
                     {formatScore(leaderRaw - s, view)} behind #1
                   </p>
                 )}
@@ -251,7 +251,7 @@ export function LeaderboardTopLadder({
                               {r.user.display_name}
                             </span>
                             {isMe && (
-                              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-primary-orange text-white leading-none shrink-0">
+                              <span className="hidden sm:inline-flex text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-primary-orange text-white leading-none shrink-0">
                                 YOU
                               </span>
                             )}
@@ -283,7 +283,7 @@ export function LeaderboardTopLadder({
                           style={{ width: `${pct}%` }}
                         />
                       </div>
-                      <p className="text-[10px] text-text-muted mt-1 tabular-nums">{formatScore(behind, view)} behind #1</p>
+                      <p className="mt-1 hidden text-[10px] tabular-nums text-text-muted sm:block">{formatScore(behind, view)} behind #1</p>
                     </div>
                   </div>
                 </li>

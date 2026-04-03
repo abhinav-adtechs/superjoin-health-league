@@ -617,8 +617,8 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
         <CalendarHistogram refreshTrigger={refreshTrigger} goals={profile} />
       </div>
 
-      {/* Rank Trajectory */}
-      <div className="glass-card p-5">
+      {/* Rank trajectory — desktop/tablet only; saves mobile scroll */}
+      <div className="hidden md:block glass-card p-5">
         <h3 className="font-medium text-text-primary flex items-center gap-2 mb-4">
           <TrendingUp className="w-4 h-4 text-accent-blue" />
           Rank trajectory

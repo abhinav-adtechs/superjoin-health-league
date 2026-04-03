@@ -86,36 +86,40 @@ export function LeaderboardRowStats({
   r,
   isMe,
   className,
+  compactOnMobile = false,
 }: {
   r: LeaderboardRanking;
   isMe: boolean;
   className?: string;
+  compactOnMobile?: boolean;
 }) {
   const bd = r.score.breakdown;
+  const mobileOptionalClass = compactOnMobile ? 'hidden sm:inline-flex' : 'inline-flex';
+  const mobileOptionalTextClass = compactOnMobile ? 'hidden sm:inline' : 'inline';
 
   return (
     <div className={`flex items-center gap-2 flex-wrap ${className ?? ''}`}>
       {bd && (
         <>
-          <span className="inline-flex items-center gap-0.5 text-xs">
+          <span className={`${mobileOptionalClass} items-center gap-0.5 text-xs`}>
             <Dumbbell className="w-3 h-3 text-blue-400" />
             <span className="text-text-secondary">{bd.workout}</span>
           </span>
-          <span className="inline-flex items-center gap-0.5 text-xs">
+          <span className={`${mobileOptionalClass} items-center gap-0.5 text-xs`}>
             <Utensils className="w-3 h-3 text-emerald-400" />
             <span className="text-text-secondary">{bd.nutrition}</span>
           </span>
-          <span className="inline-flex items-center gap-0.5 text-xs">
+          <span className={`${mobileOptionalClass} items-center gap-0.5 text-xs`}>
             <Moon className="w-3 h-3 text-indigo-400" />
             <span className="text-text-secondary">{bd.sleep}</span>
           </span>
-          <span className="inline-flex items-center gap-0.5 text-xs">
+          <span className={`${mobileOptionalClass} items-center gap-0.5 text-xs`}>
             <Activity className="w-3 h-3 text-amber-400" />
             <span className="text-text-secondary">
               {(bd as Record<string, number>).movement ?? (bd as Record<string, number>).steps ?? 0}
             </span>
           </span>
-          <span className="text-text-muted/40 text-xs">·</span>
+          <span className={`${mobileOptionalTextClass} text-text-muted/40 text-xs`}>·</span>
         </>
       )}
       <span className="text-xs text-text-muted">{r.user.days_active}d active</span>
@@ -141,12 +145,16 @@ export function LeaderboardRowStats({
         </span>
       )}
       {isMe && r.insights?.pts_to_next_rank != null && r.insights.pts_to_next_rank > 0 && (
-        <span className="text-[10px] text-accent-superjoin-orange font-medium bg-accent-superjoin-orange/10 px-1.5 py-0.5 rounded-full">
+        <span
+          className={`${compactOnMobile ? 'hidden sm:inline-flex' : 'inline-flex'} text-[10px] text-accent-superjoin-orange font-medium bg-accent-superjoin-orange/10 px-1.5 py-0.5 rounded-full`}
+        >
           {r.insights.pts_to_next_rank} pts to rank up
         </span>
       )}
       {isMe && r.insights?.pts_to_next_rank === null && (
-        <span className="text-[10px] text-accent-gold font-medium bg-accent-gold/10 px-1.5 py-0.5 rounded-full">
+        <span
+          className={`${compactOnMobile ? 'hidden sm:inline-flex' : 'inline-flex'} text-[10px] text-accent-gold font-medium bg-accent-gold/10 px-1.5 py-0.5 rounded-full`}
+        >
           👑 Top rank
         </span>
       )}
