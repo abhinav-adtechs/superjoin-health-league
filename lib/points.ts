@@ -1,10 +1,10 @@
 /**
- * Points engine – Goal-centric scoring.
- * - Workout (max 20): workout duration tiers
- * - Movement (max 25): cardio + steps merged
- * - Sleep (max 10): duration only, quality removed
- * - Nutrition (max 26): water + goal-aware protein/calorie
- * Daily cap: 85 pts (streak bonuses stack on top)
+ * Points engine v2 – Goal-centric scoring.
+ * - Workout (max 20): workout duration tiers, age-adjusted for 35+
+ * - Movement (max 20): cardio + steps (highest tier only)
+ * - Sleep (max 16): 3 tiers including 5-6h partial
+ * - Nutrition (max 24): water-dominant; protein/calorie optional (+5-10%)
+ * Daily cap: 80 pts (streak bonuses stack on top)
  */
 
 import type { AgeBracket, FitnessGoal, FoodTrackingMode } from './types';
@@ -62,21 +62,19 @@ function caloriePoints(
   const goal = fitnessGoal ?? 'stay_active';
 
   if (goal === 'lose_weight') {
-    if (cal <= target) return 8;
-    if (cal <= target * 1.10) return 4;
+    if (cal <= target) return 4;
+    if (cal <= target * 1.125) return 2;
     return 0;
   }
-  if (goal === 'gain_weight') {
-    if (cal >= target) return 8;
-    if (cal >= target * 0.85) return 4;
+  if (goal === 'gain_weight' || goal === 'gain_muscle') {
+    if (cal >= target) return 4;
+    if (cal >= target * 0.875) return 2;
     return 0;
   }
-  if (goal === 'gain_muscle') {
-    if (cal >= target * 0.90) return 8;
-    return 0;
-  }
-  // stay_active / general_wellness: any log earns points
-  return 5;
+  // stay_active / general_wellness — symmetric maintenance window
+  if (cal >= target * 0.95 && cal <= target * 1.05) return 4;
+  if (cal >= target * 0.875 && cal <= target * 1.125) return 2;
+  return 0;
 }
 
 // ── Main scoring function ─────────────────────────────────────────────────────
@@ -92,37 +90,38 @@ export function calculateDailyPoints(
   // ── Workout (max 20) ──
   if (entry.workout_done) {
     points += 10;
-    if (entry.workout_duration != null && entry.workout_duration >= 45) points += 5;
-    if (entry.workout_duration != null && entry.workout_duration >= 60) points += 5;
+    if (entry.workout_duration != null && entry.workout_duration >= Math.round(45 * adj)) points += 5;
+    if (entry.workout_duration != null && entry.workout_duration >= Math.round(60 * adj)) points += 5;
   }
   points = Math.min(points, 20);
 
-  // ── Movement: cardio + steps merged (max 25) ──
+  // ── Movement: cardio + steps (highest tier only) (max 20) ──
   let movementPts = 0;
   if (entry.cardio_done) {
-    movementPts += 10;
+    movementPts += 8;
     const cardioThreshold = 30 * adj;
-    if (entry.cardio_duration != null && entry.cardio_duration >= cardioThreshold) movementPts += 5;
+    if (entry.cardio_duration != null && entry.cardio_duration >= cardioThreshold) movementPts += 4;
   }
   if (entry.steps != null) {
-    if (entry.steps >= Math.round(10000 * adj)) movementPts += 10;
-    else if (entry.steps >= Math.round(7500 * adj)) movementPts += 7;
-    else if (entry.steps >= Math.round(5000 * adj)) movementPts += 5;
+    if (entry.steps >= Math.round(10000 * adj)) movementPts += 8;
+    else if (entry.steps >= Math.round(7500 * adj)) movementPts += 6;
+    else if (entry.steps >= Math.round(5000 * adj)) movementPts += 4;
   }
-  points += Math.min(movementPts, 25);
+  points += Math.min(movementPts, 20);
 
-  // ── Sleep (max 10) — quality removed ──
+  // ── Sleep (max 16) ──
   if (entry.sleep_hours != null) {
-    if (entry.sleep_hours >= 7 && entry.sleep_hours <= 9) points += 10;
-    else if (entry.sleep_hours >= 6 && entry.sleep_hours < 7) points += 5;
+    if (entry.sleep_hours >= 7 && entry.sleep_hours <= 9) points += 16;
+    else if (entry.sleep_hours >= 6 && entry.sleep_hours < 7) points += 8;
+    else if (entry.sleep_hours >= 5 && entry.sleep_hours < 6) points += 3;
   }
 
-  // ── Nutrition (max 26) ──
+  // ── Nutrition (max 24) — water-dominant; food tracking adds 5-10% ──
   let nutritionPts = 0;
-  // Water (universal)
+  // Water (universal — no goal required)
   if (entry.water_liters != null) {
-    if (entry.water_liters >= 3) nutritionPts += 10;
-    else if (entry.water_liters >= 2) nutritionPts += 5;
+    if (entry.water_liters >= 3) nutritionPts += 16;
+    else if (entry.water_liters >= 2) nutritionPts += 8;
   }
 
   const mode = profile?.food_tracking_mode ?? null;
@@ -131,27 +130,20 @@ export function calculateDailyPoints(
   const calGoal = profile?.goal_calories_day ?? null;
 
   const trackProtein = !mode || mode === 'protein_only' || mode === 'both';
-  const trackCalories = mode === 'calories_only' || mode === 'both';
+  const trackCalories = !mode || mode === 'calories_only' || mode === 'both';
 
   if (trackProtein && proteinGoal) {
-    // Goal-based protein scoring
-    if (entry.protein_qty != null && entry.protein_qty >= proteinGoal) nutritionPts += 8;
-    else if (entry.protein_qty != null && entry.protein_qty > 0) nutritionPts += 4;
-  } else if (!trackCalories) {
-    // Legacy fallback when no goals set
-    if (entry.protein_meal) {
-      nutritionPts += 5;
-      if (entry.protein_qty != null && entry.protein_qty >= 100) nutritionPts += 3;
-    }
+    if (entry.protein_qty != null && entry.protein_qty >= proteinGoal) nutritionPts += 4;
+    else if (entry.protein_qty != null && entry.protein_qty > 0) nutritionPts += 2;
   }
 
   if (trackCalories && calGoal) {
     nutritionPts += caloriePoints(entry.calories_kcal, calGoal, fitnessGoal);
   }
 
-  points += Math.min(nutritionPts, 26);
+  points += Math.min(nutritionPts, 24);
 
-  return Math.min(points, 85);
+  return Math.min(points, 80);
 }
 
 export function getAgeBracket(age: number): AgeBracket {
@@ -177,9 +169,9 @@ export const GOAL_CRUSH_STREAK_BONUSES: Record<number, number> = {
   3: 15,
   7: 50,
   14: 100,
-  30: 200,
+  30: 150,
 };
-export const GOAL_CRUSH_BONUS_AFTER_30 = 200;
+export const GOAL_CRUSH_BONUS_AFTER_30 = 100;
 
 // ── Streak bonus helpers ──────────────────────────────────────────────────────
 
@@ -202,67 +194,29 @@ export function getGoalCrushStreakBonus(days: number): number {
 // ── Goal evaluation ───────────────────────────────────────────────────────────
 
 /**
- * Returns true if the entry meets all set daily profile goals.
- * Falls back to dailyPoints >= 60 if no daily goals configured.
+ * Returns true if the day qualifies as a "goal crush" day under v2 rules:
+ *   - daily score >= 56 pts (70% of 80-pt cap)
+ *   - at least 3 of the 4 categories contributed points
+ * The profile parameter is retained for API compatibility but is no longer used.
  */
 export function isGoalCrushDay(
   entry: EntryForPoints,
-  profile: ProfileDailyGoals,
+  _profile: ProfileDailyGoals,
   dailyPoints: number,
 ): boolean {
-  const {
-    goal_water_liters,
-    goal_sleep_hours,
-    goal_sleep_hours_min,
-    goal_sleep_hours_max,
-    goal_protein_g_day,
-    goal_calories_day,
-    food_tracking_mode,
-    fitness_goal,
-  } = profile;
+  if (dailyPoints < 56) return false;
 
-  const hasSleepGoal = goal_sleep_hours != null || (goal_sleep_hours_min != null && goal_sleep_hours_max != null);
-  const mode = food_tracking_mode ?? null;
-  const trackProtein = !mode || mode === 'protein_only' || mode === 'both';
-  const trackCalories = mode === 'calories_only' || mode === 'both';
+  let categoriesWithPoints = 0;
+  if (entry.workout_done) categoriesWithPoints++;
+  if (entry.cardio_done || (entry.steps != null && entry.steps > 0)) categoriesWithPoints++;
+  if (entry.sleep_hours != null && entry.sleep_hours >= 5) categoriesWithPoints++;
+  const hasNutrition =
+    (entry.water_liters != null && entry.water_liters > 0) ||
+    (entry.protein_qty != null && entry.protein_qty > 0) ||
+    (entry.calories_kcal != null && entry.calories_kcal > 0);
+  if (hasNutrition) categoriesWithPoints++;
 
-  const hasDailyGoals = goal_water_liters || hasSleepGoal || (trackProtein && goal_protein_g_day) || (trackCalories && goal_calories_day);
-
-  if (!hasDailyGoals) {
-    return dailyPoints >= 60;
-  }
-
-  // Water
-  if (goal_water_liters && (!entry.water_liters || entry.water_liters < goal_water_liters)) return false;
-
-  // Sleep
-  if (goal_sleep_hours != null) {
-    if (entry.sleep_hours == null || entry.sleep_hours < goal_sleep_hours) return false;
-  } else if (goal_sleep_hours_min != null && goal_sleep_hours_max != null) {
-    if (
-      entry.sleep_hours == null ||
-      entry.sleep_hours < goal_sleep_hours_min ||
-      entry.sleep_hours > goal_sleep_hours_max
-    ) return false;
-  }
-
-  // Protein
-  if (trackProtein && goal_protein_g_day) {
-    if (!entry.protein_qty || entry.protein_qty < goal_protein_g_day) return false;
-  }
-
-  // Calories
-  if (trackCalories && goal_calories_day) {
-    const goal = fitness_goal ?? 'stay_active';
-    const cal = entry.calories_kcal;
-    if (cal == null) return false;
-    if (goal === 'lose_weight' && cal > goal_calories_day * 1.10) return false;
-    if (goal === 'gain_weight' && cal < goal_calories_day * 0.85) return false;
-    if (goal === 'gain_muscle' && cal < goal_calories_day * 0.90) return false;
-    // stay_active / general_wellness: just needs to be logged (checked above)
-  }
-
-  return true;
+  return categoriesWithPoints >= 3;
 }
 
 // ── Goal adherence percent ────────────────────────────────────────────────────

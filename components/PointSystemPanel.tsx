@@ -35,7 +35,7 @@ function isFoodRuleInactive(rule: ScoringRule, mode?: FoodTrackingMode | null): 
   if (rule.category !== 'nutrition') return false;
   const isProteinRule  = rule.field_name === 'protein_qty' || rule.action_label.toLowerCase().includes('protein');
   const isCalorieRule  = rule.field_name === 'calories_kcal' || rule.action_label.toLowerCase().includes('calorie');
-  if (!mode) return false;
+  // When mode is null, both protein and calorie scoring are active by default (v2)
   if (isProteinRule  && mode === 'calories_only') return true;
   if (isCalorieRule  && mode === 'protein_only')  return true;
   return false;
@@ -113,9 +113,10 @@ function buildFAQ(byCategory: RulesByCategory): Array<{ q: string; a: string }> 
   const steps7k        = pts(get('movement'), r => r.action_label.includes('7,500'));
   const steps5k        = pts(get('movement'), r => r.action_label.includes('5,000'));
   const sleep7_9       = pts(get('sleep'),    r => r.action_label.includes('7'));
-  const sleep6_7       = pts(get('sleep'),    r => r.action_label.includes('6'));
+  const sleep6_7       = pts(get('sleep'),    r => r.action_label.includes('6–7'));
+  const sleep5_6       = pts(get('sleep'),    r => r.action_label.includes('5–6'));
   const proteinHit     = pts(get('nutrition'), r => r.action_label.toLowerCase().includes('protein goal hit'));
-  const calorieHit     = pts(get('nutrition'), r => r.action_label.toLowerCase().includes('calorie goal'));
+  const calorieHit     = pts(get('nutrition'), r => r.action_label.toLowerCase().includes('calorie goal aligned'));
   const weeklyPartial  = pts(get('weekly_perf'), r => r.action_label.toLowerCase().includes('partial'));
   const weeklyFull     = pts(get('weekly_perf'), r => r.action_label.toLowerCase().includes('full'));
   const crushStreaks    = get('goal_crush').filter(r => !r.action_label.includes('beyond'));
@@ -125,7 +126,7 @@ function buildFAQ(byCategory: RulesByCategory): Array<{ q: string; a: string }> 
   return [
     {
       q: 'What is the maximum I can earn per day?',
-      a: `Your daily activity points are capped at ${dailyMax || 85} pts, covering workout, movement (cardio + steps), sleep, and nutrition. Streak bonuses (logging streak, goal crush streak, weekly performance) are awarded separately on top of this cap — so a high-streak day can exceed ${dailyMax || 85} pts in total.`,
+      a: `Your daily activity points are capped at ${dailyMax || 80} pts, covering workout, movement (cardio + steps), sleep, and nutrition. Streak bonuses (logging streak, goal crush streak, weekly performance) are awarded separately on top of this cap — so a high-streak day can exceed ${dailyMax || 80} pts in total.`,
     },
     {
       q: 'Does logging weight add to my daily points?',
@@ -153,11 +154,11 @@ function buildFAQ(byCategory: RulesByCategory): Array<{ q: string; a: string }> 
     },
     {
       q: 'How is sleep scored?',
-      a: `${sleep7_9 || 10} pts for sleeping 7–9 hours (the ideal range), ${sleep6_7 || 5} pts for 6–7 hours. Sleeping more than 9 hours earns 0 pts — oversleeping is not rewarded.`,
+      a: `${sleep7_9 || 16} pts for sleeping 7–9 hours (the ideal range), ${sleep6_7 || 8} pts for 6–7 hours, and ${sleep5_6 || 3} pts for 5–6 hours. Sleeping less than 5 hours or more than 9 hours earns 0 pts.`,
     },
     {
       q: 'How does the Movement category work?',
-      a: `Movement merges cardio and steps into a single category (max ${get('movement')[0]?.category_max ?? 25} pts). Logging any cardio earns ${movBase || 10} pts; a 30+ minute session adds +${movBonus || 5} pts. Steps stack on top: ${steps10k || 10} pts for 10,000+, ${steps7k || 7} pts for 7,500+, ${steps5k || 5} pts for 5,000+. All combined points are capped at ${get('movement')[0]?.category_max ?? 25} pts. Members 35+ get 85% thresholds on both cardio duration and step counts.`,
+      a: `Movement combines cardio and steps in a single category (max ${get('movement')[0]?.category_max ?? 20} pts). Logging any cardio earns ${movBase || 8} pts; a 30+ minute session adds +${movBonus || 4} pts. Steps are scored at the highest qualifying tier only: ${steps10k || 8} pts for 10,000+, ${steps7k || 6} pts for 7,500+, ${steps5k || 4} pts for 5,000+. Tiers do not stack — you earn only the top one. All combined points are capped at ${get('movement')[0]?.category_max ?? 20} pts. Members 35+ get 85% thresholds on cardio duration and step counts.`,
     },
     {
       q: 'Can I earn points on a rest day with no workout?',
@@ -165,15 +166,15 @@ function buildFAQ(byCategory: RulesByCategory): Array<{ q: string; a: string }> 
     },
     {
       q: 'How does workout scoring stack?',
-      a: `Logging any workout earns ${workoutBase || 10} pts. ${workoutBonus45 ? `A 45+ min session adds +${workoutBonus45} pts,` : ''} ${workoutBonus60 ? `and 60+ min adds another +${workoutBonus60} pts (bonuses stack, max ${workoutBase + workoutBonus45 + workoutBonus60} pts for 60+ min).` : ''}`,
+      a: `Logging any workout earns ${workoutBase || 10} pts. ${workoutBonus45 ? `A 45+ min session adds +${workoutBonus45} pts,` : ''} ${workoutBonus60 ? `and 60+ min adds another +${workoutBonus60} pts (bonuses stack, max ${workoutBase + workoutBonus45 + workoutBonus60} pts for 60+ min).` : ''} Members 35+ have adjusted thresholds of 38 min and 51 min respectively.`,
     },
     {
       q: 'How does food tracking work and how are food points awarded?',
-      a: `You choose a food tracking mode in your goals: "Protein only" tracks protein intake, "Calories only" tracks calorie intake, or "Both" tracks both. Hitting your protein goal earns +${proteinHit || 8} pts; aligning calories with your fitness goal direction (cutting: stay under budget · bulking: hit or exceed target) earns +${calorieHit || 8} pts. Partial hits (within 10–15% of target) earn half points. Home-cooked meals, junk food, and alcohol are no longer scored.`,
+      a: `By default, both protein and calorie tracking apply if you have goals set — you can customize this to "Protein only" or "Calories only" in your goals. Water is always scored regardless (no goal needed). Hitting your protein goal earns +${proteinHit || 4} pts; aligning calories with your fitness goal direction earns +${calorieHit || 4} pts. Partial hits (within 12.5% of target) earn half points. Tracking both adds a modest 5–10% advantage over water-only — consistency matters more than tracking volume.`,
     },
     {
       q: 'How do calorie points work differently based on my fitness goal?',
-      a: `Calorie scoring is goal-aware. If you want to "Lose weight" or "Stay active", you earn calories points by staying at or below your calorie budget (cut direction). If you want to "Gain muscle" or "Gain weight", you earn points by meeting or exceeding your calorie target (surplus direction). Changing your fitness goal will update how future entries are scored.`,
+      a: `Calorie scoring is goal-aware. "Lose weight": earn points by staying at or under budget (within 12.5% for partial). "Gain weight" or "Gain muscle": earn points by meeting or exceeding your calorie target (within 12.5% below for partial). "Stay active" or "General wellness": earn points for staying within 5% of your target (within 12.5% for partial). Changing your fitness goal only affects future entries.`,
     },
     {
       q: 'If I change my fitness goal, does it affect my past points?',
@@ -185,11 +186,11 @@ function buildFAQ(byCategory: RulesByCategory): Array<{ q: string; a: string }> 
     },
     {
       q: 'Do streak bonuses count toward the daily points cap?',
-      a: `No. Logging streak, goal crush streak, and weekly performance bonuses all stack on top of the ${dailyMax || 85}-pt daily cap. They appear as separate bonus points on the day they are triggered.`,
+      a: `No. Logging streak, goal crush streak, and weekly performance bonuses all stack on top of the ${dailyMax || 80}-pt daily cap. They appear as separate bonus points on the day they are triggered.`,
     },
     {
       q: 'What is a goal crush streak?',
-      a: `A goal crush streak counts consecutive days where you hit ALL your active daily goals (water, sleep, protein if set, calories if set). Milestone bonuses: ${crushStreaks.length ? crushStreaks.map(r => `${r.points} pts for ${r.action_label.replace(' goal crush streak', ' days in a row')}`).join(', ') : 'earned at 3, 7, 14, and 30 days'}. Missing any active daily goal resets the streak.`,
+      a: `A goal crush streak counts consecutive days where you score 56+ points AND log activity across at least 3 of the 4 categories (workout, movement, sleep, nutrition). Milestone bonuses: ${crushStreaks.length ? crushStreaks.map(r => `${r.points} pts for ${r.action_label.replace(' goal crush streak', ' days in a row')}`).join(', ') : 'earned at 3, 7, 14, and 30 days'}. Scoring below 56 pts or covering fewer than 3 categories resets the streak.`,
     },
     {
       q: 'What are the weekly performance bonuses?',
@@ -257,21 +258,20 @@ export function ScoringRulesSection({
                 {FOOD_MODE_LABELS[mode] ?? mode}
               </span>
             )}
-            {mode === 'calories_only' || mode === 'both' ? (
+            {(!mode || mode === 'calories_only' || mode === 'both') ? (
               <span className="text-[10px] text-text-muted">
                 {profile.fitness_goal === 'lose_weight' ? '↓ stay under calorie budget' :
-                 profile.fitness_goal === 'stay_active' || profile.fitness_goal === 'general_wellness' ? '→ log any calories' :
+                 profile.fitness_goal === 'stay_active' || profile.fitness_goal === 'general_wellness' ? '→ within 5% of calorie target' :
                  '↑ hit or exceed calorie target'}
               </span>
             ) : null}
           </div>
-          {mode && (
-            <p className="text-[10px] text-text-muted leading-relaxed">
-              {mode === 'protein_only' && 'Calorie rules are greyed out — not active for your setup.'}
-              {mode === 'calories_only' && 'Protein rules are greyed out — not active for your setup.'}
-              {mode === 'both' && 'Both protein and calorie rules are active for your setup.'}
-            </p>
-          )}
+          <p className="text-[10px] text-text-muted leading-relaxed">
+            {!mode && 'Both protein and calorie rules are active by default. Set a tracking mode in goals to customize.'}
+            {mode === 'protein_only' && 'Calorie rules are greyed out — not active for your setup.'}
+            {mode === 'calories_only' && 'Protein rules are greyed out — not active for your setup.'}
+            {mode === 'both' && 'Both protein and calorie rules are active for your setup.'}
+          </p>
         </div>
       )}
 
@@ -350,7 +350,7 @@ export function ScoringRulesSection({
         })}
       </div>
       <p className="mt-3 text-[10px] text-text-muted leading-relaxed">
-        Members 35+ get 85% thresholds on cardio duration &amp; steps. Food points require a goal to be set. Streak bonuses stack on top of the {dailyMax || 85}-pt daily cap.
+        Members 35+ get 85% thresholds on workout, cardio duration &amp; steps. Protein and calorie points require a goal to be set. Water scores for everyone. Streak bonuses stack on top of the {dailyMax || 80}-pt daily cap.
       </p>
     </div>
   );

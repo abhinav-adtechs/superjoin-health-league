@@ -116,36 +116,36 @@ function computeBreakdown(
     }
     workout += Math.min(wpts, 20);
 
-    // Movement: cardio + steps (max 25/day)
+    // Movement: cardio + steps, highest tier only (max 20/day)
     let mpts = 0;
     if (e.cardio_done) {
-      mpts += 10;
-      if (e.cardio_duration != null && e.cardio_duration >= 30 * adj) mpts += 5;
+      mpts += 8;
+      if (e.cardio_duration != null && e.cardio_duration >= 30 * adj) mpts += 4;
     }
     if (e.steps != null) {
-      if (e.steps >= Math.round(10000 * adj)) mpts += 10;
-      else if (e.steps >= Math.round(7500 * adj)) mpts += 7;
-      else if (e.steps >= Math.round(5000 * adj)) mpts += 5;
+      if (e.steps >= Math.round(10000 * adj)) mpts += 8;
+      else if (e.steps >= Math.round(7500 * adj)) mpts += 6;
+      else if (e.steps >= Math.round(5000 * adj)) mpts += 4;
     }
-    movement += Math.min(mpts, 25);
+    movement += Math.min(mpts, 20);
 
-    // Sleep (max 10/day)
+    // Sleep (max 16/day)
     if (e.sleep_hours != null) {
-      if (e.sleep_hours >= 7 && e.sleep_hours <= 9) sleep += 10;
-      else if (e.sleep_hours >= 6) sleep += 5;
+      if (e.sleep_hours >= 7 && e.sleep_hours <= 9) sleep += 16;
+      else if (e.sleep_hours >= 6) sleep += 8;
+      else if (e.sleep_hours >= 5) sleep += 3;
     }
 
-    // Nutrition (max 26/day)
+    // Nutrition (max 24/day) — water-dominant
     let npts = 0;
     if (e.water_liters != null) {
-      if (e.water_liters >= 3) npts += 10;
-      else if (e.water_liters >= 2) npts += 5;
+      if (e.water_liters >= 3) npts += 16;
+      else if (e.water_liters >= 2) npts += 8;
     }
     if (e.protein_meal) {
-      npts += 5;
-      if (e.protein_qty != null && e.protein_qty >= 100) npts += 3;
+      npts += 4;
     }
-    nutrition += Math.min(npts, 26);
+    nutrition += Math.min(npts, 24);
   }
   return { workout, nutrition, sleep, movement };
 }
@@ -175,7 +175,7 @@ function computeStreak(allDates: string[], asOfDate: string): number {
 function computeGoalCrushStreak(entries: FullEntry[], asOfDate: string): number {
   const crushDates = new Set(
     entries
-      .filter((e) => e.is_goal_crush_day != null ? e.is_goal_crush_day : (e.daily_points ?? 0) >= 60)
+      .filter((e) => e.is_goal_crush_day != null ? e.is_goal_crush_day : (e.daily_points ?? 0) >= 56)
       .map((e) => e.date),
   );
   let streak = 0;
@@ -190,9 +190,8 @@ function computeGoalCrushStreak(entries: FullEntry[], asOfDate: string): number 
 
 // ─── Route handler ────────────────────────────────────────────────────────────
 
-// Note: is_goal_crush_day is intentionally omitted here — the computeGoalCrushStreak
-// helper falls back to daily_points >= 60 when the field is absent, so the leaderboard
-// keeps working even if the migration that adds that column hasn't run yet.
+// is_goal_crush_day omitted — column not yet in live DB; computeGoalCrushStreak
+// falls back to daily_points >= 56. Add it back once the DB migration is applied.
 const FULL_ENTRY_SELECT =
   'user_id, date, daily_points, workout_done, workout_duration, cardio_done, cardio_duration, steps, water_liters, home_cooked_meals, protein_meal, protein_qty, junk_food, alcohol, sleep_hours, sleep_quality, calories_kcal, scored_with_goal';
 
@@ -463,7 +462,7 @@ export async function GET(request: Request) {
       // goals_pct: daily avg vs 85 pt cap
       const goalsPct =
         view === 'weekly'
-          ? Math.min(100, Math.round((baseTotal / (daysElapsed * 85)) * 100))
+          ? Math.min(100, Math.round((baseTotal / (daysElapsed * 80)) * 100))
           : undefined;
 
       // Goal adherence
