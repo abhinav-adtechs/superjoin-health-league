@@ -139,6 +139,199 @@ export function buildReminderBlocks(displayName: string): unknown[] {
   ];
 }
 
+// ── Daily digest ────────────────────────────────────────────────────────────
+
+export interface DigestRanking {
+  rank: number;
+  display_name: string;
+  pts: number;
+}
+
+export interface RankCrossing {
+  climber: string;
+  overtook: string;
+  new_rank: number;
+}
+
+export interface DigestData {
+  nobody_logged: boolean;
+  leader: { display_name: string; total_pts_month: number };
+  top5: DigestRanking[];
+  biggest_gainer_yesterday: { display_name: string; pts_yesterday: number } | null;
+  rank_crossings: RankCrossing[];
+  team_pts_yesterday: number;
+  logged_yesterday_count: number;
+  total_users: number;
+  month_name: string;
+  days_remaining_in_month: number;
+}
+
+const MORNING_HEADERS = [
+  '☀️ Morning briefing — yesterday\'s health battlefield report',
+  '🏆 Rise and shine — time to see who crushed it yesterday',
+  '📋 Daily health debrief — your morning leaderboard update',
+  '🌅 Good morning, champions — yesterday\'s scores are in',
+  '⚡ Morning roll call — the leaderboard has spoken',
+];
+
+const LEADER_QUIPS = [
+  'Still untouchable. Someone dethrone them already.',
+  'Leading the pack like it\'s their day job.',
+  'Sitting comfortably at the top. Suspiciously comfortable.',
+  'The throne is theirs — for now.',
+  'Absolutely living rent-free at #1.',
+];
+
+const GHOST_TOWN_LINES = [
+  'Not a single log yesterday. The leaderboard is collecting dust.',
+  'Zero activity yesterday. The couch won. Decisively.',
+  'Yesterday: complete radio silence. The only thing getting a workout was the snooze button.',
+  'Nobody logged a thing yesterday. Healthy habits took the day off apparently.',
+  'Yesterday was a total write-off. The leaderboard is judging you all.',
+];
+
+function pickRandom<T>(arr: T[]): T {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+export function buildDigestBlocks(data: DigestData): unknown[] {
+  const {
+    nobody_logged,
+    leader,
+    top5,
+    biggest_gainer_yesterday,
+    rank_crossings,
+    team_pts_yesterday,
+    logged_yesterday_count,
+    total_users,
+    month_name,
+    days_remaining_in_month,
+  } = data;
+
+  const blocks: unknown[] = [];
+
+  const daysLabel = days_remaining_in_month === 1
+    ? '1 day left'
+    : `${days_remaining_in_month} days left`;
+
+  // Header
+  blocks.push({
+    type: 'header',
+    text: {
+      type: 'plain_text',
+      text: `${pickRandom(MORNING_HEADERS)}`,
+      emoji: true,
+    },
+  });
+
+  blocks.push({
+    type: 'context',
+    elements: [{ type: 'mrkdwn', text: `*${month_name} Health Contest*  ·  ${daysLabel} in the month` }],
+  });
+
+  blocks.push({ type: 'divider' });
+
+  // Ghost town — nobody logged
+  if (nobody_logged) {
+    blocks.push({
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `*👻 Ghost town.*\n\n${pickRandom(GHOST_TOWN_LINES)}\n\n_${daysLabel} to make up for it. Get logging._`,
+      },
+    });
+    blocks.push({ type: 'divider' });
+    // Still show current standings so there's context
+    if (top5.length > 0) {
+      const MEDALS = ['🥇', '🥈', '🥉', '4.', '5.'];
+      const lines = top5
+        .map((r, i) => `${MEDALS[i] ?? `${r.rank}.`} *${r.display_name}*  —  ${r.pts} pts`)
+        .join('\n');
+      blocks.push({
+        type: 'section',
+        text: { type: 'mrkdwn', text: `*📊 ${month_name} standings (unchanged)*\n${lines}` },
+      });
+    }
+    blocks.push({
+      type: 'context',
+      elements: [{ type: 'mrkdwn', text: `<${APP_URL}|Open Health OS and log now>` }],
+    });
+    return blocks;
+  }
+
+  // Current leader
+  blocks.push({
+    type: 'section',
+    text: {
+      type: 'mrkdwn',
+      text: `*👑 ${month_name} leader:* *${leader.display_name}* — ${leader.total_pts_month} pts\n_${pickRandom(LEADER_QUIPS)}_`,
+    },
+  });
+
+  // Top 5 standings
+  if (top5.length > 0) {
+    const MEDALS = ['🥇', '🥈', '🥉', '4.', '5.'];
+    const lines = top5
+      .map((r, i) => `${MEDALS[i] ?? `${r.rank}.`} *${r.display_name}*  —  ${r.pts} pts`)
+      .join('\n');
+    blocks.push({
+      type: 'section',
+      text: { type: 'mrkdwn', text: `*📊 ${month_name} standings*\n${lines}` },
+    });
+  }
+
+  blocks.push({ type: 'divider' });
+
+  // Rank crossings — the juicy part
+  if (rank_crossings.length > 0) {
+    const crossingLines = rank_crossings
+      .map((c) => `▸ *${c.climber}* overtook *${c.overtook}* — now #${c.new_rank}`)
+      .join('\n');
+    blocks.push({
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `*🔀 Yesterday's shake-up*\n${crossingLines}`,
+      },
+    });
+  } else {
+    blocks.push({
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `*🔀 Yesterday's shake-up*\nNo rank changes yesterday. The order held.`,
+      },
+    });
+  }
+
+  // Yesterday's MVP
+  if (biggest_gainer_yesterday) {
+    blocks.push({
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `*⚡ Yesterday's MVP:* *${biggest_gainer_yesterday.display_name}* — ${biggest_gainer_yesterday.pts_yesterday} pts logged. Highest single-day haul.`,
+      },
+    });
+  }
+
+  blocks.push({ type: 'divider' });
+
+  // Team pulse
+  const logRate = total_users > 0 ? Math.round((logged_yesterday_count / total_users) * 100) : 0;
+  blocks.push({
+    type: 'context',
+    elements: [
+      {
+        type: 'mrkdwn',
+        text: `*Team pulse:* ${logged_yesterday_count} of ${total_users} logged yesterday · ${team_pts_yesterday} pts scored · ${logRate}% participation  ·  <${APP_URL}|Open Health OS>`,
+      },
+    ],
+  });
+
+  return blocks;
+}
+
 // ── API callers ─────────────────────────────────────────────────────────────
 
 /** Post a rich Block Kit message to the configured Slack channel via webhook. */
