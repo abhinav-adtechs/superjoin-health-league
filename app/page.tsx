@@ -14,6 +14,7 @@ import { LoginForm } from '@/components/LoginForm';
 import GoalSetupWizard from '@/components/GoalSetupWizard';
 import { SetPinForm } from '@/components/SetPinForm';
 import { PointSystemSheet } from '@/components/PointSystemPanel';
+import { MonthLeagueSidebarCard } from '@/components/MonthLeagueSidebarCard';
 import type { Profile } from '@/lib/types';
 import { resolveAvatarUrl } from '@/lib/avatar-url';
 import { applyFitnessGoalTheme, getGoalTheme } from '@/lib/fitness-goal-theme';
@@ -589,6 +590,18 @@ export default function Home() {
             sidebarPinned={sidebarPinned}
           />
         </div>
+        {/* Month league — moved here from dashboard top */}
+        <MonthLeagueSidebarCard
+          displayName={profile!.display_name}
+          sidebarPinned={sidebarPinned}
+          refreshTrigger={entryRefresh}
+          onOpenLeaderboard={() => {
+            const d = new Date();
+            const month = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+            setLeaderboardOpenContext({ month });
+            setActiveTab('leaderboard');
+          }}
+        />
         {/* Nav items */}
         <nav
           className={`flex-1 min-h-0 py-4 flex flex-col gap-1 overflow-y-auto overflow-x-hidden ${sidebarPinned ? 'px-2.5' : 'px-2'}`}
