@@ -132,7 +132,7 @@ function computeWeekStatus(
 
 type CategoryKey = 'workout' | 'steps' | 'sleep' | 'water' | 'protein' | 'calories';
 
-type WeekViewColumn =
+export type WeekViewColumn =
   | { kind: 'workout_agg' }
   | { kind: 'steps' }
   | { kind: 'sleep' }
@@ -141,7 +141,7 @@ type WeekViewColumn =
   | { kind: 'calories' };
 
 /** One Workout column for any movement goal — goal_workout_types are focus tags, not separate daily columns. */
-function buildWeekViewColumns(goals: ProfileGoals | null): WeekViewColumn[] {
+export function buildWeekViewColumns(goals: ProfileGoals | null): WeekViewColumn[] {
   const g = goals ?? {};
   const hasWorkoutGoal = (g.goal_workout_days_week ?? 0) > 0 || (g.goal_workout_mins_week ?? 0) > 0;
   const types = parseGoalWorkoutTypes(g.goal_workout_types);
@@ -157,7 +157,7 @@ function buildWeekViewColumns(goals: ProfileGoals | null): WeekViewColumn[] {
   return cols;
 }
 
-function weekColumnStatus(
+export function weekColumnStatus(
   e: EntryRow | undefined,
   col: WeekViewColumn,
   goals: ProfileGoals | null,
@@ -535,7 +535,7 @@ function weekColumnColor(col: WeekViewColumn): string {
   return '#f59e0b';
 }
 
-function weekColumnLabel(col: WeekViewColumn): string {
+export function weekColumnLabel(col: WeekViewColumn): string {
   if (col.kind === 'workout_agg') return 'Workout';
   if (col.kind === 'steps') return 'Steps';
   if (col.kind === 'sleep') return 'Sleep';
