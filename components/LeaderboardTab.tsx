@@ -15,6 +15,7 @@ import type { LeaderboardView, LeaderboardResponse, FitnessGoal } from '@/lib/ty
 import { resolveAvatarUrl } from '@/lib/avatar-url';
 import {
   ScoringRulesSection,
+  FAQSection,
   useScoringRules,
   dailyActivityCap,
   type ProfileContext,
@@ -396,7 +397,7 @@ function MonthPicker({
 function ScoringGuide({ profile }: { profile?: ProfileContext }) {
   const [open, setOpen] = useState(false);
   const { byCategory, loading } = useScoringRules(true);
-  const dailyMax = useMemo(() => dailyActivityCap(byCategory), [byCategory]);
+  const dailyMax = useMemo(() => dailyActivityCap(byCategory, profile), [byCategory, profile]);
 
   return (
     <div className="glass-card overflow-hidden">
@@ -409,7 +410,7 @@ function ScoringGuide({ profile }: { profile?: ProfileContext }) {
           <Info className="w-4 h-4 text-text-muted flex-shrink-0" />
           <span className="text-sm font-semibold text-text-primary">How points are scored</span>
           <span className="text-[11px] text-text-muted bg-surface-2 px-2 py-0.5 rounded-full tabular-nums shrink-0">
-            {loading ? '…' : `${dailyMax || 85} pts / day max`}
+            {loading ? '…' : `${dailyMax || 90} pts / day max`}
           </span>
         </div>
         <ChevronDown
@@ -428,8 +429,10 @@ function ScoringGuide({ profile }: { profile?: ProfileContext }) {
           ) : byCategory.size === 0 ? (
             <p className="px-4 py-3 text-sm text-text-muted">Unable to load scoring rules.</p>
           ) : (
-            <div className="px-4 py-3">
+            <div className="px-4 py-3 space-y-4">
               <ScoringRulesSection byCategory={byCategory} profile={profile} hideScoringRulesTitle />
+              <div className="h-px bg-white/8" />
+              <FAQSection byCategory={byCategory} profile={profile} />
             </div>
           )}
         </div>

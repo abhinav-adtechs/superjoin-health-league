@@ -7,6 +7,8 @@ import {
 } from 'lucide-react';
 import type { ScoringRule } from '@/app/api/scoring-rules/route';
 import type { FoodTrackingMode, FitnessGoal } from '@/lib/types';
+import { getDailyActivityCap, getNutritionCap, getGoalCrushThreshold } from '@/lib/points';
+import { FOOD_MODE_LABELS_SHORT, V3_CATEGORY_SUMMARY } from '@/lib/scoring-copy';
 import { apiUrl, getApiFetchOptions } from '@/lib/api';
 import { FITNESS_GOAL_THEMES } from '@/lib/fitness-goal-theme';
 import { RulesListSkeleton } from '@/components/LoadingScreen';
@@ -24,20 +26,26 @@ const FITNESS_GOAL_META: Record<string, { label: string; color: string }> = Obje
   ),
 );
 
-const FOOD_MODE_LABELS: Record<string, string> = {
-  protein_only:  'Protein tracking only',
-  calories_only: 'Calorie tracking only',
-  both:          'Protein + Calorie tracking',
+const FOOD_MODE_LABELS: Record<string, string> = FOOD_MODE_LABELS_SHORT;
+
+const FOOD_MODE_DAILY_CAP: Record<string, number> = {
+  protein_only: 90,
+  calories_only: 90,
+  both: 90,
 };
 
 // Returns true if the rule is "inactive" given the user's food_tracking_mode
 function isFoodRuleInactive(rule: ScoringRule, mode?: FoodTrackingMode | null): boolean {
   if (rule.category !== 'nutrition') return false;
-  const isProteinRule  = rule.field_name === 'protein_qty' || rule.action_label.toLowerCase().includes('protein');
-  const isCalorieRule  = rule.field_name === 'calories_kcal' || rule.action_label.toLowerCase().includes('calorie');
-  // When mode is null, both protein and calorie scoring are active by default (v2)
-  if (isProteinRule  && mode === 'calories_only') return true;
-  if (isCalorieRule  && mode === 'protein_only')  return true;
+  const isProteinRule =
+    rule.field_name === 'protein_qty' || rule.action_label.toLowerCase().includes('protein');
+  const isCalorieRule =
+    rule.field_name === 'calories_kcal' || rule.action_label.toLowerCase().includes('calorie');
+  const isCapNote = rule.action_label.toLowerCase().includes('nutrition cap');
+  if (isCapNote) return false;
+  if (mode == null) return isProteinRule || isCalorieRule;
+  if (isProteinRule && mode === 'calories_only') return true;
+  if (isCalorieRule && mode === 'protein_only') return true;
   return false;
 }
 
@@ -63,9 +71,18 @@ const DAILY_CATS     = ['workout', 'movement', 'sleep', 'nutrition'];
 
 export type RulesByCategory = Map<string, ScoringRule[]>;
 
-export function dailyActivityCap(byCategory: RulesByCategory): number {
+export function dailyActivityCap(
+  byCategory: RulesByCategory,
+  profile?: ProfileContext,
+): number {
+  if (profile?.food_tracking_mode !== undefined) {
+    return getDailyActivityCap(profile.food_tracking_mode);
+  }
   return DAILY_CATS.reduce((sum, c) => {
     const rules = byCategory.get(c);
+    if (c === 'nutrition' && profile) {
+      return sum + getNutritionCap(profile.food_tracking_mode);
+    }
     return sum + (rules?.[0]?.category_max ?? 0);
   }, 0);
 }
@@ -99,34 +116,34 @@ export function useScoringRules(enabled: boolean) {
 }
 
 // ─── FAQ builder — all values pulled from live rules ─────────────────────────
-function buildFAQ(byCategory: RulesByCategory): Array<{ q: string; a: string }> {
+function buildFAQ(
+  byCategory: RulesByCategory,
+  profile?: ProfileContext,
+): Array<{ q: string; a: string }> {
   const get = (cat: string) => byCategory.get(cat) ?? [];
   const pts = (rules: ScoringRule[], match: (r: ScoringRule) => boolean) =>
     rules.find(match)?.points ?? 0;
 
-  const workoutBase    = pts(get('workout'),  r => !r.is_bonus);
-  const workoutBonus45 = pts(get('workout'),  r => r.is_bonus && r.action_label.includes('45'));
-  const workoutBonus60 = pts(get('workout'),  r => r.is_bonus && r.action_label.includes('60'));
-  const movBase        = pts(get('movement'), r => !r.is_bonus);
-  const movBonus       = pts(get('movement'), r => r.is_bonus && r.action_label.includes('minutes'));
-  const steps10k       = pts(get('movement'), r => r.action_label.includes('10,000'));
-  const steps7k        = pts(get('movement'), r => r.action_label.includes('7,500'));
-  const steps5k        = pts(get('movement'), r => r.action_label.includes('5,000'));
-  const sleep7_9       = pts(get('sleep'),    r => r.action_label.includes('7'));
-  const sleep6_7       = pts(get('sleep'),    r => r.action_label.includes('6–7'));
-  const sleep5_6       = pts(get('sleep'),    r => r.action_label.includes('5–6'));
+  const workoutMax     = pts(get('workout'),  r => r.action_label.includes('60'));
+  const cardioMax      = pts(get('movement'), r => r.action_label.includes('Cardio 60'));
+  const stepsMax       = pts(get('movement'), r => r.action_label.includes('100%'));
+  const sleepOptimal   = pts(get('sleep'),    r => r.action_label.includes('8–9'));
+  const sleepGood      = pts(get('sleep'),    r => r.action_label.includes('7–8'));
+  const sleepFair      = pts(get('sleep'),    r => r.action_label.includes('6–7'));
   const proteinHit     = pts(get('nutrition'), r => r.action_label.toLowerCase().includes('protein goal hit'));
-  const calorieHit     = pts(get('nutrition'), r => r.action_label.toLowerCase().includes('calorie goal aligned'));
+  const calorieHit     = pts(get('nutrition'), r => r.action_label.toLowerCase().includes('calories on target'));
   const weeklyPartial  = pts(get('weekly_perf'), r => r.action_label.toLowerCase().includes('partial'));
   const weeklyFull     = pts(get('weekly_perf'), r => r.action_label.toLowerCase().includes('full'));
-  const crushStreaks    = get('goal_crush').filter(r => !r.action_label.includes('beyond'));
-  const logStreaks      = get('logging_streak').filter(r => !r.action_label.includes('beyond'));
-  const dailyMax       = DAILY_CATS.reduce((sum, c) => sum + (byCategory.get(c)?.[0]?.category_max ?? 0), 0);
+  const crushStreaks   = get('goal_crush').filter(r => !r.action_label.includes('beyond') && !r.action_label.includes('threshold'));
+  const logStreaks     = get('logging_streak').filter(r => !r.action_label.includes('beyond'));
+  const dailyMax       = dailyActivityCap(byCategory, profile);
+  const crushThreshold = getGoalCrushThreshold(profile?.food_tracking_mode);
+  const movementMax    = get('movement')[0]?.category_max ?? 20;
 
   return [
     {
       q: 'What is the maximum I can earn per day?',
-      a: `Your daily activity points are capped at ${dailyMax || 80} pts, covering workout, movement (cardio + steps), sleep, and nutrition. Streak bonuses (logging streak, goal crush streak, weekly performance) are awarded separately on top of this cap — so a high-streak day can exceed ${dailyMax || 80} pts in total.`,
+      a: `Your daily activity cap is ${dailyMax} pts (75 if you only track water, 90 if you track calories and/or protein). Categories: workout (25), movement (${movementMax}), sleep (15), nutrition (${getNutritionCap(profile?.food_tracking_mode)}). Streak and weekly bonuses stack on top.`,
     },
     {
       q: 'Does logging weight add to my daily points?',
@@ -154,27 +171,27 @@ function buildFAQ(byCategory: RulesByCategory): Array<{ q: string; a: string }> 
     },
     {
       q: 'How is sleep scored?',
-      a: `${sleep7_9 || 16} pts for sleeping 7–9 hours (the ideal range), ${sleep6_7 || 8} pts for 6–7 hours, and ${sleep5_6 || 3} pts for 5–6 hours. Sleeping less than 5 hours or more than 9 hours earns 0 pts.`,
+      a: `${sleepOptimal || 15} pts for 8–9 hours (optimal), ${sleepGood || 12} pts for 7–8 hours, ${sleepFair || 7} pts for 6–7 hours, 3 pts for 5–6 hours, and 13 pts for 9+ hours. Less than 5 hours earns 0 pts.`,
     },
     {
       q: 'How does the Movement category work?',
-      a: `Movement combines cardio and steps in a single category (max ${get('movement')[0]?.category_max ?? 20} pts). Logging any cardio earns ${movBase || 8} pts; a 30+ minute session adds +${movBonus || 4} pts. Steps are scored at the highest qualifying tier only: ${steps10k || 8} pts for 10,000+, ${steps7k || 6} pts for 7,500+, ${steps5k || 4} pts for 5,000+. Tiers do not stack — you earn only the top one. All combined points are capped at ${get('movement')[0]?.category_max ?? 20} pts. Members 35+ get 85% thresholds on cardio duration and step counts.`,
+      a: `Cardio and steps each scale to ${movementMax} pts independently; their sum is capped at ${movementMax}. Cardio uses duration tiers up to ${cardioMax || 20} pts. Steps use your personal step goal when set, otherwise fixed tiers up to ${stepsMax || 20} pts. Members 35+ get 85% thresholds on duration and step counts.`,
     },
     {
       q: 'Can I earn points on a rest day with no workout?',
       a: `Yes. Sleep, movement (steps/cardio), water, and nutrition are fully independent of workout. On a rest day you can still earn significant points by sleeping well, walking your step count, staying hydrated, and hitting your food goals.`,
     },
     {
-      q: 'How does workout scoring stack?',
-      a: `Logging any workout earns ${workoutBase || 10} pts. ${workoutBonus45 ? `A 45+ min session adds +${workoutBonus45} pts,` : ''} ${workoutBonus60 ? `and 60+ min adds another +${workoutBonus60} pts (bonuses stack, max ${workoutBase + workoutBonus45 + workoutBonus60} pts for 60+ min).` : ''} Members 35+ have adjusted thresholds of 38 min and 51 min respectively.`,
+      q: 'How does workout scoring work?',
+      a: `Workout points scale with duration: 5 pts for logging any workout, up to ${workoutMax || 25} pts for 60+ minutes (11 at 15 min, 15 at 30 min, 20 at 45 min). Members 35+ have age-adjusted minute thresholds (85%).`,
     },
     {
-      q: 'How does food tracking work and how are food points awarded?',
-      a: `By default, both protein and calorie tracking apply if you have goals set — you can customize this to "Protein only" or "Calories only" in your goals. Water is always scored regardless (no goal needed). Hitting your protein goal earns +${proteinHit || 4} pts; aligning calories with your fitness goal direction earns +${calorieHit || 4} pts. Partial hits (within 12.5% of target) earn half points. Tracking both adds a modest 5–10% advantage over water-only — consistency matters more than tracking volume.`,
+      q: 'How does food tracking affect my daily cap?',
+      a: `Water-only tracking caps nutrition at 15 pts (daily max 75). Tracking protein and/or calories unlocks up to 30 nutrition pts (daily max 90). Protein max is ${proteinHit || 15} pts; calorie adherence max is ${calorieHit || 15} pts in single-macro modes, or 10 pts each in "both" mode.`,
     },
     {
       q: 'How do calorie points work differently based on my fitness goal?',
-      a: `Calorie scoring is goal-aware. "Lose weight": earn points by staying at or under budget (within 12.5% for partial). "Gain weight" or "Gain muscle": earn points by meeting or exceeding your calorie target (within 12.5% below for partial). "Stay active" or "General wellness": earn points for staying within 5% of your target (within 12.5% for partial). Changing your fitness goal only affects future entries.`,
+      a: `Calorie scoring uses gradient tiers (±2%, ±5%, ±10%, ±15%). "Lose weight": earn by staying at or under budget. "Gain weight" or "Gain muscle": earn by meeting or exceeding target. "Stay active" or "General wellness": symmetric window around target. Requires goal_calories_day to be set.`,
     },
     {
       q: 'If I change my fitness goal, does it affect my past points?',
@@ -186,11 +203,11 @@ function buildFAQ(byCategory: RulesByCategory): Array<{ q: string; a: string }> 
     },
     {
       q: 'Do streak bonuses count toward the daily points cap?',
-      a: `No. Logging streak, goal crush streak, and weekly performance bonuses all stack on top of the ${dailyMax || 80}-pt daily cap. They appear as separate bonus points on the day they are triggered.`,
+      a: `No. Logging streak, goal crush streak, and weekly performance bonuses stack on top of your ${dailyMax}-pt daily cap and count toward leaderboard totals.`,
     },
     {
       q: 'What is a goal crush streak?',
-      a: `A goal crush streak counts consecutive days where you score 56+ points AND log activity across at least 3 of the 4 categories (workout, movement, sleep, nutrition). Milestone bonuses: ${crushStreaks.length ? crushStreaks.map(r => `${r.points} pts for ${r.action_label.replace(' goal crush streak', ' days in a row')}`).join(', ') : 'earned at 3, 7, 14, and 30 days'}. Scoring below 56 pts or covering fewer than 3 categories resets the streak.`,
+      a: `A goal crush day requires ${crushThreshold}+ points (70% of your daily cap) AND activity in at least 3 of 4 categories. Milestone bonuses: ${crushStreaks.length ? crushStreaks.map(r => `${r.points} pts for ${r.action_label.replace(' goal crush streak', ' days in a row')}`).join(', ') : 'earned at 3, 7, 14, and 30 days'}. Missing the threshold or covering fewer than 3 categories resets the streak.`,
     },
     {
       q: 'What are the weekly performance bonuses?',
@@ -222,7 +239,8 @@ export function ScoringRulesSection({
       return next;
     });
 
-  const dailyMax = dailyActivityCap(byCategory);
+  const dailyMax = dailyActivityCap(byCategory, profile);
+  const nutritionMax = getNutritionCap(profile?.food_tracking_mode);
 
   const mode = profile?.food_tracking_mode;
 
@@ -253,9 +271,13 @@ export function ScoringRulesSection({
                 <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${g.color}`}>{g.label}</span>
               ) : null;
             })()}
-            {mode && (
+            {mode ? (
               <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-surface-2 text-text-secondary">
-                {FOOD_MODE_LABELS[mode] ?? mode}
+                {FOOD_MODE_LABELS[mode] ?? mode} · {FOOD_MODE_DAILY_CAP[mode] ?? 90} pts/day
+              </span>
+            ) : (
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-surface-2 text-text-secondary">
+                Water only · 75 pts/day
               </span>
             )}
             {(!mode || mode === 'calories_only' || mode === 'both') ? (
@@ -267,10 +289,10 @@ export function ScoringRulesSection({
             ) : null}
           </div>
           <p className="text-[10px] text-text-muted leading-relaxed">
-            {!mode && 'Both protein and calorie rules are active by default. Set a tracking mode in goals to customize.'}
-            {mode === 'protein_only' && 'Calorie rules are greyed out — not active for your setup.'}
-            {mode === 'calories_only' && 'Protein rules are greyed out — not active for your setup.'}
-            {mode === 'both' && 'Both protein and calorie rules are active for your setup.'}
+            {!mode && 'Water-only mode: nutrition max 15 pts, daily cap 75. Set a tracking mode in goals to unlock 90 pts/day.'}
+            {mode === 'protein_only' && 'Water + protein active (30 nutrition pts). Calorie rules greyed out.'}
+            {mode === 'calories_only' && 'Water + calories active (30 nutrition pts). Protein rules greyed out.'}
+            {mode === 'both' && 'Water, protein, and calories each max 10 pts (30 nutrition total).'}
           </p>
         </div>
       )}
@@ -295,8 +317,10 @@ export function ScoringRulesSection({
                   <Icon className={`w-3 h-3 ${meta.color}`} />
                 </div>
                 <span className={`text-xs font-semibold flex-1 ${meta.color}`}>{meta.label}</span>
-                {categoryMax != null && (
-                  <span className="text-[10px] text-text-muted tabular-nums mr-1">max {categoryMax} pts</span>
+                {(categoryMax != null || cat === 'nutrition') && (
+                  <span className="text-[10px] text-text-muted tabular-nums mr-1">
+                    max {cat === 'nutrition' ? nutritionMax : categoryMax} pts
+                  </span>
                 )}
                 {meta.streakNote && (
                   <span className="text-[10px] text-text-muted mr-1">milestone</span>
@@ -350,15 +374,21 @@ export function ScoringRulesSection({
         })}
       </div>
       <p className="mt-3 text-[10px] text-text-muted leading-relaxed">
-        Members 35+ get 85% thresholds on workout, cardio duration &amp; steps. Protein and calorie points require a goal to be set. Water scores for everyone. Streak bonuses stack on top of the {dailyMax || 80}-pt daily cap.
+        Members 35+ get 85% thresholds on workout, cardio duration &amp; steps. Your daily cap is {dailyMax} pts based on tracking mode. Streak bonuses stack on top.
       </p>
     </div>
   );
 }
 
 // ─── FAQ accordion ────────────────────────────────────────────────────────────
-function FAQSection({ byCategory }: { byCategory: RulesByCategory }) {
-  const faqs = useMemo(() => buildFAQ(byCategory), [byCategory]);
+export function FAQSection({
+  byCategory,
+  profile,
+}: {
+  byCategory: RulesByCategory;
+  profile?: ProfileContext;
+}) {
+  const faqs = useMemo(() => buildFAQ(byCategory, profile), [byCategory, profile]);
   const [openIdx, setOpenIdx] = useState<number | null>(null);
 
   return (
@@ -438,6 +468,9 @@ export function PointSystemSheet({ open, onClose, profile }: { open: boolean; on
 
         {/* Scrollable content */}
         <div className="flex-1 overflow-y-auto p-4 edge-safe-bottom space-y-6">
+          <p className="text-[11px] text-text-muted leading-relaxed -mb-2">
+            Scoring v3 — {V3_CATEGORY_SUMMARY}. Streak bonuses stack on top of your daily cap.
+          </p>
           {loading ? (
             <RulesListSkeleton rows={8} />
           ) : byCategory.size === 0 ? (
@@ -446,7 +479,7 @@ export function PointSystemSheet({ open, onClose, profile }: { open: boolean; on
             <>
               <ScoringRulesSection byCategory={byCategory} profile={profile} />
               <div className="h-px bg-white/8" />
-              <FAQSection byCategory={byCategory} />
+              <FAQSection byCategory={byCategory} profile={profile} />
             </>
           )}
         </div>
