@@ -8,6 +8,7 @@ import {
 import type { ScoringRule } from '@/app/api/scoring-rules/route';
 import type { FoodTrackingMode, FitnessGoal } from '@/lib/types';
 import { getDailyActivityCap, getNutritionCap, getGoalCrushThreshold } from '@/lib/points';
+import { FOOD_MODE_LABELS_SHORT, V3_CATEGORY_SUMMARY } from '@/lib/scoring-copy';
 import { apiUrl, getApiFetchOptions } from '@/lib/api';
 import { FITNESS_GOAL_THEMES } from '@/lib/fitness-goal-theme';
 import { RulesListSkeleton } from '@/components/LoadingScreen';
@@ -25,11 +26,7 @@ const FITNESS_GOAL_META: Record<string, { label: string; color: string }> = Obje
   ),
 );
 
-const FOOD_MODE_LABELS: Record<string, string> = {
-  protein_only:  'Protein + water tracking',
-  calories_only: 'Calories + water tracking',
-  both:          'Protein + calories + water',
-};
+const FOOD_MODE_LABELS: Record<string, string> = FOOD_MODE_LABELS_SHORT;
 
 const FOOD_MODE_DAILY_CAP: Record<string, number> = {
   protein_only: 90,
@@ -384,7 +381,7 @@ export function ScoringRulesSection({
 }
 
 // ─── FAQ accordion ────────────────────────────────────────────────────────────
-function FAQSection({
+export function FAQSection({
   byCategory,
   profile,
 }: {
@@ -471,6 +468,9 @@ export function PointSystemSheet({ open, onClose, profile }: { open: boolean; on
 
         {/* Scrollable content */}
         <div className="flex-1 overflow-y-auto p-4 edge-safe-bottom space-y-6">
+          <p className="text-[11px] text-text-muted leading-relaxed -mb-2">
+            Scoring v3 — {V3_CATEGORY_SUMMARY}. Streak bonuses stack on top of your daily cap.
+          </p>
           {loading ? (
             <RulesListSkeleton rows={8} />
           ) : byCategory.size === 0 ? (

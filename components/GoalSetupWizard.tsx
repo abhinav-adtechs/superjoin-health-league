@@ -17,6 +17,12 @@ import {
   formatRecommendedWorkoutWeeklyVolumeLine,
   formatRecommendedWorkoutDaysLine,
 } from '@/lib/goal-defaults';
+import {
+  FITNESS_GOAL_POINTS_HINTS,
+  FOOD_MODE_SETUP_OPTIONS,
+  foodModePointsSummary,
+  V3_CATEGORY_SUMMARY,
+} from '@/lib/scoring-copy';
 
 interface GoalSetupWizardProps {
   isNewUser: boolean;
@@ -63,9 +69,9 @@ const FITNESS_GOALS: {
     who: 'I want to burn fat',
     description: 'You eat in a calorie deficit to shed body fat while keeping as much muscle as possible. Regular cardio and moderate protein are key.',
     calorieMode: 'cut',
-    calorieModeLabel: 'Calorie deficit',
-    calorieModeHint: 'Points awarded for staying at or under your daily calorie target.',
-    scoring: 'Food points: stay ≤ your calorie budget → full points',
+    calorieModeLabel: FITNESS_GOAL_POINTS_HINTS.lose_weight.calorieModeLabel,
+    calorieModeHint: FITNESS_GOAL_POINTS_HINTS.lose_weight.calorieModeHint,
+    scoring: FITNESS_GOAL_POINTS_HINTS.lose_weight.scoring,
     color: 'rose',
   },
   {
@@ -75,9 +81,9 @@ const FITNESS_GOALS: {
     who: 'I want to build lean muscle',
     description: 'You eat in a small calorie surplus with high protein to support strength training. The goal is more muscle, not just more weight.',
     calorieMode: 'surplus',
-    calorieModeLabel: 'Calorie surplus',
-    calorieModeHint: 'Points awarded for hitting ≥ 90% of your calorie AND protein targets.',
-    scoring: 'Food points: hit ≥ 90% of calorie + protein targets → full points',
+    calorieModeLabel: FITNESS_GOAL_POINTS_HINTS.gain_muscle.calorieModeLabel,
+    calorieModeHint: FITNESS_GOAL_POINTS_HINTS.gain_muscle.calorieModeHint,
+    scoring: FITNESS_GOAL_POINTS_HINTS.gain_muscle.scoring,
     color: 'indigo',
   },
   {
@@ -87,9 +93,9 @@ const FITNESS_GOALS: {
     who: 'I want to add overall mass',
     description: 'You eat a larger calorie surplus to gain both muscle and body weight — useful if you are underweight or in a hard bulk phase.',
     calorieMode: 'surplus',
-    calorieModeLabel: 'Calorie surplus',
-    calorieModeHint: 'Points awarded for hitting or exceeding your calorie fuel target.',
-    scoring: 'Food points: meet or exceed your calorie target → full points',
+    calorieModeLabel: FITNESS_GOAL_POINTS_HINTS.gain_weight.calorieModeLabel,
+    calorieModeHint: FITNESS_GOAL_POINTS_HINTS.gain_weight.calorieModeHint,
+    scoring: FITNESS_GOAL_POINTS_HINTS.gain_weight.scoring,
     color: 'emerald',
   },
   {
@@ -99,9 +105,9 @@ const FITNESS_GOALS: {
     who: 'I want to stay fit and consistent',
     description: 'No aggressive cut or bulk — you want to keep moving, stay healthy, and build reliable daily habits around exercise and nutrition.',
     calorieMode: 'flexible',
-    calorieModeLabel: 'Maintenance calories',
-    calorieModeHint: 'Eat around your maintenance level. Points scale with what you log — suited for people who are not actively cutting or bulking.',
-    scoring: 'Food points: log any food data to earn points',
+    calorieModeLabel: FITNESS_GOAL_POINTS_HINTS.stay_active.calorieModeLabel,
+    calorieModeHint: FITNESS_GOAL_POINTS_HINTS.stay_active.calorieModeHint,
+    scoring: FITNESS_GOAL_POINTS_HINTS.stay_active.scoring,
     color: 'amber',
   },
   {
@@ -111,9 +117,9 @@ const FITNESS_GOALS: {
     who: 'I want to feel better overall',
     description: 'Your focus is sleep quality, hydration, stress, and general health — not a specific physique goal. Gentle movement and balanced eating.',
     calorieMode: 'flexible',
-    calorieModeLabel: 'Balanced eating',
-    calorieModeHint: 'Scoring rewards balanced habits — food variety, sleep and hydration — not hitting a specific macro target.',
-    scoring: 'Food points: log any food data to earn points',
+    calorieModeLabel: FITNESS_GOAL_POINTS_HINTS.general_wellness.calorieModeLabel,
+    calorieModeHint: FITNESS_GOAL_POINTS_HINTS.general_wellness.calorieModeHint,
+    scoring: FITNESS_GOAL_POINTS_HINTS.general_wellness.scoring,
     color: 'violet',
   },
 ];
@@ -714,12 +720,11 @@ export default function GoalSetupWizard({ isNewUser, existingProfile, onComplete
               <h2 className="font-semibold text-gray-800 flex items-center gap-2">
                 <span>🥗</span> Food Tracking Mode
               </h2>
+              <p className="text-xs text-gray-500 leading-relaxed">
+                Points v3: {V3_CATEGORY_SUMMARY}. Deeper tracking unlocks a higher daily cap.
+              </p>
               <div className="space-y-2">
-                {([
-                  { value: 'protein_only', label: 'Track Protein Only', description: 'Set a daily protein gram target' },
-                  { value: 'calories_only', label: 'Track Calories Only', description: 'Set a daily calorie budget (direction-aware)' },
-                  { value: 'both', label: 'Track Both', description: 'Protein + calories — earn points independently for each' },
-                ] as { value: FoodTrackingMode; label: string; description: string }[]).map((m) => (
+                {FOOD_MODE_SETUP_OPTIONS.map((m) => (
                   <label
                     key={m.value}
                     className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
@@ -741,6 +746,9 @@ export default function GoalSetupWizard({ isNewUser, existingProfile, onComplete
                   </label>
                 ))}
               </div>
+              <p className="text-xs text-indigo-700/90 bg-indigo-50 rounded-lg px-3 py-2 leading-relaxed">
+                {foodModePointsSummary(foodMode)}
+              </p>
 
               {/* Protein target */}
               {(foodMode === 'protein_only' || foodMode === 'both') && (

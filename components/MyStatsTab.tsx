@@ -21,12 +21,21 @@ import {
 import { dicebearAvatarUrl, dicebearAvatarPickerSeeds, resolveAvatarUrl } from '@/lib/avatar-url';
 import { FITNESS_GOAL_THEMES } from '@/lib/fitness-goal-theme';
 import { TabContentLoader } from '@/components/LoadingScreen';
+import { FITNESS_GOAL_POINTS_HINTS, foodModePointsSummary } from '@/lib/scoring-copy';
 
 const FITNESS_GOAL_BADGES: Record<FitnessGoal, { label: string; color: string }> = Object.fromEntries(
   (Object.entries(FITNESS_GOAL_THEMES) as [FitnessGoal, { label: string; badgeClass: string }][]).map(
     ([k, v]) => [k, { label: v.label, color: v.badgeClass }],
   ),
 ) as Record<FitnessGoal, { label: string; color: string }>;
+
+const FITNESS_GOAL_CALORIE_COLORS: Record<FitnessGoal, string> = {
+  lose_weight: 'bg-rose-100 text-rose-700',
+  gain_muscle: 'bg-emerald-100 text-emerald-700',
+  gain_weight: 'bg-emerald-100 text-emerald-700',
+  stay_active: 'bg-amber-100 text-amber-700',
+  general_wellness: 'bg-violet-100 text-violet-700',
+};
 
 const FITNESS_GOAL_DETAILS: Record<FitnessGoal, {
   emoji: string;
@@ -38,37 +47,37 @@ const FITNESS_GOAL_DETAILS: Record<FitnessGoal, {
   lose_weight: {
     emoji: '🔥',
     who: 'I want to burn fat',
-    calorieModeLabel: 'Calorie deficit',
-    calorieModeHint: 'Points for staying ≤ your calorie budget',
-    calorieModeColor: 'bg-rose-100 text-rose-700',
+    calorieModeLabel: FITNESS_GOAL_POINTS_HINTS.lose_weight.calorieModeLabel,
+    calorieModeHint: FITNESS_GOAL_POINTS_HINTS.lose_weight.calorieModeHint,
+    calorieModeColor: FITNESS_GOAL_CALORIE_COLORS.lose_weight,
   },
   gain_muscle: {
     emoji: '💪',
     who: 'I want to build lean muscle',
-    calorieModeLabel: 'Calorie surplus',
-    calorieModeHint: 'Points for hitting ≥ 90% of calorie + protein targets',
-    calorieModeColor: 'bg-emerald-100 text-emerald-700',
+    calorieModeLabel: FITNESS_GOAL_POINTS_HINTS.gain_muscle.calorieModeLabel,
+    calorieModeHint: FITNESS_GOAL_POINTS_HINTS.gain_muscle.calorieModeHint,
+    calorieModeColor: FITNESS_GOAL_CALORIE_COLORS.gain_muscle,
   },
   gain_weight: {
     emoji: '📈',
     who: 'I want to add overall mass',
-    calorieModeLabel: 'Calorie surplus',
-    calorieModeHint: 'Points for meeting or exceeding your calorie target',
-    calorieModeColor: 'bg-emerald-100 text-emerald-700',
+    calorieModeLabel: FITNESS_GOAL_POINTS_HINTS.gain_weight.calorieModeLabel,
+    calorieModeHint: FITNESS_GOAL_POINTS_HINTS.gain_weight.calorieModeHint,
+    calorieModeColor: FITNESS_GOAL_CALORIE_COLORS.gain_weight,
   },
   stay_active: {
     emoji: '🏃',
     who: 'I want to stay fit and consistent',
-    calorieModeLabel: 'Maintenance calories',
-    calorieModeHint: 'Eat around your maintenance level. Points scale with what you log — suited for people not actively cutting or bulking.',
-    calorieModeColor: 'bg-amber-100 text-amber-700',
+    calorieModeLabel: FITNESS_GOAL_POINTS_HINTS.stay_active.calorieModeLabel,
+    calorieModeHint: FITNESS_GOAL_POINTS_HINTS.stay_active.calorieModeHint,
+    calorieModeColor: FITNESS_GOAL_CALORIE_COLORS.stay_active,
   },
   general_wellness: {
     emoji: '🧘',
     who: 'I want to feel better overall',
-    calorieModeLabel: 'Balanced eating',
-    calorieModeHint: 'Scoring rewards balanced habits — sleep, hydration and food variety — not hitting a specific macro target.',
-    calorieModeColor: 'bg-violet-100 text-violet-700',
+    calorieModeLabel: FITNESS_GOAL_POINTS_HINTS.general_wellness.calorieModeLabel,
+    calorieModeHint: FITNESS_GOAL_POINTS_HINTS.general_wellness.calorieModeHint,
+    calorieModeColor: FITNESS_GOAL_CALORIE_COLORS.general_wellness,
   },
 };
 
@@ -578,7 +587,9 @@ export function MyStatsTab({ profile, onSuccess }: { profile: Profile; onSuccess
                   <Target className="w-4 h-4 text-indigo-500" />
                   <span className="text-sm font-semibold text-text-primary">Fitness Goal</span>
                 </div>
-                <p className="text-xs text-text-muted mb-3">This changes how your food points are scored — not just a label.</p>
+                <p className="text-xs text-text-muted mb-3">
+                  This changes your nutrition point cap and calorie/protein rules (v3: 75 pts/day water-only, 90 with full tracking).
+                </p>
                 <div className="grid grid-cols-1 gap-2">
                   {(Object.keys(FITNESS_GOAL_BADGES) as FitnessGoal[]).map((g) => {
                     const badge = FITNESS_GOAL_BADGES[g];
@@ -792,6 +803,9 @@ export function MyStatsTab({ profile, onSuccess }: { profile: Profile; onSuccess
                 <GoalFormTip title="Nutrition for your goal" tone="amber">
                   {habitTipsForGoal.food}
                 </GoalFormTip>
+                <p className="text-[11px] text-text-muted leading-relaxed rounded-lg bg-amber-50/60 border border-amber-100/80 px-3 py-2.5">
+                  {foodModePointsSummary(foodMode)}
+                </p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-semibold text-text-primary mb-1.5">Water (L / day)</label>
