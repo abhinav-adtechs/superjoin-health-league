@@ -159,6 +159,7 @@ export async function PATCH(request: Request) {
         goal_calories_day: profile.goal_calories_day,
         food_tracking_mode: profile.food_tracking_mode,
         fitness_goal: profile.fitness_goal,
+        goal_steps_day: profile.goal_steps_day,
       }
     : undefined;
 
@@ -343,6 +344,7 @@ export async function POST(request: Request) {
         goal_calories_day: profile.goal_calories_day,
         food_tracking_mode: profile.food_tracking_mode,
         fitness_goal: profile.fitness_goal,
+        goal_steps_day: profile.goal_steps_day,
       }
     : undefined;
 

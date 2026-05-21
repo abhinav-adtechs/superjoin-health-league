@@ -2,7 +2,17 @@ import { createClient } from '@/lib/supabase/server';
 import { createServiceRoleClient } from '@/lib/supabase/admin';
 import { NextResponse } from 'next/server';
 import type { LeaderboardView, LeaderboardRanking, FitnessGoal, FoodTrackingMode, AgeBracket } from '@/lib/types';
-import { calculateDailyPoints, isWeeklyGoalHit, WEEKLY_PERF_BONUS, computeGoalAdherencePct } from '@/lib/points';
+import {
+  calculateDailyPoints,
+  calculateCategoryBreakdown,
+  isWeeklyGoalHit,
+  WEEKLY_PERF_BONUS,
+  computeGoalAdherencePct,
+  getCumulativeLoggingStreakBonus,
+  getCumulativeGoalCrushStreakBonus,
+  getDailyActivityCap,
+  getGoalCrushThreshold,
+} from '@/lib/points';
 import { parseGoalWorkoutTypes } from '@/lib/workout-goals';
 
 type ProfileRow = {
@@ -23,6 +33,7 @@ type ProfileRow = {
   goal_sleep_hours_max: number | null;
   goal_protein_g_day: number | null;
   goal_calories_day: number | null;
+  goal_steps_day: number | null;
 };
 
 type FullEntry = {
@@ -62,7 +73,18 @@ function effectivePoints(entry: FullEntry, profile: ProfileRow): number {
     goal_calories_day: profile.goal_calories_day,
     food_tracking_mode: profile.food_tracking_mode,
     fitness_goal: profile.fitness_goal,
+    goal_steps_day: profile.goal_steps_day,
   });
+}
+
+function profileForPoints(p: ProfileRow) {
+  return {
+    goal_protein_g_day: p.goal_protein_g_day,
+    goal_calories_day: p.goal_calories_day,
+    food_tracking_mode: p.food_tracking_mode,
+    fitness_goal: p.fitness_goal,
+    goal_steps_day: p.goal_steps_day,
+  };
 }
 
 // ─── Date helpers ─────────────────────────────────────────────────────────────
@@ -102,50 +124,20 @@ function monthStart(d: Date): string {
 
 function computeBreakdown(
   entries: FullEntry[],
-  ageBracket: string,
+  profile: ProfileRow,
 ): { workout: number; nutrition: number; sleep: number; movement: number } {
-  let workout = 0, nutrition = 0, sleep = 0, movement = 0;
-  const adj = ageBracket === 'over_35' ? 0.85 : 1.0;
+  let workout = 0;
+  let nutrition = 0;
+  let sleep = 0;
+  let movement = 0;
+  const ageBracket = profile.age_bracket as AgeBracket;
+  const goals = profileForPoints(profile);
   for (const e of entries) {
-    // Workout (max 20/day)
-    let wpts = 0;
-    if (e.workout_done) {
-      wpts += 10;
-      if (e.workout_duration != null && e.workout_duration >= 45) wpts += 5;
-      if (e.workout_duration != null && e.workout_duration >= 60) wpts += 5;
-    }
-    workout += Math.min(wpts, 20);
-
-    // Movement: cardio + steps, highest tier only (max 20/day)
-    let mpts = 0;
-    if (e.cardio_done) {
-      mpts += 8;
-      if (e.cardio_duration != null && e.cardio_duration >= 30 * adj) mpts += 4;
-    }
-    if (e.steps != null) {
-      if (e.steps >= Math.round(10000 * adj)) mpts += 8;
-      else if (e.steps >= Math.round(7500 * adj)) mpts += 6;
-      else if (e.steps >= Math.round(5000 * adj)) mpts += 4;
-    }
-    movement += Math.min(mpts, 20);
-
-    // Sleep (max 16/day)
-    if (e.sleep_hours != null) {
-      if (e.sleep_hours >= 7 && e.sleep_hours <= 9) sleep += 16;
-      else if (e.sleep_hours >= 6) sleep += 8;
-      else if (e.sleep_hours >= 5) sleep += 3;
-    }
-
-    // Nutrition (max 24/day) — water-dominant
-    let npts = 0;
-    if (e.water_liters != null) {
-      if (e.water_liters >= 3) npts += 16;
-      else if (e.water_liters >= 2) npts += 8;
-    }
-    if (e.protein_meal) {
-      npts += 4;
-    }
-    nutrition += Math.min(npts, 24);
+    const b = calculateCategoryBreakdown(e, ageBracket, goals);
+    workout += b.workout;
+    movement += b.movement;
+    sleep += b.sleep;
+    nutrition += b.nutrition;
   }
   return { workout, nutrition, sleep, movement };
 }
@@ -172,10 +164,16 @@ function computeStreak(allDates: string[], asOfDate: string): number {
  * Uses stored is_goal_crush_day when available (post-migration). Falls back to
  * daily_points >= 60 for entries that pre-date the migration or haven't been backfilled.
  */
-function computeGoalCrushStreak(entries: FullEntry[], asOfDate: string): number {
+function computeGoalCrushStreak(
+  entries: FullEntry[],
+  asOfDate: string,
+  crushThreshold: number,
+): number {
   const crushDates = new Set(
     entries
-      .filter((e) => e.is_goal_crush_day != null ? e.is_goal_crush_day : (e.daily_points ?? 0) >= 56)
+      .filter((e) =>
+        e.is_goal_crush_day != null ? e.is_goal_crush_day : (e.daily_points ?? 0) >= crushThreshold,
+      )
       .map((e) => e.date),
   );
   let streak = 0;
@@ -262,7 +260,7 @@ export async function GET(request: Request) {
 
   const { data: profiles, error: profilesError } = await adminSupabase
     .from('profiles')
-    .select('id, display_name, avatar_url, age_bracket, joined_at, fitness_goal, goal_workout_types, food_tracking_mode, goal_workout_days_week, goal_workout_mins_week, goal_home_cooked_per_week, goal_water_liters, goal_sleep_hours, goal_sleep_hours_min, goal_sleep_hours_max, goal_protein_g_day, goal_calories_day')
+    .select('id, display_name, avatar_url, age_bracket, joined_at, fitness_goal, goal_workout_types, food_tracking_mode, goal_workout_days_week, goal_workout_mins_week, goal_home_cooked_per_week, goal_water_liters, goal_sleep_hours, goal_sleep_hours_min, goal_sleep_hours_max, goal_protein_g_day, goal_calories_day, goal_steps_day')
     .eq('is_active', true);
 
   if (profilesError) {
@@ -408,8 +406,13 @@ export async function GET(request: Request) {
       const normalized = total / daysSinceJoin;
       const daysActive = new Set(userEntries.map((e) => e.date)).size;
       const streakDays = computeStreak(recentEntries.map((e) => e.date), todayStr);
-      const goalCrushStreak = computeGoalCrushStreak(recentEntries, todayStr);
-      const breakdown = computeBreakdown(userEntries, p.age_bracket);
+      const crushThreshold = getGoalCrushThreshold(p.food_tracking_mode);
+      const goalCrushStreak = computeGoalCrushStreak(recentEntries, todayStr, crushThreshold);
+      const breakdown = computeBreakdown(userEntries, p);
+      const streakBonus =
+        getCumulativeLoggingStreakBonus(streakDays) +
+        getCumulativeGoalCrushStreakBonus(goalCrushStreak);
+      const totalWithBonuses = total + streakBonus;
 
       // Goal adherence: avg across entries that have profile goals set
       const adherenceScores = userEntries.map((e) => computeGoalAdherencePct(e, p));
@@ -431,8 +434,8 @@ export async function GET(request: Request) {
           food_tracking_mode: p.food_tracking_mode ?? null,
         },
         score: {
-          total_points: total,
-          normalized_score: Math.round(normalized * 10) / 10,
+          total_points: totalWithBonuses,
+          normalized_score: Math.round((totalWithBonuses / daysSinceJoin) * 10) / 10,
           goal_adherence_pct,
           breakdown,
         },
@@ -446,8 +449,9 @@ export async function GET(request: Request) {
       const baseTotal = userEntries.reduce((sum, e) => sum + effectivePoints(e, p), 0);
       const daysActive = new Set(userEntries.map((e) => e.date)).size;
       const streakDays = computeStreak(recentEntries.map((e) => e.date), todayStr);
-      const goalCrushStreak = computeGoalCrushStreak(recentEntries, todayStr);
-      const breakdown = computeBreakdown(userEntries, p.age_bracket);
+      const crushThreshold = getGoalCrushThreshold(p.food_tracking_mode);
+      const goalCrushStreak = computeGoalCrushStreak(recentEntries, todayStr, crushThreshold);
+      const breakdown = computeBreakdown(userEntries, p);
 
       // Weekly performance bonus
       let weeklyBonus = 0;
@@ -457,12 +461,15 @@ export async function GET(request: Request) {
         else if (weekResult === 'partial') weeklyBonus = WEEKLY_PERF_BONUS.partial;
       }
 
-      const total = baseTotal + weeklyBonus;
+      const streakBonus =
+        getCumulativeLoggingStreakBonus(streakDays) +
+        getCumulativeGoalCrushStreakBonus(goalCrushStreak);
+      const total = baseTotal + weeklyBonus + streakBonus;
 
-      // goals_pct: daily avg vs 85 pt cap
+      const dailyCap = getDailyActivityCap(p.food_tracking_mode);
       const goalsPct =
         view === 'weekly'
-          ? Math.min(100, Math.round((baseTotal / (daysElapsed * 80)) * 100))
+          ? Math.min(100, Math.round((baseTotal / (daysElapsed * dailyCap)) * 100))
           : undefined;
 
       // Goal adherence

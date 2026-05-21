@@ -116,10 +116,19 @@ export async function POST(request: Request) {
   if (changed.length > 0) {
     const { data: profile } = await supabase
       .from('profiles')
-      .select('age_bracket')
+      .select('age_bracket, fitness_goal, food_tracking_mode, goal_protein_g_day, goal_calories_day, goal_steps_day')
       .eq('id', user.id)
       .single();
     const ageBracket: AgeBracket = (profile?.age_bracket as AgeBracket) ?? '25_to_35';
+    const profileForPoints = profile
+      ? {
+          goal_protein_g_day: profile.goal_protein_g_day,
+          goal_calories_day: profile.goal_calories_day,
+          food_tracking_mode: profile.food_tracking_mode,
+          fitness_goal: profile.fitness_goal,
+          goal_steps_day: profile.goal_steps_day,
+        }
+      : undefined;
 
     const entryData: Record<string, unknown> = {
       user_id: user.id,
@@ -127,7 +136,11 @@ export async function POST(request: Request) {
       ...existingFields,
       ...merged,
     };
-    entryData.daily_points = calculateDailyPoints(entryData as Parameters<typeof calculateDailyPoints>[0], ageBracket);
+    entryData.daily_points = calculateDailyPoints(
+      entryData as Parameters<typeof calculateDailyPoints>[0],
+      ageBracket,
+      profileForPoints,
+    );
 
     await supabase
       .from('daily_entries')

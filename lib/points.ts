@@ -1,10 +1,10 @@
 /**
- * Points engine v2 – Goal-centric scoring.
- * - Workout (max 20): workout duration tiers, age-adjusted for 35+
- * - Movement (max 20): cardio + steps (highest tier only)
- * - Sleep (max 16): 3 tiers including 5-6h partial
- * - Nutrition (max 24): water-dominant; protein/calorie optional (+5-10%)
- * Daily cap: 80 pts (streak bonuses stack on top)
+ * Points engine v3 – Effort-rewarding scoring.
+ * - Workout (max 25): duration gradient, age-adjusted for 35+
+ * - Movement (max 20): cardio + steps (each scales to 20, sum capped at 20)
+ * - Sleep (max 15): 5-tier gradient
+ * - Nutrition (max 15–30): scales with food_tracking_mode; daily cap 75–90
+ * Streak bonuses stack on top of the daily cap.
  */
 
 import type { AgeBracket, FitnessGoal, FoodTrackingMode } from './types';
@@ -19,10 +19,8 @@ export interface EntryForPoints {
   protein_meal?: boolean | null;
   protein_qty?: number | null;
   sleep_hours?: number | null;
-  // New fields
   calories_kcal?: number | null;
   scored_with_goal?: FitnessGoal | null;
-  // Kept for backward compatibility (no longer scored)
   home_cooked_meals?: number | null;
   junk_food?: boolean | null;
   alcohol?: string | null;
@@ -38,43 +36,312 @@ export interface ProfileDailyGoals {
   goal_calories_day?: number | null;
   food_tracking_mode?: FoodTrackingMode | null;
   fitness_goal?: FitnessGoal | null;
-  // kept for compat
   goal_steps_day?: number | null;
 }
 
 export interface ProfileWeeklyGoals {
   goal_workout_days_week?: number | null;
   goal_workout_mins_week?: number | null;
-  // kept for compat but no longer used in scoring
   goal_home_cooked_per_week?: number | null;
 }
 
-// ── Calorie direction-aware scoring ──────────────────────────────────────────
+export const DAILY_CAP_WATER_ONLY = 75;
+export const DAILY_CAP_FULL_TRACKING = 90;
 
-function caloriePoints(
+/** Daily activity cap from nutrition tracking depth. */
+export function getDailyActivityCap(mode?: FoodTrackingMode | null): number {
+  return mode == null ? DAILY_CAP_WATER_ONLY : DAILY_CAP_FULL_TRACKING;
+}
+
+export function getNutritionCap(mode?: FoodTrackingMode | null): number {
+  return mode == null ? 15 : 30;
+}
+
+export function getGoalCrushThreshold(mode?: FoodTrackingMode | null): number {
+  return Math.floor(getDailyActivityCap(mode) * 0.7);
+}
+
+// ── Tier helpers ─────────────────────────────────────────────────────────────
+
+function tierPoints(value: number, tiers: [number, number][]): number {
+  for (const [threshold, pts] of tiers) {
+    if (value >= threshold) return pts;
+  }
+  return 0;
+}
+
+function getAgeAdj(ageBracket: AgeBracket): number {
+  return ageBracket === 'over_35' ? 0.85 : 1.0;
+}
+
+// ── Workout (max 25) ─────────────────────────────────────────────────────────
+
+function scoreWorkoutPoints(
+  entry: EntryForPoints,
+  adj: number,
+): number {
+  if (!entry.workout_done) return 0;
+  const dur = entry.workout_duration ?? 0;
+  const t15 = Math.round(15 * adj);
+  const t30 = Math.round(30 * adj);
+  const t45 = Math.round(45 * adj);
+  const t60 = Math.round(60 * adj);
+
+  if (dur >= t60) return 25;
+  if (dur >= t45) return 20;
+  if (dur >= t30) return 15;
+  if (dur >= t15) return 11;
+  return 5;
+}
+
+// ── Movement (max 20) ────────────────────────────────────────────────────────
+
+function scoreCardioPoints(entry: EntryForPoints, adj: number): number {
+  if (!entry.cardio_done) return 0;
+  const dur = entry.cardio_duration ?? 0;
+  const t15 = Math.round(15 * adj);
+  const t30 = Math.round(30 * adj);
+  const t45 = Math.round(45 * adj);
+  const t60 = Math.round(60 * adj);
+
+  if (dur >= t60) return 20;
+  if (dur >= t45) return 16;
+  if (dur >= t30) return 12;
+  if (dur >= t15) return 8;
+  return 4;
+}
+
+function scoreStepsPoints(
+  steps: number,
+  goalStepsDay: number | null | undefined,
+  adj: number,
+): number {
+  if (goalStepsDay && goalStepsDay > 0) {
+    const pct = steps / goalStepsDay;
+    if (pct >= 1.0) return 20;
+    if (pct >= 0.75) return 15;
+    if (pct >= 0.5) return 10;
+    if (pct >= 0.25) return 5;
+    return 0;
+  }
+
+  if (steps >= Math.round(10000 * adj)) return 20;
+  if (steps >= Math.round(7500 * adj)) return 15;
+  if (steps >= Math.round(5000 * adj)) return 10;
+  if (steps >= Math.round(2500 * adj)) return 5;
+  return 0;
+}
+
+function scoreMovementPoints(
+  entry: EntryForPoints,
+  adj: number,
+  goalStepsDay?: number | null,
+): number {
+  let cardioPts = 0;
+  let stepsPts = 0;
+  if (entry.cardio_done) cardioPts = scoreCardioPoints(entry, adj);
+  if (entry.steps != null && entry.steps > 0) {
+    stepsPts = scoreStepsPoints(entry.steps, goalStepsDay, adj);
+  }
+  return Math.min(cardioPts + stepsPts, 20);
+}
+
+// ── Sleep (max 15) ───────────────────────────────────────────────────────────
+
+function scoreSleepPoints(sleepHours: number | null | undefined): number {
+  if (sleepHours == null) return 0;
+  if (sleepHours >= 8 && sleepHours < 9) return 15;
+  if (sleepHours >= 9) return 13;
+  if (sleepHours >= 7) return 12;
+  if (sleepHours >= 6) return 7;
+  if (sleepHours >= 5) return 3;
+  return 0;
+}
+
+// ── Nutrition ─────────────────────────────────────────────────────────────────
+
+function scoreWaterPoints(liters: number | null | undefined, maxPts: number): number {
+  if (liters == null) return 0;
+  if (maxPts === 15) {
+    return tierPoints(liters, [
+      [3.0, 15],
+      [2.5, 12],
+      [2.0, 9],
+      [1.5, 6],
+      [1.0, 3],
+    ]);
+  }
+  // max 10 (both mode)
+  return tierPoints(liters, [
+    [3.0, 10],
+    [2.5, 8],
+    [2.0, 6],
+    [1.5, 4],
+    [1.0, 2],
+  ]);
+}
+
+function scoreProteinPoints(
+  proteinQty: number | null | undefined,
+  goalG: number | null | undefined,
+  maxPts: number,
+): number {
+  if (proteinQty == null || proteinQty <= 0) return 0;
+
+  if (goalG && goalG > 0) {
+    const pct = proteinQty / goalG;
+    if (maxPts === 15) {
+      if (pct >= 1.0) return 15;
+      if (pct >= 0.75) return 11;
+      if (pct >= 0.5) return 7;
+      if (pct >= 0.25) return 4;
+      return 2;
+    }
+    // max 10 (both mode)
+    if (pct >= 1.0) return 10;
+    if (pct >= 0.75) return 7;
+    if (pct >= 0.5) return 5;
+    if (pct >= 0.25) return 3;
+    return 1;
+  }
+
+  // Fixed fallback when no goal set
+  if (maxPts === 15) {
+    return tierPoints(proteinQty, [
+      [120, 15],
+      [90, 11],
+      [60, 7],
+      [30, 4],
+      [1, 2],
+    ]);
+  }
+  return tierPoints(proteinQty, [
+    [120, 10],
+    [90, 7],
+    [60, 5],
+    [30, 3],
+    [1, 1],
+  ]);
+}
+
+/**
+ * Calorie adherence scoring (v3 gradient).
+ * Direction-aware per fitness_goal; maxPts is 15 (calories_only) or 10 (both).
+ */
+function scoreCaloriePoints(
   caloriesKcal: number | null | undefined,
   goalCaloriesDay: number | null | undefined,
   fitnessGoal: FitnessGoal | null | undefined,
+  maxPts: number,
 ): number {
   if (!goalCaloriesDay || !caloriesKcal) return 0;
+
   const cal = caloriesKcal;
   const target = goalCaloriesDay;
   const goal = fitnessGoal ?? 'stay_active';
 
-  if (goal === 'lose_weight') {
-    if (cal <= target) return 4;
-    if (cal <= target * 1.125) return 2;
+  const tiers15: [number, number][] = [
+    [0.02, 15],
+    [0.05, 12],
+    [0.10, 8],
+    [0.15, 4],
+  ];
+  const tiers10: [number, number][] = [
+    [0.02, 10],
+    [0.05, 8],
+    [0.10, 5],
+    [0.15, 3],
+  ];
+  const tiers = maxPts === 15 ? tiers15 : tiers10;
+
+  function bestTier(check: (margin: number) => boolean): number {
+    for (const [margin, pts] of tiers) {
+      if (check(margin)) return pts;
+    }
     return 0;
+  }
+
+  if (goal === 'lose_weight') {
+    // On target: at or under budget, within margin of target from below
+    return bestTier((m) => cal <= target && cal >= target * (1 - m));
   }
   if (goal === 'gain_weight' || goal === 'gain_muscle') {
-    if (cal >= target) return 4;
-    if (cal >= target * 0.875) return 2;
-    return 0;
+    return bestTier((m) => cal >= target && cal <= target * (1 + m));
   }
-  // stay_active / general_wellness — symmetric maintenance window
-  if (cal >= target * 0.95 && cal <= target * 1.05) return 4;
-  if (cal >= target * 0.875 && cal <= target * 1.125) return 2;
-  return 0;
+  // stay_active / general_wellness — symmetric
+  return bestTier((m) => cal >= target * (1 - m) && cal <= target * (1 + m));
+}
+
+function scoreNutritionPoints(
+  entry: EntryForPoints,
+  profile?: Pick<
+    ProfileDailyGoals,
+    'goal_protein_g_day' | 'goal_calories_day' | 'food_tracking_mode' | 'fitness_goal'
+  >,
+): number {
+  const mode = profile?.food_tracking_mode ?? null;
+
+  if (mode == null) {
+    return Math.min(scoreWaterPoints(entry.water_liters, 15), 15);
+  }
+
+  if (mode === 'calories_only') {
+    const water = scoreWaterPoints(entry.water_liters, 15);
+    const calories = scoreCaloriePoints(
+      entry.calories_kcal,
+      profile?.goal_calories_day,
+      profile?.fitness_goal,
+      15,
+    );
+    return Math.min(water + calories, 30);
+  }
+
+  if (mode === 'protein_only') {
+    const water = scoreWaterPoints(entry.water_liters, 15);
+    const protein = scoreProteinPoints(
+      entry.protein_qty,
+      profile?.goal_protein_g_day,
+      15,
+    );
+    return Math.min(water + protein, 30);
+  }
+
+  if (mode === 'both') {
+    const water = scoreWaterPoints(entry.water_liters, 10);
+    const protein = scoreProteinPoints(
+      entry.protein_qty,
+      profile?.goal_protein_g_day,
+      10,
+    );
+    const calories = scoreCaloriePoints(
+      entry.calories_kcal,
+      profile?.goal_calories_day,
+      profile?.fitness_goal,
+      10,
+    );
+    return Math.min(water + protein + calories, 30);
+  }
+
+  return Math.min(scoreWaterPoints(entry.water_liters, 15), 15);
+}
+
+// ── Category breakdown (for leaderboard display) ─────────────────────────────
+
+export function calculateCategoryBreakdown(
+  entry: EntryForPoints,
+  ageBracket: AgeBracket,
+  profile?: Pick<
+    ProfileDailyGoals,
+    'goal_protein_g_day' | 'goal_calories_day' | 'food_tracking_mode' | 'fitness_goal' | 'goal_steps_day'
+  >,
+): { workout: number; movement: number; sleep: number; nutrition: number } {
+  const adj = getAgeAdj(ageBracket);
+  return {
+    workout: scoreWorkoutPoints(entry, adj),
+    movement: scoreMovementPoints(entry, adj, profile?.goal_steps_day),
+    sleep: scoreSleepPoints(entry.sleep_hours),
+    nutrition: scoreNutritionPoints(entry, profile),
+  };
 }
 
 // ── Main scoring function ─────────────────────────────────────────────────────
@@ -82,68 +349,17 @@ function caloriePoints(
 export function calculateDailyPoints(
   entry: EntryForPoints,
   ageBracket: AgeBracket,
-  profile?: Pick<ProfileDailyGoals, 'goal_protein_g_day' | 'goal_calories_day' | 'food_tracking_mode' | 'fitness_goal'>,
+  profile?: Pick<
+    ProfileDailyGoals,
+    'goal_protein_g_day' | 'goal_calories_day' | 'food_tracking_mode' | 'fitness_goal' | 'goal_steps_day'
+  >,
 ): number {
-  let points = 0;
-  const adj = ageBracket === 'over_35' ? 0.85 : 1.0;
-
-  // ── Workout (max 20) ──
-  if (entry.workout_done) {
-    points += 10;
-    if (entry.workout_duration != null && entry.workout_duration >= Math.round(45 * adj)) points += 5;
-    if (entry.workout_duration != null && entry.workout_duration >= Math.round(60 * adj)) points += 5;
-  }
-  points = Math.min(points, 20);
-
-  // ── Movement: cardio + steps (highest tier only) (max 20) ──
-  let movementPts = 0;
-  if (entry.cardio_done) {
-    movementPts += 8;
-    const cardioThreshold = 30 * adj;
-    if (entry.cardio_duration != null && entry.cardio_duration >= cardioThreshold) movementPts += 4;
-  }
-  if (entry.steps != null) {
-    if (entry.steps >= Math.round(10000 * adj)) movementPts += 8;
-    else if (entry.steps >= Math.round(7500 * adj)) movementPts += 6;
-    else if (entry.steps >= Math.round(5000 * adj)) movementPts += 4;
-  }
-  points += Math.min(movementPts, 20);
-
-  // ── Sleep (max 16) ──
-  if (entry.sleep_hours != null) {
-    if (entry.sleep_hours >= 7 && entry.sleep_hours <= 9) points += 16;
-    else if (entry.sleep_hours >= 6 && entry.sleep_hours < 7) points += 8;
-    else if (entry.sleep_hours >= 5 && entry.sleep_hours < 6) points += 3;
-  }
-
-  // ── Nutrition (max 24) — water-dominant; food tracking adds 5-10% ──
-  let nutritionPts = 0;
-  // Water (universal — no goal required)
-  if (entry.water_liters != null) {
-    if (entry.water_liters >= 3) nutritionPts += 16;
-    else if (entry.water_liters >= 2) nutritionPts += 8;
-  }
-
-  const mode = profile?.food_tracking_mode ?? null;
-  const fitnessGoal = profile?.fitness_goal ?? null;
-  const proteinGoal = profile?.goal_protein_g_day ?? null;
-  const calGoal = profile?.goal_calories_day ?? null;
-
-  const trackProtein = !mode || mode === 'protein_only' || mode === 'both';
-  const trackCalories = !mode || mode === 'calories_only' || mode === 'both';
-
-  if (trackProtein && proteinGoal) {
-    if (entry.protein_qty != null && entry.protein_qty >= proteinGoal) nutritionPts += 4;
-    else if (entry.protein_qty != null && entry.protein_qty > 0) nutritionPts += 2;
-  }
-
-  if (trackCalories && calGoal) {
-    nutritionPts += caloriePoints(entry.calories_kcal, calGoal, fitnessGoal);
-  }
-
-  points += Math.min(nutritionPts, 24);
-
-  return Math.min(points, 80);
+  const adj = getAgeAdj(ageBracket);
+  const breakdown = calculateCategoryBreakdown(entry, ageBracket, profile);
+  const total =
+    breakdown.workout + breakdown.movement + breakdown.sleep + breakdown.nutrition;
+  const cap = getDailyActivityCap(profile?.food_tracking_mode);
+  return Math.min(total, cap);
 }
 
 export function getAgeBracket(age: number): AgeBracket {
@@ -175,12 +391,28 @@ export const GOAL_CRUSH_BONUS_AFTER_30 = 100;
 
 // ── Streak bonus helpers ──────────────────────────────────────────────────────
 
+/** Bonus awarded on exactly this milestone day (for UI delta messaging). */
 export function getLoggingStreakBonus(days: number): number {
   if (days >= 90) {
     const extra = Math.floor((days - 90) / 30) * LOGGING_STREAK_BONUS_AFTER_90;
     return (LOGGING_STREAK_BONUSES[90] ?? 0) + extra;
   }
   return LOGGING_STREAK_BONUSES[days] ?? 0;
+}
+
+/** Cumulative logging streak bonus earned at the user's current streak length. */
+export function getCumulativeLoggingStreakBonus(days: number): number {
+  if (days >= 90) {
+    const extra = Math.floor((days - 90) / 30) * LOGGING_STREAK_BONUS_AFTER_90;
+    return (LOGGING_STREAK_BONUSES[90] ?? 0) + extra;
+  }
+  const milestones = Object.keys(LOGGING_STREAK_BONUSES)
+    .map(Number)
+    .sort((a, b) => b - a);
+  for (const m of milestones) {
+    if (days >= m) return LOGGING_STREAK_BONUSES[m] ?? 0;
+  }
+  return 0;
 }
 
 export function getGoalCrushStreakBonus(days: number): number {
@@ -191,20 +423,33 @@ export function getGoalCrushStreakBonus(days: number): number {
   return GOAL_CRUSH_STREAK_BONUSES[days] ?? 0;
 }
 
+/** Cumulative goal crush streak bonus at current streak length. */
+export function getCumulativeGoalCrushStreakBonus(days: number): number {
+  if (days >= 30) {
+    const extra = Math.floor((days - 30) / 30) * GOAL_CRUSH_BONUS_AFTER_30;
+    return (GOAL_CRUSH_STREAK_BONUSES[30] ?? 0) + extra;
+  }
+  const milestones = Object.keys(GOAL_CRUSH_STREAK_BONUSES)
+    .map(Number)
+    .sort((a, b) => b - a);
+  for (const m of milestones) {
+    if (days >= m) return GOAL_CRUSH_STREAK_BONUSES[m] ?? 0;
+  }
+  return 0;
+}
+
 // ── Goal evaluation ───────────────────────────────────────────────────────────
 
 /**
- * Returns true if the day qualifies as a "goal crush" day under v2 rules:
- *   - daily score >= 56 pts (70% of 80-pt cap)
- *   - at least 3 of the 4 categories contributed points
- * The profile parameter is retained for API compatibility but is no longer used.
+ * Goal crush day: score >= 70% of user's daily cap + 3 of 4 categories contributed.
  */
 export function isGoalCrushDay(
   entry: EntryForPoints,
-  _profile: ProfileDailyGoals,
+  profile: ProfileDailyGoals,
   dailyPoints: number,
 ): boolean {
-  if (dailyPoints < 56) return false;
+  const threshold = getGoalCrushThreshold(profile.food_tracking_mode);
+  if (dailyPoints < threshold) return false;
 
   let categoriesWithPoints = 0;
   if (entry.workout_done) categoriesWithPoints++;
@@ -221,10 +466,6 @@ export function isGoalCrushDay(
 
 // ── Goal adherence percent ────────────────────────────────────────────────────
 
-/**
- * Computes how many of the user's set personal goals were hit for this entry.
- * Returns a 0-100 score. Counts only goals that are configured.
- */
 export function computeGoalAdherencePct(
   entry: EntryForPoints,
   profile: ProfileDailyGoals,
@@ -242,7 +483,7 @@ export function computeGoalAdherencePct(
   } = profile;
 
   const mode = food_tracking_mode ?? null;
-  const trackProtein = !mode || mode === 'protein_only' || mode === 'both';
+  const trackProtein = mode === 'protein_only' || mode === 'both';
   const trackCalories = mode === 'calories_only' || mode === 'both';
 
   if (goal_water_liters) {
@@ -286,10 +527,6 @@ export function computeGoalAdherencePct(
 
 export type WeeklyGoalResult = 'full' | 'partial' | 'none';
 
-/**
- * Evaluates whether the user hit their weekly profile goals.
- * Returns 'full', 'partial', or 'none'.
- */
 export function isWeeklyGoalHit(
   weekEntries: EntryForPoints[],
   profile: ProfileWeeklyGoals,

@@ -396,7 +396,7 @@ function MonthPicker({
 function ScoringGuide({ profile }: { profile?: ProfileContext }) {
   const [open, setOpen] = useState(false);
   const { byCategory, loading } = useScoringRules(true);
-  const dailyMax = useMemo(() => dailyActivityCap(byCategory), [byCategory]);
+  const dailyMax = useMemo(() => dailyActivityCap(byCategory, profile), [byCategory, profile]);
 
   return (
     <div className="glass-card overflow-hidden">
