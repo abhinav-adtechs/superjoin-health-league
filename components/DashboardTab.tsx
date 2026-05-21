@@ -23,6 +23,13 @@ import { apiUrl, getApiFetchOptions } from '@/lib/api';
 import { LogEntryModal, type EntryType } from './LogEntryModal';
 import type { Profile, DailyEntry, FitnessGoal } from '@/lib/types';
 import { FITNESS_GOAL_THEMES } from '@/lib/fitness-goal-theme';
+import {
+  buildWeekViewColumns,
+  weekColumnStatus,
+  weekColumnLabel,
+  type EntryRow,
+  type WeekViewColumn,
+} from '@/components/CalendarHistogram';
 
 const FITNESS_GOAL_BADGES: Record<FitnessGoal, { label: string; color: string }> = Object.fromEntries(
   (Object.entries(FITNESS_GOAL_THEMES) as [FitnessGoal, { label: string; badgeClass: string }][]).map(
@@ -597,6 +604,203 @@ function GoalsBoxPanel({
   );
 }
 
+// ── Dashboard week grid (This week card) ───────────────────────────────────────
+
+function weekColumnIcon(col: WeekViewColumn): ComponentType<{ className?: string }> {
+  switch (col.kind) {
+    case 'workout_agg':
+      return Dumbbell;
+    case 'steps':
+      return Footprints;
+    case 'sleep':
+      return Moon;
+    case 'water':
+      return Droplets;
+    case 'protein':
+      return Utensils;
+    case 'calories':
+      return Activity;
+    default:
+      return Target;
+  }
+}
+
+function GoalDot({
+  met,
+  isFuture,
+  isToday,
+}: {
+  met: boolean | null;
+  isFuture: boolean;
+  isToday: boolean;
+}) {
+  if (isFuture) {
+    return (
+      <div
+        className="w-5 h-5 rounded-full bg-surface-3 shrink-0"
+        aria-hidden
+      />
+    );
+  }
+  if (isToday && met === null) {
+    return (
+      <div
+        className="w-5 h-5 rounded-full border-2 border-dashed border-text-muted/40 shrink-0"
+        aria-label="Not logged yet"
+      />
+    );
+  }
+  if (met === true) {
+    return (
+      <div className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-500 flex items-center justify-center text-[10px] font-bold shrink-0">
+        ✓
+      </div>
+    );
+  }
+  if (met === false) {
+    return (
+      <div className="w-5 h-5 rounded-full bg-rose-500/20 text-rose-500 flex items-center justify-center text-[10px] font-bold shrink-0">
+        ✗
+      </div>
+    );
+  }
+  return (
+    <div
+      className="w-5 h-5 rounded-full bg-surface-3 shrink-0"
+      aria-hidden
+    />
+  );
+}
+
+function DashboardWeekGrid({
+  entries,
+  goals,
+  from,
+  to,
+}: {
+  entries: EntryRow[];
+  goals: Profile;
+  from: string;
+  to: string;
+}) {
+  const columns = buildWeekViewColumns(goals);
+  const todayStr = getLocalDateStr(new Date());
+
+  if (columns.length === 0) {
+    return (
+      <p className="text-sm text-text-muted">
+        Set your goals in{' '}
+        <span className="font-medium text-text-secondary">Profile &amp; Goals</span> to see how each day lines up
+        with your targets.
+      </p>
+    );
+  }
+
+  const entriesByDate = new Map(entries.map((e) => [e.date, e]));
+  const days: string[] = [];
+  const d = new Date(from + 'T12:00:00');
+  const end = new Date(to + 'T12:00:00');
+  while (d <= end) {
+    days.push(getLocalDateStr(d));
+    d.setDate(d.getDate() + 1);
+  }
+
+  const leftToday: WeekViewColumn[] = [];
+  let todayHasAnyLogged = false;
+
+  const dayChips = days.map((date) => {
+    const e = entriesByDate.get(date);
+    const isToday = date === todayStr;
+    const isPast = date < todayStr;
+    const isFuture = date > todayStr;
+    const isPastNoEntry = !e && isPast;
+    const dayLabel = new Date(date + 'T12:00:00').toLocaleDateString(undefined, {
+      weekday: 'short',
+    });
+    const dayNum = new Date(date + 'T12:00:00').getDate();
+
+    const dots = columns.map((col) => {
+      const { met } = weekColumnStatus(e, col, goals, isPastNoEntry, isPast);
+      if (isToday) {
+        if (e) todayHasAnyLogged = true;
+        if (met !== true) leftToday.push(col);
+      }
+      return (
+        <GoalDot
+          key={col.kind}
+          met={isFuture ? null : met}
+          isFuture={isFuture}
+          isToday={isToday}
+        />
+      );
+    });
+
+    return (
+      <div
+        key={date}
+        className={`flex flex-1 min-w-0 flex-col items-center gap-1 rounded-xl border px-1 py-2 ${
+          isToday
+            ? 'border-accent-superjoin-orange/60 bg-accent-superjoin-orange/[0.06]'
+            : 'border-white/10 bg-surface-2/40'
+        }`}
+      >
+        <span
+          className={`text-[9px] font-medium leading-none ${
+            isToday ? 'text-accent-superjoin-orange' : 'text-text-muted'
+          }`}
+        >
+          {dayLabel}
+        </span>
+        <span
+          className={`text-sm font-bold leading-none ${
+            isToday ? 'text-accent-superjoin-orange' : 'text-text-primary'
+          }`}
+        >
+          {dayNum}
+        </span>
+        <div className="flex flex-col items-center gap-1">{dots}</div>
+      </div>
+    );
+  });
+
+  const allDoneToday = isTodayInWeek(days, todayStr) && leftToday.length === 0 && columns.length > 0;
+
+  return (
+    <div className="space-y-0">
+      <div className="flex gap-1.5">{dayChips}</div>
+      {isTodayInWeek(days, todayStr) && (
+        <div className="mt-3 border-t border-white/10 pt-3">
+          {allDoneToday ? (
+            <p className="text-xs font-medium text-emerald-500">All done today ✓</p>
+          ) : leftToday.length > 0 ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs text-text-muted shrink-0">Left today:</span>
+              {leftToday.map((col) => {
+                const Icon = weekColumnIcon(col);
+                return (
+                  <span
+                    key={col.kind}
+                    className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-surface-2 px-2.5 py-0.5 text-xs text-text-secondary"
+                  >
+                    <Icon className="h-3 w-3 shrink-0 opacity-70" aria-hidden />
+                    {weekColumnLabel(col)}
+                  </span>
+                );
+              })}
+            </div>
+          ) : !todayHasAnyLogged ? (
+            <p className="text-xs text-text-muted">Log today to track progress</p>
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function isTodayInWeek(days: string[], todayStr: string): boolean {
+  return days.includes(todayStr);
+}
+
 // ── Main Component ─────────────────────────────────────────────────────────────
 
 export function DashboardTab({
@@ -899,20 +1103,12 @@ export function DashboardTab({
   const goalCrushAtRisk = goalCrushStreak > 0 && hasGoals && !allGoalsMet;
   const goalCrushSafe = goalCrushStreak > 0 && allGoalsMet;
 
-  // Weekly progress
-  const weeklyWorkoutDays = weeklyEntries.filter(
-    e =>
-      e.workout_done ||
-      e.cardio_done ||
-      (Array.isArray(e.workout_types) && e.workout_types.length > 0) ||
-      (e.workout_duration != null && e.workout_duration > 0) ||
-      (e.cardio_duration != null && e.cardio_duration > 0) ||
-      e.cardio_type != null,
-  ).length;
-  const weeklyWorkoutMins = weeklyEntries.reduce(
-    (sum, e) => sum + (e.workout_duration ?? 0) + (e.cardio_duration ?? 0),
-    0,
-  );
+  const weekMonday = getMondayOfWeek(new Date());
+  const weekSunday = (() => {
+    const d = new Date(weekMonday + 'T12:00:00');
+    d.setDate(d.getDate() + 6);
+    return getLocalDateStr(d);
+  })();
 
   const hasWeeklyGoals =
     !!(profile.goal_workout_days_week || profile.goal_workout_mins_week);
@@ -1569,53 +1765,12 @@ export function DashboardTab({
               )}
             </div>
 
-            {/* Workout days */}
-            {profile.goal_workout_days_week ? (
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-xs font-medium text-text-secondary">Workout days</span>
-                  <span className="text-xs font-semibold text-text-muted">
-                    {weeklyWorkoutDays}/{profile.goal_workout_days_week}
-                  </span>
-                </div>
-                <div className="h-2 rounded-full bg-surface-3 overflow-hidden">
-                  <div
-                    className="h-full rounded-full transition-all duration-700"
-                    style={{
-                      width: `${Math.min((weeklyWorkoutDays / profile.goal_workout_days_week) * 100, 100)}%`,
-                      backgroundColor: '#FF6B35',
-                    }}
-                  />
-                </div>
-              </div>
-            ) : null}
-
-            {/* Workout minutes */}
-            {profile.goal_workout_mins_week ? (
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-xs font-medium text-text-secondary">Workout minutes</span>
-                  <span className="text-xs font-semibold text-text-muted">
-                    {weeklyWorkoutMins}/{profile.goal_workout_mins_week} min
-                  </span>
-                </div>
-                <div className="h-2 rounded-full bg-surface-3 overflow-hidden">
-                  <div
-                    className="h-full rounded-full bg-accent-green transition-all duration-700"
-                    style={{
-                      width: `${Math.min((weeklyWorkoutMins / profile.goal_workout_mins_week) * 100, 100)}%`,
-                    }}
-                  />
-                </div>
-              </div>
-            ) : null}
-
-            {!hasWeeklyGoals && (
-              <p className="text-sm text-text-muted">
-                Set your weekly goals in{' '}
-                <span className="font-medium text-text-secondary">Profile &amp; Goals</span> to track progress here.
-              </p>
-            )}
+            <DashboardWeekGrid
+              entries={weeklyEntries as EntryRow[]}
+              goals={profile}
+              from={weekMonday}
+              to={weekSunday}
+            />
           </div>
         </div>
 
