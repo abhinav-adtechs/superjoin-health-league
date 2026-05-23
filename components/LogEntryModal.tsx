@@ -10,6 +10,7 @@ import { CALORIE_MULTIPLIERS_PER_KG } from '@/lib/goal-defaults';
 import { DateCarousel } from '@/components/entry/DateCarousel';
 import { isWithinAllowedPastRange } from '@/lib/entryDateWindow';
 import { SliderField } from '@/components/entry/SliderField';
+import { SleepTimeSlider } from '@/components/entry/SleepTimeSlider';
 import { WorkoutSection } from '@/components/entry/WorkoutSection';
 import { parseGoalWorkoutTypes } from '@/lib/workout-goals';
 
@@ -267,17 +268,11 @@ export function LogEntryModal({ entryType, profile, onClose, onSuccess }: LogEnt
     if ((isWizard && currentStep === 'sleep') || entryType === 'sleep') {
       return (
         <div className="py-2">
-          <SliderField
-            label="Sleep hours"
-            value={sleep_hours}
-            min={4}
-            max={12}
-            step={0.5}
+          <SleepTimeSlider
             onChange={(v) => {
               setSleepHours(v);
               setSleepCommitted(true);
             }}
-            unit=" h"
           />
         </div>
       );
