@@ -614,11 +614,13 @@ aside[data-sidebar-rail='true']:hover .sidebar-nav-item.sidebar-nav-item--rail {
   animation: shake 0.45s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
 }
 
-/* Dual-thumb sleep timeline (bedtime ↔ wake) */
+/* Dual-thumb sleep timeline — wake pin above track, bed pin below */
 .sleep-dual-range {
   position: relative;
-  padding-top: 0.25rem;
-  padding-bottom: 0.25rem;
+}
+.sleep-dual-range__controls {
+  position: relative;
+  height: 3.75rem;
 }
 .sleep-dual-range__track {
   position: absolute;
@@ -630,6 +632,7 @@ aside[data-sidebar-rail='true']:hover .sidebar-nav-item.sidebar-nav-item--rail {
   border-radius: 999px;
   background: rgba(15, 23, 42, 0.08);
   pointer-events: none;
+  z-index: 0;
 }
 .sleep-dual-range__fill {
   position: absolute;
@@ -639,15 +642,24 @@ aside[data-sidebar-rail='true']:hover .sidebar-nav-item.sidebar-nav-item--rail {
   background: linear-gradient(90deg, rgba(99, 102, 241, 0.55), rgba(var(--theme-primary-rgb), 0.85));
 }
 .sleep-dual-range__input {
-  position: relative;
-  z-index: 1;
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
   width: 100%;
-  height: 2.5rem;
+  height: 100%;
   margin: 0;
   background: transparent;
   pointer-events: none;
   -webkit-appearance: none;
   appearance: none;
+  z-index: 1;
+}
+.sleep-dual-range__input--wake {
+  z-index: 1;
+}
+.sleep-dual-range__input--bed {
+  z-index: 1;
 }
 .sleep-dual-range__input--top {
   z-index: 2;
@@ -662,16 +674,30 @@ aside[data-sidebar-rail='true']:hover .sidebar-nav-item.sidebar-nav-item--rail {
   background: transparent;
   border: none;
 }
-.sleep-dual-range__input::-webkit-slider-thumb {
+.sleep-dual-range__input--wake::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
   pointer-events: all;
   width: 1.375rem;
   height: 1.375rem;
-  margin-top: -0.4375rem;
+  margin-top: -1.125rem;
   border-radius: 999px;
   border: 2px solid #fff;
-  background: var(--theme-primary, #ff6b35);
+  background: #f59e0b;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.22);
+  cursor: grab;
+  touch-action: none;
+}
+.sleep-dual-range__input--bed::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  pointer-events: all;
+  width: 1.375rem;
+  height: 1.375rem;
+  margin-top: 0.25rem;
+  border-radius: 999px;
+  border: 2px solid #fff;
+  background: #6366f1;
   box-shadow: 0 1px 4px rgba(15, 23, 42, 0.22);
   cursor: grab;
   touch-action: none;
@@ -680,13 +706,24 @@ aside[data-sidebar-rail='true']:hover .sidebar-nav-item.sidebar-nav-item--rail {
   cursor: grabbing;
   transform: scale(1.08);
 }
-.sleep-dual-range__input::-moz-range-thumb {
+.sleep-dual-range__input--wake::-moz-range-thumb {
   pointer-events: all;
   width: 1.125rem;
   height: 1.125rem;
   border-radius: 999px;
   border: 2px solid #fff;
-  background: var(--theme-primary, #ff6b35);
+  background: #f59e0b;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.22);
+  cursor: grab;
+  touch-action: none;
+}
+.sleep-dual-range__input--bed::-moz-range-thumb {
+  pointer-events: all;
+  width: 1.125rem;
+  height: 1.125rem;
+  border-radius: 999px;
+  border: 2px solid #fff;
+  background: #6366f1;
   box-shadow: 0 1px 4px rgba(15, 23, 42, 0.22);
   cursor: grab;
   touch-action: none;

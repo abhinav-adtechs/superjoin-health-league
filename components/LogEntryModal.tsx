@@ -269,6 +269,7 @@ export function LogEntryModal({ entryType, profile, onClose, onSuccess }: LogEnt
       return (
         <div className="py-2">
           <SleepTimeSlider
+            logDate={date}
             onChange={(v) => {
               setSleepHours(v);
               setSleepCommitted(true);
