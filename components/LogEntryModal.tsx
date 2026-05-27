@@ -13,6 +13,8 @@ import { SliderField } from '@/components/entry/SliderField';
 import { SleepTimeSlider } from '@/components/entry/SleepTimeSlider';
 import { WorkoutSection } from '@/components/entry/WorkoutSection';
 import { parseGoalWorkoutTypes } from '@/lib/workout-goals';
+import { FoodLogPanel } from '@/components/food/FoodLogPanel';
+import { WaterLogPanel } from '@/components/water/WaterLogPanel';
 
 function safeFitnessGoal(profile: Profile): FitnessGoal {
   const g = profile.fitness_goal;
@@ -28,7 +30,7 @@ export function getProteinTargetGrams(profile: Profile): number {
   return recommendedProteinGDay(weightKg, safeFitnessGoal(profile));
 }
 
-function getCalorieTargetKcal(profile: Profile): number {
+export function getCalorieTargetKcal(profile: Profile): number {
   if (profile.goal_calories_day != null && profile.goal_calories_day > 0) {
     return profile.goal_calories_day;
   }
@@ -38,7 +40,7 @@ function getCalorieTargetKcal(profile: Profile): number {
   return Math.round(weightKg * mult);
 }
 
-function calorieFieldLabel(profile: Profile): string {
+export function calorieFieldLabel(profile: Profile): string {
   const target = getCalorieTargetKcal(profile);
   const t = target.toLocaleString();
   const fg = safeFitnessGoal(profile);
@@ -47,12 +49,13 @@ function calorieFieldLabel(profile: Profile): string {
   return `Calories — log ~${t} kcal/day`;
 }
 
-export type EntryType = 'full' | 'movement' | 'meal_recovery' | 'sleep' | 'weight';
+export type EntryType = 'full' | 'movement' | 'meal_recovery' | 'hydration' | 'sleep' | 'weight';
 
 const ENTRY_TITLES: Record<EntryType, string> = {
   full: 'Log full day',
   movement: 'Log Movement',
   meal_recovery: 'Food',
+  hydration: 'Water',
   sleep: 'Sleep',
   weight: 'Weight',
 };
@@ -60,6 +63,7 @@ const ENTRY_TITLES: Record<EntryType, string> = {
 const CTA_TEXT: Record<EntryType, string> = {
   movement: 'Log Movement 💪',
   meal_recovery: 'Log Food 🥗',
+  hydration: 'Done',
   sleep: 'Log Sleep 😴',
   weight: 'Save Weight',
   full: 'Smash it! 🎯',
@@ -74,12 +78,13 @@ function pointsSuccessLine(delta: number, total: number): string {
 const SUCCESS_MSG: Record<EntryType, (delta: number, total: number) => string> = {
   movement: (delta, total) => `🔥 Crushed it! ${pointsSuccessLine(delta, total)}`,
   meal_recovery: (delta, total) => `🥗 Fuelled up! ${pointsSuccessLine(delta, total)}`,
-  sleep: (delta, total) => `😴 Rest logged! ${pointsSuccessLine(delta, total)}`,
+  hydration: (_delta, _total) => '💧 Hydration logged!',
+  sleep: (_delta, _total) => '😴 Rest logged!',
   weight: (_delta, _total) => '⚖️ Weight saved — not part of daily activity points',
   full: (delta, total) => `🏆 Full day locked in! ${pointsSuccessLine(delta, total)}`,
 };
 
-const WIZARD_STEPS = ['date', 'movement', 'food', 'sleep'] as const;
+const WIZARD_STEPS = ['date', 'movement', 'hydration', 'food', 'sleep'] as const;
 type WizardStep = (typeof WIZARD_STEPS)[number];
 
 interface LogEntryModalProps {
@@ -129,10 +134,15 @@ export function LogEntryModal({ entryType, profile, onClose, onSuccess }: LogEnt
     if (isWizard && currentStep === 'sleep') setSleepCommitted(true);
   }, [isWizard, currentStep]);
 
+  useEffect(() => {
+    if (!message || message.type !== 'error' || !message.text.trim()) return;
+    const t = setTimeout(() => setMessage(null), 10_000);
+    return () => clearTimeout(t);
+  }, [message]);
+
   const buildPayload = (): Record<string, unknown> => {
     const payload: Record<string, unknown> = { date };
     const includeMovement = entryType === 'full' || entryType === 'movement';
-    const includeFood = entryType === 'full' || entryType === 'meal_recovery';
     const includeSleep = entryType === 'full' || entryType === 'sleep';
     const includeWeight = entryType === 'weight';
 
@@ -147,16 +157,6 @@ export function LogEntryModal({ entryType, profile, onClose, onSuccess }: LogEnt
         if (cardio_type) payload.cardio_type = cardio_type;
       }
       if (stepsGoalActive && steps != null && steps > 0) payload.steps = steps;
-    }
-    if (includeFood) {
-      if (water_liters > 0) payload.water_liters = water_liters;
-      if (showProtein && protein_qty > 0) {
-        payload.protein_meal = true;
-        payload.protein_qty = protein_qty;
-      }
-      if (showCalories && calories_kcal > 0) {
-        payload.calories_kcal = Math.round(calories_kcal);
-      }
     }
     if (includeSleep && sleepCommitted && sleep_hours > 0) {
       payload.sleep_hours = sleep_hours;
@@ -196,41 +196,37 @@ export function LogEntryModal({ entryType, profile, onClose, onSuccess }: LogEnt
 
   const isLastStep = isWizard && wizardStep === WIZARD_STEPS.length - 1;
 
-  const renderFoodStep = () => {
-    const pt = Math.max(proteinTarget, 1);
-    return (
-    <div className="space-y-6 py-2">
-      <SliderField label="Water" value={water_liters} min={0} max={5} step={0.25} onChange={setWaterLiters} unit=" L" />
-      <p className="text-[11px] text-text-muted -mt-2">
-        Food fields follow your goal:{' '}
-        {foodMode === 'both' ? 'protein + calories' : foodMode === 'calories_only' ? 'calories only' : 'protein only'}.
-      </p>
-      {showProtein && (
-        <SliderField
-          label={`Protein — target ~${proteinTarget}g/day`}
-          value={protein_qty}
-          min={0}
-          max={proteinMax}
-          step={5}
-          onChange={setProteinQty}
-          unit=" g"
-          suffix={protein_qty > 0 ? ` (${Math.round((protein_qty / pt) * 100)}%)` : ''}
-        />
-      )}
-      {showCalories && (
-        <SliderField
-          label={calorieFieldLabel(profile)}
-          value={calories_kcal}
-          min={0}
-          max={calorieMax}
-          step={25}
-          onChange={setCaloriesKcal}
-          unit=" kcal"
-        />
-      )}
-    </div>
-    );
+  const handleFoodLogged = (result: { points_delta?: number; daily_points?: number }) => {
+    const delta = result.points_delta ?? 0;
+    const total = result.daily_points ?? 0;
+    setMessage({ type: 'ok', text: SUCCESS_MSG.meal_recovery(delta, total) });
+    onSuccess();
+    if (entryType === 'meal_recovery') setTimeout(onClose, 1200);
   };
+
+  const renderFoodStep = () => (
+    <FoodLogPanel
+      profile={profile}
+      date={date}
+      onLogged={handleFoodLogged}
+      onError={(text) => setMessage({ type: 'error', text })}
+    />
+  );
+
+  const renderHydrationStep = () => (
+    <WaterLogPanel
+      profile={profile}
+      date={date}
+      compact={isWizard}
+      onDone={() => {
+        if (entryType === 'hydration') {
+          setMessage({ type: 'ok', text: SUCCESS_MSG.hydration(0, 0) });
+          onSuccess();
+          setTimeout(onClose, 800);
+        }
+      }}
+    />
+  );
 
   const renderStepContent = () => {
     if (isWizard && currentStep === 'date') {
@@ -259,6 +255,10 @@ export function LogEntryModal({ entryType, profile, onClose, onSuccess }: LogEnt
           className="py-2"
         />
       );
+    }
+
+    if ((isWizard && currentStep === 'hydration') || entryType === 'hydration') {
+      return renderHydrationStep();
     }
 
     if ((isWizard && currentStep === 'food') || entryType === 'meal_recovery') {
@@ -321,25 +321,40 @@ export function LogEntryModal({ entryType, profile, onClose, onSuccess }: LogEnt
     );
   };
 
-  const renderQuickLog = () => (
-    <form onSubmit={handleSubmit} className="p-4 sm:px-5 pb-6 edge-safe-bottom space-y-5 overflow-y-auto flex-1">
-      <p className="text-xs text-text-muted">Only fill what you did — everything else stays blank.</p>
-      <DateCarousel value={date} onChange={setDate} />
-      {renderStepContent()}
-      {renderSuccessMessage()}
-      <button
-        type="submit"
-        disabled={saving || !isWithinAllowedPastRange(date)}
-        className="btn-primary w-full min-h-[52px] text-base font-bold"
-      >
-        {saving ? 'Saving…' : CTA_TEXT[entryType]}
-      </button>
-    </form>
-  );
+  const selfContainedLog = entryType === 'meal_recovery' || entryType === 'hydration';
+
+  const renderQuickLog = () => {
+    if (selfContainedLog) {
+      return (
+        <div className="entry-modal-body flex flex-col flex-1 min-h-0 overflow-hidden">
+          <div className="flex-1 min-h-0 overflow-hidden flex flex-col px-3 sm:px-4 pt-2">
+            {renderStepContent()}
+          </div>
+          <div className="shrink-0 px-3 sm:px-4 pb-2">{renderSuccessMessage()}</div>
+        </div>
+      );
+    }
+    return (
+      <form onSubmit={handleSubmit} className="p-4 sm:px-5 pb-6 edge-safe-bottom space-y-5 overflow-y-auto flex-1">
+        <p className="text-xs text-text-muted">Only fill what you did — everything else stays blank.</p>
+        <DateCarousel value={date} onChange={setDate} />
+        {renderStepContent()}
+        {renderSuccessMessage()}
+        <button
+          type="submit"
+          disabled={saving || !isWithinAllowedPastRange(date)}
+          className="btn-primary w-full min-h-[52px] text-base font-bold"
+        >
+          {saving ? 'Saving…' : CTA_TEXT[entryType]}
+        </button>
+      </form>
+    );
+  };
 
   const WIZARD_LABELS: Record<WizardStep, string> = {
     date: 'Date',
     movement: 'Movement',
+    hydration: 'Water',
     food: 'Food',
     sleep: 'Sleep',
   };
@@ -370,7 +385,13 @@ export function LogEntryModal({ entryType, profile, onClose, onSuccess }: LogEnt
         ))}
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 sm:px-5">
+      <div
+        className={`flex-1 min-h-0 px-4 sm:px-5 ${
+          currentStep === 'food' || currentStep === 'hydration'
+            ? 'flex flex-col overflow-hidden'
+            : 'overflow-y-auto'
+        }`}
+      >
         {renderStepContent()}
       </div>
 
@@ -409,19 +430,30 @@ export function LogEntryModal({ entryType, profile, onClose, onSuccess }: LogEnt
 
   const modal = (
     <div className="modal-overlay entry-modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal-content entry-modal-content flex flex-col" onClick={(e) => e.stopPropagation()}>
-        <div className="sticky top-0 z-10 bg-white border-b border-black/5 rounded-t-2xl px-4 sm:px-5 py-4 edge-safe-top flex items-center justify-between shrink-0">
-          <h2 className="text-lg font-bold text-text-primary">{ENTRY_TITLES[entryType]}</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-2 min-w-[44px] min-h-[44px] rounded-xl hover:bg-black/5 text-text-muted flex items-center justify-center"
-            aria-label="Close"
-          >
-            <X className="w-5 h-5" />
-          </button>
+      <div className="modal-content entry-modal-content flex flex-col min-h-0 overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <div className="sticky top-0 z-10 bg-white border-b border-black/5 rounded-t-2xl px-4 sm:px-5 py-3 edge-safe-top shrink-0">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0 flex-1">
+              <h2 className="text-lg font-bold text-text-primary leading-tight">{ENTRY_TITLES[entryType]}</h2>
+              {selfContainedLog && (
+                <div className="mt-1.5">
+                  <DateCarousel variant="compact" value={date} onChange={setDate} />
+                </div>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-2 min-w-[44px] min-h-[44px] rounded-xl hover:bg-black/5 text-text-muted flex items-center justify-center shrink-0"
+              aria-label="Close"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
-        {isWizard ? renderWizard() : renderQuickLog()}
+        <div className="entry-modal-body flex flex-col flex-1 min-h-0 overflow-hidden">
+          {isWizard ? renderWizard() : renderQuickLog()}
+        </div>
       </div>
     </div>
   );

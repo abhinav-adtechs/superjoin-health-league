@@ -30,9 +30,16 @@ interface DateCarouselProps {
   value: string;
   onChange: (date: string) => void;
   className?: string;
+  /** Smaller single-line picker for tight modals (e.g. food log). */
+  variant?: 'default' | 'compact';
 }
 
-export function DateCarousel({ value, onChange, className = '' }: DateCarouselProps) {
+export function DateCarousel({
+  value,
+  onChange,
+  className = '',
+  variant = 'default',
+}: DateCarouselProps) {
   const DATE_OPTIONS = useMemo(() => getDateStrings(), []);
   
   const normalizedValue = value.slice(0, 10);
@@ -45,29 +52,45 @@ export function DateCarousel({ value, onChange, className = '' }: DateCarouselPr
     onChange(DATE_OPTIONS[next].date);
   };
 
+  const compact = variant === 'compact';
+  const navBtn = compact
+    ? 'min-w-[36px] min-h-[36px] rounded-lg border border-black/8 bg-white text-text-muted hover:bg-black/5 disabled:opacity-40'
+    : 'min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl border border-white/10 bg-surface-0/50 md:bg-surface-0 text-text-muted hover:bg-black/5 hover:text-text-primary disabled:opacity-40 disabled:pointer-events-none touch-manipulation';
+
   return (
-    <div className={`flex items-center justify-between gap-3 ${className}`}>
+    <div className={`flex items-center justify-between gap-2 ${className}`}>
       <button
         type="button"
         onClick={() => go(1)}
         disabled={currentIndex >= DATE_OPTIONS.length - 1}
-        className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl border border-white/10 bg-surface-0/50 md:bg-surface-0 text-text-muted hover:bg-black/5 hover:text-text-primary disabled:opacity-40 disabled:pointer-events-none touch-manipulation"
+        className={`${navBtn} flex items-center justify-center touch-manipulation`}
         aria-label="Older date"
       >
-        <span className="text-lg font-medium">←</span>
+        <span className={compact ? 'text-base' : 'text-lg font-medium'}>←</span>
       </button>
-      <div className="flex-1 text-center min-w-0">
-        <p className="font-semibold text-text-primary truncate">{selected.label}</p>
-        <p className="text-sm text-text-muted truncate">{selected.sublabel}</p>
+      <div className="flex-1 text-center min-w-0 px-1">
+        {compact ? (
+          <p className="text-sm font-semibold text-text-primary truncate">
+            {selected.sublabel}
+            {selected.label !== selected.sublabel ? (
+              <span className="font-normal text-text-muted"> · {selected.label}</span>
+            ) : null}
+          </p>
+        ) : (
+          <>
+            <p className="font-semibold text-text-primary truncate">{selected.label}</p>
+            <p className="text-sm text-text-muted truncate">{selected.sublabel}</p>
+          </>
+        )}
       </div>
       <button
         type="button"
         onClick={() => go(-1)}
         disabled={currentIndex <= 0}
-        className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl border border-white/10 bg-surface-0/50 md:bg-surface-0 text-text-muted hover:bg-black/5 hover:text-text-primary disabled:opacity-40 disabled:pointer-events-none touch-manipulation"
+        className={`${navBtn} flex items-center justify-center touch-manipulation`}
         aria-label="More recent date"
       >
-        <span className="text-lg font-medium">→</span>
+        <span className={compact ? 'text-base' : 'text-lg font-medium'}>→</span>
       </button>
     </div>
   );

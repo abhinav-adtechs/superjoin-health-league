@@ -2,13 +2,14 @@
 
 import { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, ChevronDown, Dumbbell, Utensils, Moon, Scale } from 'lucide-react';
+import { Plus, ChevronDown, Dumbbell, Utensils, Droplets, Moon, Scale } from 'lucide-react';
 import { LogEntryModal, type EntryType } from './LogEntryModal';
 import type { Profile } from '@/lib/types';
 
 const ENTRY_OPTIONS: { type: EntryType; label: string; arcLabel: string; icon: typeof Dumbbell }[] = [
   { type: 'movement', label: 'Log Movement', arcLabel: 'Movement', icon: Dumbbell },
   { type: 'meal_recovery', label: 'Log Food', arcLabel: 'Food', icon: Utensils },
+  { type: 'hydration', label: 'Log Water', arcLabel: 'Water', icon: Droplets },
   { type: 'sleep', label: 'Log Sleep', arcLabel: 'Sleep', icon: Moon },
   { type: 'weight', label: 'Log Weight', arcLabel: 'Weight', icon: Scale },
 ];
@@ -150,7 +151,7 @@ export function NewEntryCTA({ profile, onSuccess, placement = 'desktop', sidebar
     />
   ) : null;
 
-  const arcRadiusPx = 112;
+  const arcRadiusPx = 120;
 
   const portalDropdown =
     mounted &&

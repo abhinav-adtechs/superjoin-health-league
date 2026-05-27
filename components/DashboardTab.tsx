@@ -278,7 +278,7 @@ function computeRemainingItems(entry: DailyEntry | null, profile: Profile): Rema
     items.push({
       icon: <Droplets className="w-4 h-4 text-accent-blue" />,
       text: `Drink ${rem} L more water`,
-      modalType: 'meal_recovery',
+      modalType: 'hydration',
     });
   }
   if (sleepGoal && !entry?.sleep_hours) {
@@ -1606,7 +1606,13 @@ export function DashboardTab({
               )}
 
               {/* Water */}
-              <div className="flex flex-col items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => profile.goal_water_liters && setModalType('hydration')}
+                className={`flex flex-col items-center gap-1.5 touch-manipulation ${
+                  profile.goal_water_liters ? 'cursor-pointer hover:opacity-90' : 'cursor-default'
+                }`}
+              >
                 <div className={`relative ${!profile.goal_water_liters ? 'opacity-30' : ''}`}>
                   {profile.goal_water_liters ? (
                     <CircleRing pct={waterPct} size={ringSizeFoodGoals} strokeWidth={strokeFoodGoals} color="#2563eb" />
@@ -1634,7 +1640,7 @@ export function DashboardTab({
                 ) : (
                   <span className="text-[11px] text-text-muted">–</span>
                 )}
-              </div>
+              </button>
 
               {/* Sleep */}
               <div className="flex flex-col items-center gap-1.5">

@@ -36,6 +36,39 @@ function sleepHoursFromRange(bed: number, wake: number): number {
   return Math.round(((wake - bed) / 60) * 4) / 4;
 }
 
+type SleepQuality = 'poor' | 'fair' | 'good';
+
+/** Matches scoring bands: green ≥7h, yellow 5–7h, red <5h. */
+function sleepQuality(hours: number): SleepQuality {
+  if (hours >= 7) return 'good';
+  if (hours >= 5) return 'fair';
+  return 'poor';
+}
+
+const SLEEP_QUALITY = {
+  good: {
+    fill: 'linear-gradient(90deg, #34d399, #059669)',
+    summary: 'bg-emerald-50/90 border-emerald-200 text-emerald-900',
+    summaryLabel: 'text-emerald-700/80',
+    badge: 'bg-emerald-100 text-emerald-800',
+    label: 'Good rest',
+  },
+  fair: {
+    fill: 'linear-gradient(90deg, #fcd34d, #f59e0b)',
+    summary: 'bg-amber-50/90 border-amber-200 text-amber-950',
+    summaryLabel: 'text-amber-700/80',
+    badge: 'bg-amber-100 text-amber-900',
+    label: 'Fair rest',
+  },
+  poor: {
+    fill: 'linear-gradient(90deg, #fca5a5, #ef4444)',
+    summary: 'bg-red-50/90 border-red-200 text-red-950',
+    summaryLabel: 'text-red-700/80',
+    badge: 'bg-red-100 text-red-800',
+    label: 'Short rest',
+  },
+} as const;
+
 /** Log date is the morning you woke up; evening hours belong to the previous calendar day. */
 function dayOffsetForTime(extendedMinutes: number, role: 'bed' | 'wake'): number {
   if (role === 'wake') return 0;
@@ -60,6 +93,9 @@ export function SleepTimeSlider({ logDate, onChange, className = '' }: SleepTime
   const [activeThumb, setActiveThumb] = useState<'bed' | 'wake'>('wake');
 
   const durationMin = wake - bed;
+  const sleepHours = sleepHoursFromRange(bed, wake);
+  const quality = sleepQuality(sleepHours);
+  const qualityStyle = SLEEP_QUALITY[quality];
   const bedDay = formatDayLabel(logDate, dayOffsetForTime(bed, 'bed'));
   const wakeDay = formatDayLabel(logDate, dayOffsetForTime(wake, 'wake'));
 
@@ -91,49 +127,62 @@ export function SleepTimeSlider({ logDate, onChange, className = '' }: SleepTime
 
   return (
     <div className={`space-y-4 ${className}`}>
-      <div className="rounded-2xl bg-indigo-50/80 border border-indigo-100 px-4 py-3 text-center">
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-indigo-700/80 mb-0.5">
+      <div className={`rounded-2xl border px-4 py-3 text-center ${qualityStyle.summary}`}>
+        <p className={`text-[11px] font-semibold uppercase tracking-wide mb-0.5 ${qualityStyle.summaryLabel}`}>
           Total sleep
         </p>
-        <p className="text-2xl font-bold tabular-nums text-text-primary">{formatDuration(durationMin)}</p>
+        <p className="text-2xl font-bold tabular-nums">{formatDuration(durationMin)}</p>
+        <span className={`inline-block mt-1.5 text-[11px] font-semibold px-2 py-0.5 rounded-full ${qualityStyle.badge}`}>
+          {qualityStyle.label}
+        </span>
       </div>
+
+      <p className="text-[11px] text-text-muted text-center leading-relaxed rounded-xl border border-black/6 bg-surface-0/80 px-3 py-2.5">
+        Only uninterrupted night sleep counts — naps and daytime rest are not included.
+      </p>
 
       <div className="sleep-dual-range px-1">
         <div className="sleep-dual-range__controls">
           <div className="sleep-dual-range__track" aria-hidden>
             <div
               className="sleep-dual-range__fill"
-              style={{ left: `${bedPct}%`, width: `${wakePct - bedPct}%` }}
+              style={{
+                left: `${bedPct}%`,
+                width: `${wakePct - bedPct}%`,
+                background: qualityStyle.fill,
+              }}
             />
           </div>
-          <input
-            type="range"
-            min={TIMELINE_MIN}
-            max={TIMELINE_MAX}
-            step={STEP}
-            value={wake}
-            onChange={(e) => handleWakeChange(Number(e.target.value))}
-            onPointerDown={() => setActiveThumb('wake')}
-            className={`sleep-dual-range__input sleep-dual-range__input--wake ${
-              activeThumb === 'wake' ? 'sleep-dual-range__input--top' : ''
-            }`}
-            aria-label="Wake up time"
-            aria-valuetext={`${wakeDay} ${formatClockTime(wake)}`}
-          />
-          <input
-            type="range"
-            min={TIMELINE_MIN}
-            max={TIMELINE_MAX}
-            step={STEP}
-            value={bed}
-            onChange={(e) => handleBedChange(Number(e.target.value))}
-            onPointerDown={() => setActiveThumb('bed')}
-            className={`sleep-dual-range__input sleep-dual-range__input--bed ${
-              activeThumb === 'bed' ? 'sleep-dual-range__input--top' : ''
-            }`}
-            aria-label="Bedtime"
-            aria-valuetext={`${bedDay} ${formatClockTime(bed)}`}
-          />
+          <div className="sleep-dual-range__inputs">
+            <input
+              type="range"
+              min={TIMELINE_MIN}
+              max={TIMELINE_MAX}
+              step={STEP}
+              value={bed}
+              onChange={(e) => handleBedChange(Number(e.target.value))}
+              onPointerDown={() => setActiveThumb('bed')}
+              className={`sleep-dual-range__input sleep-dual-range__input--bed ${
+                activeThumb === 'bed' ? 'sleep-dual-range__input--top' : ''
+              }`}
+              aria-label="Bedtime"
+              aria-valuetext={`${bedDay} ${formatClockTime(bed)}`}
+            />
+            <input
+              type="range"
+              min={TIMELINE_MIN}
+              max={TIMELINE_MAX}
+              step={STEP}
+              value={wake}
+              onChange={(e) => handleWakeChange(Number(e.target.value))}
+              onPointerDown={() => setActiveThumb('wake')}
+              className={`sleep-dual-range__input sleep-dual-range__input--wake ${
+                activeThumb === 'wake' ? 'sleep-dual-range__input--top' : ''
+              }`}
+              aria-label="Wake up time"
+              aria-valuetext={`${wakeDay} ${formatClockTime(wake)}`}
+            />
+          </div>
         </div>
 
         <div className="flex justify-between text-[10px] text-text-muted mt-1 px-0.5 tabular-nums">
@@ -162,7 +211,7 @@ export function SleepTimeSlider({ logDate, onChange, className = '' }: SleepTime
       </div>
 
       <p className="text-[11px] text-text-muted text-center leading-relaxed">
-        Drag the top pin for wake-up and the bottom pin for bedtime.
+        Drag the pins below the bar to set bedtime and wake-up.
       </p>
     </div>
   );

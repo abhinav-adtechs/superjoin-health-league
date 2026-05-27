@@ -255,7 +255,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ players, matches }) => {
                   contentStyle={{
                     backgroundColor: 'rgba(255, 255, 255, 0.98)',
                     border: '1px solid rgba(0,0,0,0.08)',
-                    borderRadius: '12px',
+                    borderRadius: '3px',
                     backdropFilter: 'blur(20px)',
                     boxShadow: '0 20px 40px -12px rgba(0,0,0,0.15)',
                     fontSize: '12px',
