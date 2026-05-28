@@ -21,7 +21,35 @@ export function getApiFetchOptions(init?: RequestInit): RequestInit {
 
 /** Full URL for an API path (path should start with /). */
 export function apiUrl(path: string): string {
-  return getApiBaseUrl() + (path.startsWith('/') ? path : '/' + path);
+  let base = getApiBaseUrl();
+  if (base && !/^https?:\/\//i.test(base)) {
+    base = `https://${base.replace(/^\/+/, '')}`;
+  }
+  return base + (path.startsWith('/') ? path : '/' + path);
+}
+
+/** Parse JSON API bodies safely (Safari surfaces empty-body parse failures as "pattern" errors). */
+export async function readApiJson<T extends Record<string, unknown> = Record<string, unknown>>(
+  res: Response,
+): Promise<T> {
+  const text = await res.text();
+  if (!text.trim()) {
+    if (!res.ok) {
+      throw new Error(
+        res.status === 401
+          ? 'Please sign in again'
+          : `Request failed (${res.status})`,
+      );
+    }
+    return {} as T;
+  }
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new Error(
+      !res.ok ? `Request failed (${res.status})` : 'Invalid server response',
+    );
+  }
 }
 
 /** Attach Supabase access token so Route Handlers see the user when cookies are missing (common in WebViews / hybrid). */

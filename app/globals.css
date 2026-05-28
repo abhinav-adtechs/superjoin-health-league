@@ -1075,6 +1075,71 @@ aside[data-sidebar-rail='true']:hover .sidebar-nav-item.sidebar-nav-item--rail {
   }
 }
 
+@keyframes food-cart-bump {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.012);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.food-log-panel__cart--just-added {
+  animation: food-cart-bump 0.55s ease-out;
+}
+
+@keyframes food-cart-attention-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 0 rgba(var(--theme-primary-rgb), 0.2),
+      0 2px 8px rgba(var(--theme-primary-rgb), 0.12);
+  }
+  50% {
+    box-shadow:
+      0 0 0 4px rgba(var(--theme-primary-rgb), 0.14),
+      0 2px 12px rgba(var(--theme-primary-rgb), 0.18);
+  }
+}
+
+.food-log-panel__cart--attention {
+  animation: food-cart-attention-pulse 2.2s ease-in-out infinite;
+}
+
+@keyframes food-cart-badge-pop {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.5;
+  }
+  45% {
+    transform: scale(1.12);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.food-log-panel__cart-badge {
+  animation: food-cart-badge-pop 0.4s ease-out;
+}
+
+@keyframes food-cart-item-new {
+  0% {
+    background-color: rgba(var(--theme-primary-rgb), 0.22);
+  }
+  100% {
+    background-color: rgba(var(--theme-primary-rgb), 0.06);
+  }
+}
+
+.food-log-panel__cart-item--new {
+  animation: food-cart-item-new 1.6s ease-out forwards;
+}
+
 @media (max-width: 767px) {
   /* One scroll surface: shell fills the viewport; document does not rubber-band */
   html:has(.mobile-app-shell),

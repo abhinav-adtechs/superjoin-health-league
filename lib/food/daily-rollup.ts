@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { normalizeYmd } from '@/lib/entryDateWindow';
 import { calculateDailyPoints, isGoalCrushDay } from '@/lib/points';
 import type { AgeBracket } from '@/lib/types';
 
@@ -45,42 +46,66 @@ export async function rollupWaterToDailyEntry(
   return Math.round(total * 100) / 100;
 }
 
+function mergeExistingDailyFields(existing: Record<string, unknown> | null): Record<string, unknown> {
+  if (!existing) return {};
+  return {
+    workout_done: existing.workout_done,
+    workout_duration: existing.workout_duration,
+    workout_types: existing.workout_types ?? [],
+    cardio_done: existing.cardio_done,
+    cardio_duration: existing.cardio_duration,
+    cardio_type: existing.cardio_type,
+    steps: existing.steps,
+    water_liters: existing.water_liters,
+    home_cooked_meals: existing.home_cooked_meals,
+    protein_meal: existing.protein_meal,
+    protein_qty: existing.protein_qty,
+    junk_food: existing.junk_food,
+    alcohol: existing.alcohol,
+    sleep_hours: existing.sleep_hours,
+    sleep_quality: existing.sleep_quality,
+    calories_kcal: existing.calories_kcal,
+  };
+}
+
 /** Recompute daily_entries nutrition from meal_food_logs + water_logs; preserve other fields. */
 export async function syncDailyEntryAfterFoodOrWater(
   supabase: SupabaseClient,
   userId: string,
   date: string,
 ): Promise<{ daily_points: number; points_delta?: number } | { error: string }> {
+  const dateNorm = normalizeYmd(date) ?? date;
+
   const { data: existing } = await supabase
     .from('daily_entries')
     .select('*')
     .eq('user_id', userId)
-    .eq('date', date)
+    .eq('date', dateNorm)
     .maybeSingle();
 
   const { data: mealLogs } = await supabase
     .from('meal_food_logs')
     .select('id')
     .eq('user_id', userId)
-    .eq('log_date', date)
+    .eq('log_date', dateNorm)
     .limit(1);
 
   const { data: waterLogs } = await supabase
     .from('water_logs')
     .select('id')
     .eq('user_id', userId)
-    .eq('log_date', date)
+    .eq('log_date', dateNorm)
     .limit(1);
 
   const hasMealLogs = (mealLogs?.length ?? 0) > 0;
   const hasWaterLogs = (waterLogs?.length ?? 0) > 0;
 
   const nutrition = hasMealLogs
-    ? await rollupMealNutritionToDailyEntry(supabase, userId, date)
+    ? await rollupMealNutritionToDailyEntry(supabase, userId, dateNorm)
     : null;
 
   const water_liters = hasWaterLogs
-    ? await rollupWaterToDailyEntry(supabase, userId, date)
+    ? await rollupWaterToDailyEntry(supabase, userId, dateNorm)
     : existing?.water_liters ?? null;
 
   const { data: profile } = await supabase
@@ -104,8 +129,8 @@ export async function syncDailyEntryAfterFoodOrWater(
 
   const entry: Record<string, unknown> = {
     user_id: userId,
-    date,
-    ...(existing ?? {}),
+    date: dateNorm,
+    ...mergeExistingDailyFields(existing as Record<string, unknown> | null),
   };
 
   if (hasMealLogs && nutrition) {
@@ -144,11 +169,25 @@ export async function syncDailyEntryAfterFoodOrWater(
     entry.daily_points as number,
   );
 
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from('daily_entries')
-    .upsert(entry, { onConflict: 'user_id,date' })
+    .upsert(entry, { onConflict: 'user_id,date', ignoreDuplicates: false })
     .select('daily_points')
     .single();
+
+  if (error && 'is_goal_crush_day' in entry) {
+    const { is_goal_crush_day: _dropped, ...withoutCrush } = entry as Record<string, unknown> & {
+      is_goal_crush_day: unknown;
+    };
+    void _dropped;
+    const retry = await supabase
+      .from('daily_entries')
+      .upsert(withoutCrush, { onConflict: 'user_id,date', ignoreDuplicates: false })
+      .select('daily_points')
+      .single();
+    data = retry.data;
+    error = retry.error;
+  }
 
   if (error) return { error: error.message };
 

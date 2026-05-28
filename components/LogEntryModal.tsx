@@ -336,7 +336,7 @@ export function LogEntryModal({ entryType, profile, onClose, onSuccess }: LogEnt
       );
     }
     return (
-      <form onSubmit={handleSubmit} className="log-entry-form flex-1 min-h-0">
+      <form onSubmit={handleSubmit} noValidate className="log-entry-form flex-1 min-h-0">
         <div className="log-entry-scroll log-entry-scroll--compact px-4 sm:px-5 pt-2 sm:pt-3 pb-2 flex-1 min-h-0">
           <DateCarousel value={date} onChange={setDate} />
           {renderStepContent()}
@@ -364,7 +364,7 @@ export function LogEntryModal({ entryType, profile, onClose, onSuccess }: LogEnt
   };
 
   const renderWizard = () => (
-    <form onSubmit={handleSubmit} className="log-entry-form flex-1 min-h-0">
+    <form onSubmit={handleSubmit} noValidate className="log-entry-form flex-1 min-h-0">
       <div className="px-4 sm:px-5 pt-1 pb-2 sm:pb-3 flex items-center gap-1.5 shrink-0">
         {WIZARD_STEPS.map((step, i) => (
           <div key={step} className="flex items-center gap-1.5 flex-1 min-w-0">

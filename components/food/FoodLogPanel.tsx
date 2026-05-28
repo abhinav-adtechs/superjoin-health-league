@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChevronDown, ChevronUp, Sparkles } from 'lucide-react';
-import { apiUrl, getApiFetchOptions, getAuthHeaders } from '@/lib/api';
+import { apiUrl, getApiFetchOptions, getAuthHeaders, readApiJson } from '@/lib/api';
 import type { Profile } from '@/lib/types';
 import type { FoodCartItem, MealType } from '@/lib/food/types';
 import { MEAL_TYPES } from '@/lib/food/types';
@@ -48,6 +48,16 @@ export function FoodLogPanel({ profile, date, onLogged, onError }: FoodLogPanelP
   /** Mobile keyboard open — collapse chrome and sync visual viewport height. */
   const [composerFocused, setComposerFocused] = useState(false);
   const composerBlurTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cartBadgeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cartAttentionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cartItemHighlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [cartAttention, setCartAttention] = useState(false);
+  const [cartAddedBadge, setCartAddedBadge] = useState(0);
+  const [newCartItemIds, setNewCartItemIds] = useState<Set<string>>(() => new Set());
+
+  const CART_BADGE_MS = 5500;
+  const CART_ATTENTION_MS = 8000;
+  const CART_ITEM_HIGHLIGHT_MS = 3500;
 
   const foodMode = profile.food_tracking_mode ?? 'protein_only';
   const showProtein = foodMode === 'protein_only' || foodMode === 'both';
@@ -55,7 +65,7 @@ export function FoodLogPanel({ profile, date, onLogged, onError }: FoodLogPanelP
 
   const batchKcal = cart.reduce((s, c) => s + c.calories_kcal, 0);
   const batchProtein = cart.reduce((s, c) => s + c.protein_g, 0);
-  const blocked = cart.some((c) => !c.food_catalog_id);
+  const blocked = cart.some((c) => !c.food_catalog_id?.trim());
 
   const loadDay = useCallback(async () => {
     const headers = await getAuthHeaders();
@@ -63,7 +73,7 @@ export function FoodLogPanel({ profile, date, onLogged, onError }: FoodLogPanelP
       ...getApiFetchOptions(),
       headers,
     });
-    const data = await res.json();
+    const data = await readApiJson<{ totals?: { calories_kcal?: number; protein_g?: number } }>(res);
     if (res.ok && data.totals) {
       setDayTotals({
         calories_kcal: data.totals.calories_kcal ?? 0,
@@ -111,7 +121,12 @@ export function FoodLogPanel({ profile, date, onLogged, onError }: FoodLogPanelP
   }, [runSearch]);
 
   useEffect(() => {
-    if (cart.length === 0) setActivePane('composer');
+    if (cart.length === 0) {
+      setActivePane('composer');
+      setCartAttention(false);
+      setCartAddedBadge(0);
+      setNewCartItemIds(new Set());
+    }
   }, [cart.length]);
 
   useEffect(() => {
@@ -155,9 +170,44 @@ export function FoodLogPanel({ profile, date, onLogged, onError }: FoodLogPanelP
   useEffect(
     () => () => {
       if (composerBlurTimer.current) clearTimeout(composerBlurTimer.current);
+      if (cartBadgeTimer.current) clearTimeout(cartBadgeTimer.current);
+      if (cartAttentionTimer.current) clearTimeout(cartAttentionTimer.current);
+      if (cartItemHighlightTimer.current) clearTimeout(cartItemHighlightTimer.current);
     },
     [],
   );
+
+  const clearCartAttention = useCallback(() => {
+    setCartAttention(false);
+    setCartAddedBadge(0);
+    setNewCartItemIds(new Set());
+    if (cartBadgeTimer.current) clearTimeout(cartBadgeTimer.current);
+    if (cartAttentionTimer.current) clearTimeout(cartAttentionTimer.current);
+    if (cartItemHighlightTimer.current) clearTimeout(cartItemHighlightTimer.current);
+  }, []);
+
+  const flashCartAdd = useCallback(
+    (clientId: string) => {
+      setNewCartItemIds((prev) => new Set(prev).add(clientId));
+      setCartAddedBadge((n) => n + 1);
+      setCartAttention(true);
+
+      if (cartBadgeTimer.current) clearTimeout(cartBadgeTimer.current);
+      cartBadgeTimer.current = setTimeout(() => setCartAddedBadge(0), CART_BADGE_MS);
+
+      if (cartAttentionTimer.current) clearTimeout(cartAttentionTimer.current);
+      cartAttentionTimer.current = setTimeout(() => setCartAttention(false), CART_ATTENTION_MS);
+
+      if (cartItemHighlightTimer.current) clearTimeout(cartItemHighlightTimer.current);
+      cartItemHighlightTimer.current = setTimeout(() => setNewCartItemIds(new Set()), CART_ITEM_HIGHLIGHT_MS);
+    },
+    [CART_ATTENTION_MS, CART_BADGE_MS, CART_ITEM_HIGHLIGHT_MS],
+  );
+
+  const openCart = useCallback(() => {
+    setActivePane('cart');
+    clearCartAttention();
+  }, [clearCartAttention]);
 
   const handleComposerFocus = () => {
     if (composerBlurTimer.current) clearTimeout(composerBlurTimer.current);
@@ -189,10 +239,11 @@ export function FoodLogPanel({ profile, date, onLogged, onError }: FoodLogPanelP
     catalog_created?: boolean;
     nl_raw?: string;
   }) => {
+    const client_id = newClientId();
     setCart((prev) => [
       ...prev,
       {
-        client_id: newClientId(),
+        client_id,
         food_catalog_id: payload.food_catalog_id,
         display_name: payload.display_name,
         meal_type: payload.meal_type,
@@ -209,6 +260,7 @@ export function FoodLogPanel({ profile, date, onLogged, onError }: FoodLogPanelP
         catalog_created: payload.catalog_created,
       },
     ]);
+    flashCartAdd(client_id);
     setPortionPick(null);
   };
 
@@ -223,7 +275,24 @@ export function FoodLogPanel({ profile, date, onLogged, onError }: FoodLogPanelP
         headers,
         body: JSON.stringify({ text: describeText }),
       });
-      const data = await res.json();
+      const data = await readApiJson<{
+        error?: string;
+        items?: Array<{
+          food_catalog_id?: string;
+          display_name: string;
+          meal_type: MealType;
+          quantity: number;
+          unit: string;
+          portion_key?: string | null;
+          portion_label?: string | null;
+          calories_kcal?: number;
+          protein_g?: number;
+          needs_review?: boolean;
+          needs_portion_review?: boolean;
+          catalog_created?: boolean;
+          nl_raw?: string;
+        }>;
+      }>(res);
       if (!res.ok) throw new Error(data.error || 'Parse failed');
       for (const line of data.items ?? []) {
         addToCart({
@@ -257,20 +326,24 @@ export function FoodLogPanel({ profile, date, onLogged, onError }: FoodLogPanelP
     try {
       const headers = { ...(await getAuthHeaders()), 'Content-Type': 'application/json' };
       const items = cart
-        .filter((c) => c.food_catalog_id)
+        .filter((c) => c.food_catalog_id?.trim())
         .map((c) => ({
-          food_catalog_id: c.food_catalog_id,
+          food_catalog_id: c.food_catalog_id!.trim(),
           display_name: c.display_name,
           meal_type: c.meal_type,
           quantity: c.quantity,
           unit: c.unit,
-          portion_key: c.portion_key,
-          portion_label: c.portion_label,
+          portion_key: c.portion_key ?? 'regular',
+          portion_label: c.portion_label ?? 'Regular',
           calories_kcal: c.calories_kcal,
           protein_g: c.protein_g,
           source: c.source,
           nl_raw: c.nl_raw,
         }));
+
+      if (items.length === 0) {
+        throw new Error('Cart items are missing catalog IDs. Remove and re-add them.');
+      }
 
       const res = await fetch(apiUrl('/api/food/logs'), {
         method: 'POST',
@@ -278,7 +351,11 @@ export function FoodLogPanel({ profile, date, onLogged, onError }: FoodLogPanelP
         headers,
         body: JSON.stringify({ date, items }),
       });
-      const data = await res.json();
+      const data = await readApiJson<{
+        error?: string;
+        points_delta?: number;
+        daily_points?: number;
+      }>(res);
       if (!res.ok) throw new Error(data.error || 'Failed to save');
 
       if (manualOpen && (manualProtein > 0 || manualCalories > 0)) {
@@ -288,12 +365,14 @@ export function FoodLogPanel({ profile, date, onLogged, onError }: FoodLogPanelP
           entryBody.protein_meal = true;
         }
         if (showCalories && manualCalories > 0) entryBody.calories_kcal = manualCalories;
-        await fetch(apiUrl('/api/entries'), {
+        const manualRes = await fetch(apiUrl('/api/entries'), {
           method: 'POST',
           ...getApiFetchOptions(),
           headers,
           body: JSON.stringify(entryBody),
         });
+        const manualData = await readApiJson<{ error?: string }>(manualRes);
+        if (!manualRes.ok) throw new Error(manualData.error || 'Failed to save manual macros');
       }
 
       setCart([]);
@@ -319,9 +398,11 @@ export function FoodLogPanel({ profile, date, onLogged, onError }: FoodLogPanelP
       </p>
 
       <div
-        className={`food-log-panel__cart rounded-xl border border-slate-200 bg-slate-50 shadow-sm overflow-hidden ${
-          showCartExpanded ? 'flex flex-col flex-1 min-h-0' : 'shrink-0'
-        }`}
+        className={`food-log-panel__cart rounded-xl border-2 shadow-sm overflow-hidden transition-colors duration-300 ${
+          cartAttention
+            ? 'food-log-panel__cart--attention food-log-panel__cart--just-added border-primary-orange bg-primary-orange/[0.1] ring-2 ring-primary-orange/25'
+            : 'border-slate-200 bg-slate-50'
+        } ${showCartExpanded ? 'flex flex-col flex-1 min-h-0' : 'shrink-0'}`}
       >
         {cart.length === 0 ? (
           <div className="flex items-center justify-between gap-2 px-3 py-1.5 bg-white">
@@ -337,7 +418,12 @@ export function FoodLogPanel({ profile, date, onLogged, onError }: FoodLogPanelP
               onClick={() => setActivePane('composer')}
             >
               <span className="text-xs font-bold text-text-primary">Cart</span>
-              <span className="inline-flex items-center gap-1 text-[11px] font-semibold tabular-nums text-primary-orange">
+              <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold tabular-nums text-primary-orange">
+                {cartAddedBadge > 0 ? (
+                  <span className="food-log-panel__cart-badge rounded-full bg-primary-orange px-1.5 py-px text-[10px] font-bold text-white tabular-nums">
+                    +{cartAddedBadge}
+                  </span>
+                ) : null}
                 {cart.length}
                 <ChevronUp className="w-3.5 h-3.5 text-text-muted" aria-hidden />
               </span>
@@ -346,7 +432,13 @@ export function FoodLogPanel({ profile, date, onLogged, onError }: FoodLogPanelP
               {cart.map((line) => (
                 <li
                   key={line.client_id}
-                  className={`px-3 py-1.5 text-sm ${line.catalog_created ? 'bg-sky-50' : 'bg-white'}`}
+                  className={`px-3 py-1.5 text-sm ${
+                    newCartItemIds.has(line.client_id)
+                      ? 'food-log-panel__cart-item--new bg-primary-orange/10'
+                      : line.catalog_created
+                      ? 'bg-sky-50'
+                      : 'bg-white'
+                  }`}
                 >
                   <div className="flex justify-between gap-2 items-start">
                     <div className="min-w-0">
@@ -373,18 +465,45 @@ export function FoodLogPanel({ profile, date, onLogged, onError }: FoodLogPanelP
             </ul>
           </>
         ) : (
-          <button
-            type="button"
-            className="w-full flex items-center justify-between gap-2 px-3 py-2 bg-white text-left"
-            aria-expanded={false}
-            onClick={() => setActivePane('cart')}
-          >
-            <span className="text-xs font-bold text-text-primary">Cart</span>
-            <span className="min-w-0 flex-1 text-[11px] text-text-muted truncate text-center px-1 tabular-nums">
-              {cart.length} item{cart.length === 1 ? '' : 's'} · +{batchKcal} kcal · +{batchProtein}g
-            </span>
-            <ChevronDown className="w-3.5 h-3.5 shrink-0 text-text-muted" aria-hidden />
-          </button>
+          <>
+            <button
+              type="button"
+              className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 text-left transition-colors ${
+                cartAttention ? 'bg-primary-orange/[0.14]' : 'bg-white'
+              }`}
+              aria-expanded={false}
+              onClick={openCart}
+            >
+              <span className="inline-flex items-center gap-1.5 min-w-0">
+                <span
+                  className={`text-xs font-bold ${cartAttention ? 'text-primary-orange' : 'text-text-primary'}`}
+                >
+                  Cart
+                </span>
+                {cartAddedBadge > 0 ? (
+                  <span className="food-log-panel__cart-badge shrink-0 rounded-full bg-primary-orange px-2 py-0.5 text-[10px] font-bold text-white tabular-nums shadow-sm">
+                    +{cartAddedBadge}
+                  </span>
+                ) : null}
+              </span>
+              <span
+                className={`min-w-0 flex-1 text-[11px] truncate text-center px-1 tabular-nums font-semibold ${
+                  cartAttention ? 'text-primary-orange' : 'text-text-muted'
+                }`}
+              >
+                {cart.length} item{cart.length === 1 ? '' : 's'} · +{batchKcal} kcal · +{batchProtein}g
+              </span>
+              <ChevronDown
+                className={`w-4 h-4 shrink-0 ${cartAttention ? 'text-primary-orange' : 'text-text-muted'}`}
+                aria-hidden
+              />
+            </button>
+            {cartAttention ? (
+              <p className="px-3 py-1.5 text-center text-[10px] font-semibold text-primary-orange bg-primary-orange/[0.12] border-t border-primary-orange/25">
+                Tap to review items in cart
+              </p>
+            ) : null}
+          </>
         )}
       </div>
 
@@ -468,7 +587,9 @@ export function FoodLogPanel({ profile, date, onLogged, onError }: FoodLogPanelP
             </div>
           ) : null}
           <input
-            type="search"
+            type="text"
+            inputMode="search"
+            autoComplete="off"
             placeholder="Search roti, dal, egg…"
             value={searchQ}
             onChange={(e) => setSearchQ(e.target.value)}
@@ -643,7 +764,10 @@ export function FoodLogPanel({ profile, date, onLogged, onError }: FoodLogPanelP
           <button
             type="button"
             disabled={cart.length === 0 || blocked || saving}
-            onClick={submitCart}
+            onClick={(e) => {
+              e.preventDefault();
+              void submitCart();
+            }}
             className="btn-primary shrink-0 min-w-[8.5rem] px-5 min-h-[48px] rounded-lg font-bold text-sm disabled:opacity-40"
           >
             {saving ? '…' : cart.length === 0 ? 'Log' : `Log ${cart.length}`}

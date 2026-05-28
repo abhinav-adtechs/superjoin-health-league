@@ -146,6 +146,13 @@ export function WeekGoalsGrid({
         todayStatusByCol.set(col.kind, colMet);
       }
       const showValue = !isFuture && value && value !== '—';
+      const labelText = showValue ? value : '—';
+      const labelClass =
+        showValue && colMet === true
+          ? 'text-emerald-600/80'
+          : colMet === false
+          ? 'text-rose-500/60'
+          : 'text-text-muted/45';
       return (
         <div key={col.kind} className="flex flex-col items-center gap-0.5 min-w-0">
           <GoalDot
@@ -157,19 +164,12 @@ export function WeekGoalsGrid({
               colMet === true ? 'goal met' : colMet === false ? 'missed' : 'not logged'
             }${showValue ? ` (${value})` : ''}`}
           />
-          {showValue ? (
-            <span
-              className={`text-[8px] leading-none tabular-nums truncate max-w-full ${
-                colMet === true
-                  ? 'text-emerald-600/80'
-                  : colMet === false
-                  ? 'text-rose-500/70'
-                  : 'text-text-muted'
-              }`}
-            >
-              {value}
-            </span>
-          ) : null}
+          <span
+            className={`text-[8px] leading-none tabular-nums truncate max-w-full min-h-[9px] ${labelClass}`}
+            aria-hidden={!showValue}
+          >
+            {labelText}
+          </span>
         </div>
       );
     });
