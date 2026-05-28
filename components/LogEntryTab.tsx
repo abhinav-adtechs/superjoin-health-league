@@ -951,7 +951,7 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
                               {isStreakDay && showM && (
                                 <Flame className="w-3 h-3 text-accent-gold flex-shrink-0" />
                               )}
-                              {new Date(e.date + 'Z').toLocaleDateString(undefined, {
+                              {new Date((normalizeYmd(e.date) ?? e.date) + 'T12:00:00').toLocaleDateString(undefined, {
                                 weekday: 'short',
                                 month: 'short',
                                 day: 'numeric',

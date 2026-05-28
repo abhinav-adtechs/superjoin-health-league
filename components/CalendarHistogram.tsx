@@ -2,84 +2,30 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { apiUrl, getApiFetchOptions } from '@/lib/api';
-import type { WorkoutGoalType } from '@/lib/types';
 import { parseGoalWorkoutTypes } from '@/lib/workout-goals';
 import { CalendarHistogramSkeleton } from '@/components/LoadingScreen';
+import { WeekGoalsGrid } from '@/components/WeekGoalsGrid';
+import {
+  buildWeekViewColumns,
+  dayGoalStatus,
+  entryWorkoutMins,
+  fmtMins,
+  weekColumnColor,
+  weekColumnLabel,
+  weekColumnStatus,
+  weekColKey,
+  COLOR_WORKOUT,
+  COLOR_STEPS,
+  COLOR_SLEEP,
+  COLOR_PROTEIN,
+  COLOR_CALORIES,
+  type EntryRow,
+  type ProfileGoals,
+  type WeekViewColumn,
+} from '@/lib/health-log-week-view';
 
-export type EntryRow = {
-  date: string;
-  workout_done?: boolean | null;
-  workout_duration?: number | null;
-  workout_types?: string[] | null;
-  cardio_done?: boolean | null;
-  cardio_duration?: number | null;
-  cardio_type?: string | null;
-  steps?: number | null;
-  water_liters?: number | null;
-  home_cooked_meals?: number | null;
-  sleep_hours?: number | null;
-  sleep_quality?: number | null;
-  protein_meal?: boolean | null;
-  protein_qty?: number | null;
-  calories_kcal?: number | null;
-  daily_points?: number | null;
-  is_goal_crush_day?: boolean | null;
-};
-
-export type ProfileGoals = {
-  goal_workout_mins_week?: number | null;
-  goal_workout_days_week?: number | null;
-  goal_workout_types?: WorkoutGoalType[] | null;
-  goal_steps_day?: number | null;
-  goal_sleep_hours?: number | null;
-  goal_sleep_hours_min?: number | null;
-  goal_sleep_hours_max?: number | null;
-  goal_water_liters?: number | null;
-  goal_home_cooked_per_week?: number | null;
-  goal_protein_g_day?: number | null;
-  goal_calories_day?: number | null;
-  fitness_goal?: string | null;
-};
-
-function workoutMins(e: EntryRow): number {
-  const w = (e.workout_done && e.workout_duration) ? e.workout_duration : 0;
-  const c = (e.cardio_done && e.cardio_duration) ? e.cardio_duration : 0;
-  return w + c;
-}
-
-function fmtMins(mins: number): string {
-  if (mins === 0) return '—';
-  if (mins < 60) return `${mins}m`;
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
-  return m > 0 ? `${h}h ${m}m` : `${h}h`;
-}
-
-// Returns true = goal met (green), false = goal missed (red), null = no goals set
-function dayGoalStatus(e: EntryRow, goals: ProfileGoals | null): boolean | null {
-  if (e.is_goal_crush_day != null) return e.is_goal_crush_day;
-  if (e.daily_points != null && e.daily_points >= 60) return true;
-  if (e.daily_points != null && e.daily_points > 0) return false;
-
-  const workoutGoal = (goals?.goal_workout_days_week ?? 0) > 0 || (goals?.goal_workout_mins_week ?? 0) > 0;
-  const stepsGoal = (goals?.goal_steps_day ?? 0) > 0;
-  const sleepGoal = (goals?.goal_sleep_hours ?? goals?.goal_sleep_hours_min ?? 0) > 0;
-  const waterGoal = (goals?.goal_water_liters ?? 0) > 0;
-
-  if (!workoutGoal && !stepsGoal && !sleepGoal && !waterGoal) return null;
-
-  const workoutMet = !workoutGoal || (e.workout_done === true || e.cardio_done === true);
-  const stepsMet = !stepsGoal || ((e.steps ?? 0) >= (goals?.goal_steps_day ?? 0));
-  const sleepMet = !sleepGoal || (e.sleep_hours != null && (
-    goals?.goal_sleep_hours != null
-      ? e.sleep_hours >= goals.goal_sleep_hours
-      : e.sleep_hours >= (goals?.goal_sleep_hours_min ?? 0) &&
-        (goals?.goal_sleep_hours_max == null || e.sleep_hours <= goals.goal_sleep_hours_max)
-  ));
-  const waterMet = !waterGoal || ((e.water_liters ?? 0) >= (goals?.goal_water_liters ?? 0));
-
-  return workoutMet && stepsMet && sleepMet && waterMet;
-}
+export type { EntryRow, ProfileGoals, WeekViewColumn } from '@/lib/health-log-week-view';
+export { buildWeekViewColumns, weekColumnStatus, weekColumnLabel } from '@/lib/health-log-week-view';
 
 // 3-tier week status: green = fully met, yellow = partial, red = missed
 type WeekStatus = 'green' | 'yellow' | 'red' | null;
@@ -111,7 +57,7 @@ function computeWeekStatus(
   if (goalMins > 0) {
     const totalMins = pastDates.reduce((s, d) => {
       const e = entriesByDate.get(d);
-      return s + (e ? workoutMins(e) : 0);
+      return s + (e ? entryWorkoutMins(e) : 0);
     }, 0);
     const scaledGoal = Math.max(1, Math.ceil((goalMins * pastDates.length) / 7));
     if (totalMins >= scaledGoal) return 'green';
@@ -130,123 +76,6 @@ function computeWeekStatus(
   return 'red';
 }
 
-type CategoryKey = 'workout' | 'steps' | 'sleep' | 'water' | 'protein' | 'calories';
-
-export type WeekViewColumn =
-  | { kind: 'workout_agg' }
-  | { kind: 'steps' }
-  | { kind: 'sleep' }
-  | { kind: 'water' }
-  | { kind: 'protein' }
-  | { kind: 'calories' };
-
-/** One Workout column for any movement goal — goal_workout_types are focus tags, not separate daily columns. */
-export function buildWeekViewColumns(goals: ProfileGoals | null): WeekViewColumn[] {
-  const g = goals ?? {};
-  const hasWorkoutGoal = (g.goal_workout_days_week ?? 0) > 0 || (g.goal_workout_mins_week ?? 0) > 0;
-  const types = parseGoalWorkoutTypes(g.goal_workout_types);
-  const cols: WeekViewColumn[] = [];
-  if (hasWorkoutGoal || types.length > 0) {
-    cols.push({ kind: 'workout_agg' });
-  }
-  if ((g.goal_steps_day ?? 0) > 0) cols.push({ kind: 'steps' });
-  if ((g.goal_sleep_hours ?? g.goal_sleep_hours_min ?? 0) > 0) cols.push({ kind: 'sleep' });
-  if ((g.goal_water_liters ?? 0) > 0) cols.push({ kind: 'water' });
-  if ((g.goal_protein_g_day ?? 0) > 0) cols.push({ kind: 'protein' });
-  if ((g.goal_calories_day ?? 0) > 0) cols.push({ kind: 'calories' });
-  return cols;
-}
-
-export function weekColumnStatus(
-  e: EntryRow | undefined,
-  col: WeekViewColumn,
-  goals: ProfileGoals | null,
-  isPastNoEntry: boolean,
-  isPast: boolean
-): { met: boolean | null; value: string } {
-  if (col.kind === 'workout_agg') return categoryStatus(e, 'workout', goals, isPastNoEntry, isPast);
-  if (col.kind === 'steps') return categoryStatus(e, 'steps', goals, isPastNoEntry, isPast);
-  if (col.kind === 'sleep') return categoryStatus(e, 'sleep', goals, isPastNoEntry, isPast);
-  if (col.kind === 'protein') return categoryStatus(e, 'protein', goals, isPastNoEntry, isPast);
-  if (col.kind === 'calories') return categoryStatus(e, 'calories', goals, isPastNoEntry, isPast);
-  return categoryStatus(e, 'water', goals, isPastNoEntry, isPast);
-}
-
-function categoryStatus(
-  e: EntryRow | undefined,
-  category: CategoryKey,
-  goals: ProfileGoals | null,
-  isPastNoEntry = false,
-  isPast = false
-): { met: boolean | null; value: string } {
-  if (!e) return { met: isPastNoEntry ? false : null, value: '—' };
-
-  // Not logged = goal missed for past days
-  const notLoggedAsMissed = isPastNoEntry || isPast;
-
-  switch (category) {
-    case 'workout': {
-      const mins = workoutMins(e);
-      const done = e.workout_done === true || e.cardio_done === true;
-      if (!done) return { met: false, value: '—' };
-      return { met: true, value: mins > 0 ? fmtMins(mins) : '✓' };
-    }
-    case 'steps': {
-      const steps = e.steps ?? 0;
-      if (steps === 0) return { met: notLoggedAsMissed ? false : null, value: '—' };
-      const goal = goals?.goal_steps_day ?? 0;
-      const met = goal > 0 ? steps >= goal : true;
-      return { met, value: `${(steps / 1000).toFixed(1)}k` };
-    }
-    case 'sleep': {
-      const sleep = e.sleep_hours ?? 0;
-      if (sleep === 0) return { met: notLoggedAsMissed ? false : null, value: '—' };
-      const single = goals?.goal_sleep_hours;
-      const min = goals?.goal_sleep_hours_min;
-      const max = goals?.goal_sleep_hours_max;
-      let met: boolean | null = null;
-      if (single != null) {
-        met = sleep >= single;
-      } else if (min != null && max != null) {
-        met = sleep >= min && sleep <= max;
-      } else if (min != null) {
-        met = sleep >= min;
-      } else {
-        met = true;
-      }
-      return { met, value: `${sleep}h` };
-    }
-    case 'water': {
-      const water = e.water_liters ?? 0;
-      if (water === 0) return { met: notLoggedAsMissed ? false : null, value: '—' };
-      const goal = goals?.goal_water_liters ?? 0;
-      const met = goal > 0 ? water >= goal : true;
-      return { met, value: `${water}L` };
-    }
-    case 'protein': {
-      const qty = e.protein_qty ?? 0;
-      const hasMeal = e.protein_meal === true;
-      if (qty === 0 && !hasMeal) return { met: notLoggedAsMissed ? false : null, value: '—' };
-      const goal = goals?.goal_protein_g_day ?? 0;
-      const met = goal > 0 ? qty >= goal : true;
-      return { met, value: qty > 0 ? `${qty}g` : '✓' };
-    }
-    case 'calories': {
-      const cal = e.calories_kcal ?? 0;
-      if (cal === 0) return { met: notLoggedAsMissed ? false : null, value: '—' };
-      const goal = goals?.goal_calories_day ?? 0;
-      let met: boolean | null = null;
-      if (goal > 0) {
-        const isLoseWeight = goals?.fitness_goal === 'lose_weight';
-        met = isLoseWeight ? cal <= goal : cal >= goal;
-      } else {
-        met = true;
-      }
-      return { met, value: cal >= 1000 ? `${(cal / 1000).toFixed(1)}k` : `${cal}` };
-    }
-  }
-}
-
 type RangeId = 'W' | 'M' | '6M';
 
 const RANGES: { id: RangeId; label: string }[] = [
@@ -254,10 +83,6 @@ const RANGES: { id: RangeId; label: string }[] = [
   { id: 'M', label: 'M' },
   { id: '6M', label: '6M' },
 ];
-
-const COLOR_WORKOUT = '#FF6B35';
-const COLOR_STEPS = '#059669';
-const COLOR_SLEEP = '#2563eb';
 
 function getMondayOfWeek(date: Date): Date {
   const d = new Date(date);
@@ -341,7 +166,7 @@ export function CalendarHistogram({
     const showCalories = (g.goal_calories_day ?? 0) > 0;
 
     const totalWorkoutMins = showWorkout
-      ? entries.reduce((s, e) => s + workoutMins(e), 0)
+      ? entries.reduce((s, e) => s + entryWorkoutMins(e), 0)
       : 0;
     const stepsEntries = showSteps ? entries.filter((e) => e.steps != null && e.steps > 0) : [];
     const avgSteps = stepsEntries.length
@@ -516,133 +341,271 @@ export function CalendarHistogram({
         </p>
       )}
 
-      {range === 'W' && <WeekView entries={entries} goals={goals} from={from} to={to} />}
+      {range === 'W' && <WeekGoalsGrid entries={entries} goals={goals} from={from} to={to} />}
       {range === 'M' && <MonthView entries={entries} goals={goals} monthOffset={monthOffset} />}
       {range === '6M' && <SixMonthView entries={entries} goals={goals} />}
     </div>
   );
 }
 
-const COLOR_PROTEIN = '#6366f1';
-const COLOR_CALORIES = '#f43f5e';
+type DayRingStatus = { col: WeekViewColumn; met: boolean | null; color: string };
 
-function weekColumnColor(col: WeekViewColumn): string {
-  if (col.kind === 'workout_agg') return COLOR_WORKOUT;
-  if (col.kind === 'steps') return COLOR_STEPS;
-  if (col.kind === 'sleep') return COLOR_SLEEP;
-  if (col.kind === 'protein') return COLOR_PROTEIN;
-  if (col.kind === 'calories') return COLOR_CALORIES;
-  return '#f59e0b';
+function monthDayRingStatuses(
+  e: EntryRow | undefined,
+  goals: ProfileGoals | null,
+  isPast: boolean,
+  isFuture: boolean
+): DayRingStatus[] {
+  return buildWeekViewColumns(goals).map((col) => {
+    const isPastNoEntry = !e && isPast && !isFuture;
+    const { met } = weekColumnStatus(e, col, goals, isPastNoEntry, isPast && !isFuture);
+    return { col, met, color: weekColumnColor(col) };
+  });
 }
 
-export function weekColumnLabel(col: WeekViewColumn): string {
-  if (col.kind === 'workout_agg') return 'Workout';
-  if (col.kind === 'steps') return 'Steps';
-  if (col.kind === 'sleep') return 'Sleep';
-  if (col.kind === 'protein') return 'Protein';
-  if (col.kind === 'calories') return 'Calories';
-  return 'Water';
-}
-
-function weekColKey(col: WeekViewColumn): string {
-  return col.kind;
-}
-
-function WeekView({
-  entries,
-  goals,
-  from,
-  to,
+/**
+ * One donut per day: each slice = one tracked goal (color = metric).
+ * Solid slice = met, faded = missed. Easier to read than multiple mini rings.
+ */
+function DayGoalDonut({
+  rings,
+  size = 30,
+  metLabel,
 }: {
-  entries: EntryRow[];
-  goals: ProfileGoals | null;
-  from: string;
-  to: string;
+  rings: DayRingStatus[];
+  size?: number;
+  /** e.g. "2/4" shown in the center */
+  metLabel?: string;
 }) {
-  const entriesByDate = new Map(entries.map((e) => [e.date, e]));
-  const days: string[] = [];
-  const d = new Date(from + 'T12:00:00');
-  const end = new Date(to + 'T12:00:00');
-  while (d <= end) {
-    days.push(d.toISOString().slice(0, 10));
-    d.setDate(d.getDate() + 1);
-  }
+  const scored = rings.filter((r) => r.met !== null);
+  if (scored.length === 0) return null;
 
-  const columns = buildWeekViewColumns(goals);
+  const n = scored.length;
+  const stroke = 3.25;
+  const r = (size - stroke) / 2 - 0.5;
+  const cx = size / 2;
+  const cy = size / 2;
+  const circumference = 2 * Math.PI * r;
+  const segLen = circumference / n;
+  const segGap = n > 1 ? 2.5 : 0;
+  const track = 'rgba(15, 23, 42, 0.08)';
+
+  return (
+    <svg width={size} height={size} className="shrink-0" aria-hidden>
+      <circle cx={cx} cy={cy} r={r} fill="none" stroke={track} strokeWidth={stroke} />
+      {scored.map((ring, i) => {
+        const dash = Math.max(1, segLen - segGap);
+        const rotation = (360 / n) * i - 90;
+        const isMet = ring.met === true;
+        return (
+          <circle
+            key={weekColKey(ring.col)}
+            cx={cx}
+            cy={cy}
+            r={r}
+            fill="none"
+            stroke={ring.color}
+            strokeWidth={stroke}
+            strokeOpacity={isMet ? 1 : 0.32}
+            strokeLinecap="round"
+            strokeDasharray={`${dash} ${circumference - dash}`}
+            transform={`rotate(${rotation} ${cx} ${cy})`}
+          />
+        );
+      })}
+      {metLabel ? (
+        <text
+          x={cx}
+          y={cy}
+          textAnchor="middle"
+          dominantBaseline="central"
+          className="fill-text-muted"
+          style={{ fontSize: metLabel.length > 3 ? 7 : 8, fontWeight: 600 }}
+        >
+          {metLabel}
+        </text>
+      ) : null}
+    </svg>
+  );
+}
+
+function MonthDayCell({
+  day,
+  date,
+  isCurrentMonth,
+  isToday,
+  entry,
+  goals,
+}: {
+  day: number;
+  date: string;
+  isCurrentMonth: boolean;
+  isToday: boolean;
+  entry: EntryRow | undefined;
+  goals: ProfileGoals | null;
+}) {
   const todayStr = new Date().toISOString().slice(0, 10);
+  const isPast = date < todayStr;
+  const isFuture = date > todayStr;
+  const columns = buildWeekViewColumns(goals);
+  const rings = isCurrentMonth ? monthDayRingStatuses(entry, goals, isPast, isFuture) : [];
+  const hasMetricGoals = columns.length > 0;
 
-  const gridCols =
-    columns.length === 0
-      ? '4.5rem'
-      : `4.5rem repeat(${columns.length}, minmax(0, 1fr))`;
+  const scored = rings.filter((r) => r.met !== null);
+  const metCount = scored.filter((r) => r.met === true).length;
+  const allMet = hasMetricGoals && scored.length > 0 && metCount === scored.length;
+  const partial = hasMetricGoals && metCount > 0 && metCount < scored.length;
 
-  if (columns.length === 0) {
+  const fallbackStatus =
+    !hasMetricGoals && isCurrentMonth
+      ? entry
+        ? dayGoalStatus(entry, goals)
+        : isPast
+        ? false
+        : null
+      : null;
+
+  const ariaParts = rings.map(
+    (r) => `${weekColumnLabel(r.col)}: ${r.met === true ? 'met' : r.met === false ? 'missed' : 'pending'}`
+  );
+  const ariaLabel =
+    isCurrentMonth && (rings.length > 0 || fallbackStatus !== null)
+      ? `${date}: ${ariaParts.length ? ariaParts.join(', ') : fallbackStatus ? 'goals met' : 'goals missed'}`
+      : undefined;
+
+  if (!isCurrentMonth) {
     return (
-      <p className="text-sm text-text-muted py-2">
-        Set weekly or daily goals in <strong className="text-text-secondary">My stats</strong> to see how each day lines up
-        with your targets.
-      </p>
+      <div className="min-h-[48px] rounded-lg bg-surface-2/20 flex items-center justify-center p-0.5">
+        <span className="text-[10px] text-text-muted/30 font-medium">{day}</span>
+      </div>
     );
   }
 
+  const metLabel =
+    hasMetricGoals && scored.length > 0 && !allMet
+      ? `${metCount}/${scored.length}`
+      : allMet && scored.length > 0
+        ? '✓'
+        : undefined;
+
   return (
-    <div className="space-y-1">
-      {/* Column headers */}
-      <div
-        className="grid text-[10px] font-medium text-text-muted pb-1.5 border-b border-white/10 gap-0.5"
-        style={{ gridTemplateColumns: gridCols }}
+    <div
+      className={`min-h-[52px] rounded-lg border flex flex-col items-center justify-center gap-0.5 p-0.5 ${
+        allMet
+          ? 'bg-emerald-500/10 border-emerald-500/30'
+          : partial
+          ? 'bg-amber-500/5 border-amber-500/20'
+          : 'bg-surface-0 border-white/10'
+      } ${isToday ? 'ring-2 ring-primary-orange ring-offset-1 ring-offset-surface-0' : ''}`}
+      title={ariaLabel}
+      aria-label={ariaLabel}
+    >
+      <span
+        className={`text-[10px] font-semibold leading-none ${
+          isToday ? 'text-primary-orange' : allMet ? 'text-emerald-500' : 'text-text-muted'
+        }`}
       >
-        <span />
-        {columns.map((col) => (
-          <span key={weekColKey(col)} className="text-center truncate px-0.5" style={{ color: weekColumnColor(col) }}>
-            {weekColumnLabel(col)}
-          </span>
-        ))}
-      </div>
-
-      {/* Day rows */}
-      {days.map((date) => {
-        const e = entriesByDate.get(date);
-        const isToday = date === todayStr;
-        const isPast = date < todayStr;
-        const dayLabel = new Date(date + 'T12:00:00').toLocaleDateString(undefined, {
-          weekday: 'short',
-          day: 'numeric',
-        });
-
-        return (
-          <div
-            key={date}
-            className={`grid items-center py-1.5 px-1 rounded-lg gap-0.5 ${isToday ? 'bg-surface-2/50' : ''}`}
-            style={{ gridTemplateColumns: gridCols }}
-          >
-            <span className={`text-xs font-medium ${isToday ? 'text-primary-orange' : 'text-text-muted'}`}>
-              {dayLabel}
-            </span>
-            {columns.map((col) => {
-              const { met, value } = weekColumnStatus(e, col, goals, !e && isPast, isPast);
-              return (
-                <div key={weekColKey(col)} className="flex flex-col items-center gap-0.5 min-w-0">
-                  <div
-                    className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold ${
-                      met === true
-                        ? 'bg-emerald-500/20 text-emerald-500'
-                        : met === false
-                        ? 'bg-rose-500/20 text-rose-500'
-                        : 'bg-surface-2 text-text-muted/40'
-                    }`}
-                  >
-                    {met === true ? '✓' : met === false ? '✗' : '·'}
-                  </div>
-                  <span className="text-[10px] text-text-muted leading-none truncate max-w-full">{value}</span>
-                </div>
-              );
-            })}
-          </div>
-        );
-      })}
+        {day}
+      </span>
+      {hasMetricGoals && scored.length > 0 ? (
+        <DayGoalDonut rings={rings} metLabel={metLabel} />
+      ) : fallbackStatus !== null ? (
+        <span
+          className={`text-[9px] font-bold leading-none ${
+            fallbackStatus ? 'text-emerald-500' : 'text-text-muted/50'
+          }`}
+        >
+          {fallbackStatus ? '✓' : '·'}
+        </span>
+      ) : null}
     </div>
   );
+}
+
+function hexToRgba(hex: string, alpha: number): string {
+  const h = hex.replace('#', '');
+  if (h.length !== 6) return `rgba(148, 163, 184, ${alpha})`;
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+/** Compact conic fill for 6M heatmap cells — same goal slices as month donuts. */
+function ringsToConicGradient(rings: DayRingStatus[]): string {
+  const scored = rings.filter((r) => r.met !== null);
+  if (scored.length === 0) return 'rgba(248, 250, 252, 0.95)';
+  const n = scored.length;
+  const stops = scored.map((r, i) => {
+    const pct0 = (i / n) * 100;
+    const pct1 = ((i + 1) / n) * 100;
+    const alpha = r.met === true ? 0.92 : 0.28;
+    return `${hexToRgba(r.color, alpha)} ${pct0}% ${pct1}%`;
+  });
+  return `conic-gradient(from -90deg, ${stops.join(', ')})`;
+}
+
+function sixMonthCellPresentation(
+  date: string,
+  entry: EntryRow | undefined,
+  goals: ProfileGoals | null,
+  todayStr: string,
+  metricColumns: WeekViewColumn[]
+): { background: string; borderClass: string; title: string } {
+  if (date > todayStr) {
+    return { background: 'transparent', borderClass: 'border-transparent', title: date };
+  }
+
+  if (metricColumns.length === 0) {
+    const e = entry;
+    if (!e) {
+      return {
+        background: 'rgba(107, 114, 128, 0.15)',
+        borderClass: 'border-transparent',
+        title: `${date}: no entry`,
+      };
+    }
+    const status = dayGoalStatus(e, goals);
+    if (status === true) {
+      return {
+        background: 'rgba(34, 197, 94, 0.65)',
+        borderClass: 'border-emerald-500/40',
+        title: `${date}: goals met`,
+      };
+    }
+    if (status === false) {
+      return {
+        background: 'rgba(239, 68, 68, 0.45)',
+        borderClass: 'border-transparent',
+        title: `${date}: goals missed`,
+      };
+    }
+    return {
+      background: 'rgba(107, 114, 128, 0.3)',
+      borderClass: 'border-transparent',
+      title: `${date}: logged`,
+    };
+  }
+
+  const isPast = date < todayStr;
+  const rings = monthDayRingStatuses(entry, goals, isPast, false);
+  const scored = rings.filter((r) => r.met !== null);
+  const metCount = scored.filter((r) => r.met === true).length;
+  const allMet = scored.length > 0 && metCount === scored.length;
+  const partial = metCount > 0 && metCount < scored.length;
+  const ariaParts = rings.map(
+    (r) => `${weekColumnLabel(r.col)}: ${r.met === true ? 'met' : r.met === false ? 'missed' : 'pending'}`
+  );
+
+  return {
+    background: ringsToConicGradient(rings),
+    borderClass: allMet
+      ? 'border-emerald-500/45'
+      : partial
+      ? 'border-amber-500/35'
+      : 'border-white/10',
+    title: `${date}: ${ariaParts.join(', ')}`,
+  };
 }
 
 function MonthView({
@@ -692,6 +655,7 @@ function MonthView({
   }
 
   const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const metricColumns = buildWeekViewColumns(goals);
 
   return (
     <div className="w-full min-w-0 space-y-2">
@@ -702,11 +666,51 @@ function MonthView({
       </div>
 
       {/* Legend */}
-      <div className="flex gap-x-3 gap-y-1 flex-wrap text-xs text-text-muted">
-        <span className="flex items-center gap-1"><span className="w-3 h-3 shrink-0 rounded-sm bg-emerald-500/50" />Day: goal met</span>
-        <span className="flex items-center gap-1"><span className="w-3 h-3 shrink-0 rounded-sm bg-rose-500/50" />Day: missed</span>
-        <span className="flex items-center gap-1"><span className="w-3 h-3 shrink-0 rounded-sm" style={{ background: 'rgba(249,115,22,0.5)' }} />Week: partial</span>
-        <span className="flex items-center gap-1"><span className="w-3 h-3 shrink-0 rounded-sm bg-emerald-600/60" />Week: on track</span>
+      <div className="flex gap-x-3 gap-y-1.5 flex-wrap text-xs text-text-muted">
+        {metricColumns.length > 0 ? (
+          <>
+            <span className="flex items-center gap-1.5">
+              <DayGoalDonut
+                size={22}
+                rings={metricColumns.slice(0, 4).map((col, i) => ({
+                  col,
+                  color: weekColumnColor(col),
+                  met: i % 2 === 0,
+                }))}
+                metLabel="2/4"
+              />
+              <span>
+                <span className="text-text-secondary font-medium">One ring per day</span>
+                {' — '}
+                each slice is a goal; bright = met, faded = missed. Center shows ✓ or count.
+              </span>
+            </span>
+            <span className="flex items-center gap-1 w-full">
+              <span className="w-3 h-3 shrink-0 rounded-sm bg-emerald-500/15 border border-emerald-500/30" />
+              All goals met
+              <span className="w-3 h-3 shrink-0 rounded-sm bg-amber-500/10 border border-amber-500/20 ml-2" />
+              Some met
+            </span>
+            <span className="flex flex-wrap gap-x-2 gap-y-1 w-full">
+              {metricColumns.map((col) => (
+                <span key={weekColKey(col)} className="flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: weekColumnColor(col) }} />
+                  {weekColumnLabel(col)}
+                </span>
+              ))}
+            </span>
+          </>
+        ) : (
+          <span className="text-text-muted/80">Set daily goals in My stats to see goal progress by day.</span>
+        )}
+        <span className="flex items-center gap-1 w-full sm:w-auto">
+          <span className="w-3 h-3 shrink-0 rounded-sm" style={{ background: 'rgba(249,115,22,0.5)' }} />
+          Wk column: partial
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="w-3 h-3 shrink-0 rounded-sm bg-emerald-600/60" />
+          Wk column: on track
+        </span>
       </div>
       <div className="w-full overflow-x-auto overflow-y-visible overscroll-x-contain -mx-0.5 px-0.5 pb-1">
         <table className="w-full border-collapse table-fixed" style={{ minWidth: 280 }}>
@@ -744,60 +748,18 @@ function MonthView({
                       {wk === 'green' ? '✓' : wk === 'yellow' ? '~' : wk === 'red' ? '✗' : '·'}
                     </div>
                   </td>
-                  {row.map(({ date, day, isCurrentMonth }) => {
-                    const e = entriesByDate.get(date);
-                    const isToday = date === todayStr;
-                    const isPast = date < todayStr;
-                    // Past day with no entry = red (goal missed)
-                    const status =
-                      !isCurrentMonth
-                        ? null
-                        : e
-                        ? dayGoalStatus(e, goals)
-                        : isPast
-                        ? false
-                        : null;
-                    return (
-                      <td key={date} className="p-0.5 align-top">
-                        <div
-                          className={`min-h-[44px] rounded-lg border flex flex-col items-center justify-center gap-0.5 p-1 ${
-                            !isCurrentMonth
-                              ? 'bg-surface-2/20 border-transparent'
-                              : status === true
-                              ? 'bg-emerald-500/20 border-emerald-500/30'
-                              : status === false
-                              ? 'bg-rose-500/15 border-rose-500/25'
-                              : 'bg-surface-0 border-white/10'
-                          } ${isToday ? 'ring-2 ring-primary-orange ring-offset-1' : ''}`}
-                        >
-                          <div
-                            className={`text-[10px] font-semibold ${
-                              !isCurrentMonth
-                                ? 'text-text-muted/30'
-                                : isToday
-                                ? 'text-primary-orange'
-                                : status === true
-                                ? 'text-emerald-500'
-                                : status === false
-                                ? 'text-rose-400'
-                                : 'text-text-muted'
-                            }`}
-                          >
-                            {day}
-                          </div>
-                          {isCurrentMonth && status !== null && (
-                            <div
-                              className={`text-[9px] font-bold leading-none ${
-                                status ? 'text-emerald-500' : 'text-rose-400'
-                              }`}
-                            >
-                              {status ? '✓' : '✗'}
-                            </div>
-                          )}
-                        </div>
-                      </td>
-                    );
-                  })}
+                  {row.map(({ date, day, isCurrentMonth }) => (
+                    <td key={date} className="p-0.5 align-top">
+                      <MonthDayCell
+                        day={day}
+                        date={date}
+                        isCurrentMonth={isCurrentMonth}
+                        isToday={date === todayStr}
+                        entry={entriesByDate.get(date)}
+                        goals={goals}
+                      />
+                    </td>
+                  ))}
                 </tr>
               );
             })}
@@ -858,25 +820,7 @@ function SixMonthView({ entries, goals }: { entries: EntryRow[]; goals: ProfileG
     end: i < deduped.length - 1 ? deduped[i + 1][1] - 1 : weeks.length - 1,
   }));
 
-  const hasGoals =
-    (goals?.goal_workout_days_week ?? 0) > 0 ||
-    (goals?.goal_workout_mins_week ?? 0) > 0 ||
-    (goals?.goal_steps_day ?? 0) > 0 ||
-    (goals?.goal_sleep_hours ?? goals?.goal_sleep_hours_min ?? 0) > 0 ||
-    (goals?.goal_water_liters ?? 0) > 0;
-
-  const cellBg = (date: string): string => {
-    if (date > todayStr) return 'transparent';
-    const e = entriesByDate.get(date);
-    if (!e) {
-      // Past day with no entry
-      return hasGoals ? 'rgba(239,68,68,0.4)' : 'rgba(107,114,128,0.15)';
-    }
-    const status = dayGoalStatus(e, goals);
-    if (status === true) return 'rgba(34,197,94,0.65)';
-    if (status === false) return 'rgba(239,68,68,0.5)';
-    return 'rgba(107,114,128,0.3)'; // entry exists, no goals set
-  };
+  const metricColumns = buildWeekViewColumns(goals);
 
   const GAP = 2; // px — gap between cells
 
@@ -895,7 +839,7 @@ function SixMonthView({ entries, goals }: { entries: EntryRow[]; goals: ProfileG
           className="w-full min-w-0"
           style={{
             display: 'grid',
-            gridTemplateColumns: `20px repeat(${numWeekCols}, minmax(6px, 1fr))`,
+            gridTemplateColumns: `20px repeat(${numWeekCols}, minmax(8px, 1fr))`,
             gridTemplateRows: `14px repeat(7, auto)`,
             gap: `${GAP}px`,
           }}
@@ -932,38 +876,82 @@ function SixMonthView({ entries, goals }: { entries: EntryRow[]; goals: ProfileG
                 {DAY_LABELS[row]}
               </div>
               {/* Cols 2..N+1: cells */}
-              {weeks.map((week, wi) => (
-                <div
-                  key={wi}
-                  title={week[row]}
-                  className="rounded-[2px] w-full aspect-square"
-                  style={{
-                    gridRow: row + 2,
-                    gridColumn: wi + 2,
-                    backgroundColor: cellBg(week[row]),
-                  }}
-                />
-              ))}
+              {weeks.map((week, wi) => {
+                const date = week[row];
+                const cell = sixMonthCellPresentation(
+                  date,
+                  entriesByDate.get(date),
+                  goals,
+                  todayStr,
+                  metricColumns
+                );
+                return (
+                  <div
+                    key={wi}
+                    title={cell.title}
+                    className={`rounded-[3px] w-full aspect-square border box-border ${cell.borderClass}`}
+                    style={{
+                      gridRow: row + 2,
+                      gridColumn: wi + 2,
+                      background: cell.background,
+                    }}
+                  />
+                );
+              })}
             </React.Fragment>
           ))}
         </div>
       </div>
 
       {/* Legend */}
-      <div className="flex gap-4 flex-wrap text-xs text-text-muted">
-        <span className="flex items-center gap-1.5">
-          <span className="w-3 h-3 rounded-sm" style={{ background: 'rgba(34,197,94,0.65)' }} />
-          Goal met
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="w-3 h-3 rounded-sm" style={{ background: 'rgba(239,68,68,0.5)' }} />
-          {hasGoals ? 'Missed / no entry' : 'No entry'}
-        </span>
-        {!hasGoals && (
-          <span className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded-sm" style={{ background: 'rgba(107,114,128,0.3)' }} />
-            Logged
-          </span>
+      <div className="flex gap-x-3 gap-y-1.5 flex-wrap text-xs text-text-muted">
+        {metricColumns.length > 0 ? (
+          <>
+            <span className="flex items-center gap-1.5 w-full sm:w-auto">
+              <span
+                className="w-4 h-4 rounded-sm border border-white/20 shrink-0"
+                style={{
+                  background: ringsToConicGradient(
+                    metricColumns.slice(0, 4).map((col, i) => ({
+                      col,
+                      color: weekColumnColor(col),
+                      met: i % 2 === 0,
+                    }))
+                  ),
+                }}
+              />
+              <span>
+                Each square = one day; colored slices are goals (bright = met, faded = missed).
+              </span>
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="w-3 h-3 shrink-0 rounded-sm bg-emerald-500/15 border border-emerald-500/30" />
+              All goals met
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="w-3 h-3 shrink-0 rounded-sm bg-amber-500/10 border border-amber-500/20" />
+              Some met
+            </span>
+            <span className="flex flex-wrap gap-x-2 gap-y-1 w-full">
+              {metricColumns.map((col) => (
+                <span key={weekColKey(col)} className="flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: weekColumnColor(col) }} />
+                  {weekColumnLabel(col)}
+                </span>
+              ))}
+            </span>
+          </>
+        ) : (
+          <>
+            <span className="flex items-center gap-1.5">
+              <span className="w-3 h-3 rounded-sm bg-emerald-500/60" />
+              Goals met
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-3 h-3 rounded-sm bg-slate-400/30" />
+              Logged / no entry
+            </span>
+          </>
         )}
       </div>
     </div>

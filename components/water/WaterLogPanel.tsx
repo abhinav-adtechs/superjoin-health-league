@@ -104,13 +104,16 @@ export function WaterLogPanel({ profile, date, onDone, compact }: WaterLogPanelP
   };
 
   return (
-    <div
-      className={`flex flex-col flex-1 min-h-0 ${compact ? 'gap-4' : 'gap-4 sm:gap-5'} py-2 ${compact ? '' : 'overflow-y-auto overscroll-contain'}`}
-    >
+    <div className={`log-entry-form flex flex-col flex-1 min-h-0 ${compact ? 'gap-3' : ''}`}>
+      <div
+        className={`log-entry-scroll log-entry-scroll--compact flex-1 min-h-0 py-2 ${
+          compact ? 'space-y-3' : 'space-y-4 sm:space-y-5'
+        }`}
+      >
       <div className="text-center">
         <div className="inline-flex flex-col items-center gap-1">
           <div
-            className="relative w-20 h-20 rounded-full border-4 border-sky-200 flex items-center justify-center"
+            className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-full border-4 border-sky-200 flex items-center justify-center"
             style={{
               background: `conic-gradient(#0ea5e9 ${pct}%, #e0f2fe ${pct}% 100%)`,
             }}
@@ -137,7 +140,7 @@ export function WaterLogPanel({ profile, date, onDone, compact }: WaterLogPanelP
               type="button"
               disabled={saving}
               onClick={() => addWater(q.amount, q.source, q.label)}
-              className="min-h-[56px] rounded-xl border-2 border-sky-200 bg-sky-50/80 text-sky-900 font-semibold text-sm touch-manipulation active:scale-[0.98] disabled:opacity-50"
+              className="min-h-[48px] sm:min-h-[56px] rounded-xl border-2 border-sky-200 bg-sky-50/80 text-sky-900 font-semibold text-sm touch-manipulation active:scale-[0.98] disabled:opacity-50"
             >
               <span className="block">{q.sub}</span>
               <span className="block text-[10px] font-normal text-sky-700">{q.label}</span>
@@ -212,11 +215,14 @@ export function WaterLogPanel({ profile, date, onDone, compact }: WaterLogPanelP
       )}
 
       {error && <p className="text-sm text-red-600">{error}</p>}
+      </div>
 
       {!compact && (
-        <button type="button" onClick={() => onDone()} className="btn-primary w-full min-h-[52px] font-bold">
-          Done
-        </button>
+        <div className="log-entry-sticky-cta shrink-0 px-0 pt-2 pb-1">
+          <button type="button" onClick={() => onDone()} className="btn-primary w-full min-h-[48px] sm:min-h-[52px] font-bold">
+            Done
+          </button>
+        </div>
       )}
     </div>
   );

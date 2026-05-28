@@ -87,12 +87,13 @@ export function FoodPortionSheet({ item, defaultMealType, initial, onAdd, onClos
   const sheet = (
     <div className="fixed inset-0 z-[10000] flex items-end justify-center bg-black/40" onClick={onClose}>
       <div
-        className="w-full max-w-lg bg-white rounded-t-2xl p-5 pb-8 edge-safe-bottom max-h-[75dvh] overflow-y-auto"
+        className="log-entry-form w-full max-w-lg bg-white rounded-t-2xl max-h-[75dvh] flex flex-col min-h-0 overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="w-10 h-1 bg-black/10 rounded-full mx-auto mb-4" />
+        <div className="log-entry-scroll log-entry-scroll--compact flex-1 min-h-0 overflow-y-auto overscroll-contain px-5 pt-5 pb-3">
+        <div className="w-10 h-1 bg-black/10 rounded-full mx-auto mb-3" />
         <h3 className="font-bold text-lg text-text-primary">{item.name}</h3>
-        <p className="text-xs text-text-muted mb-4">
+        <p className="text-xs text-text-muted mb-3">
           {item.kcal_per_serving} kcal · {item.protein_g_per_serving}g per regular {item.default_unit}
         </p>
 
@@ -201,11 +202,12 @@ export function FoodPortionSheet({ item, defaultMealType, initial, onAdd, onClos
           </div>
         )}
 
-        <p className="text-sm font-semibold text-text-primary mb-4">
+        <p className="text-sm font-semibold text-text-primary mb-2">
           {quantity}× {getPortionLabel(item.portion_presets, portionKey)} · {macros.calories_kcal} kcal · {macros.protein_g}g protein
         </p>
+        </div>
 
-        <div className="flex gap-2">
+        <div className="log-entry-sticky-cta shrink-0 flex gap-2 px-5 pt-2 pb-5 edge-safe-bottom">
           <button type="button" onClick={onClose} className="btn-ghost flex-1 min-h-[48px]">
             Cancel
           </button>

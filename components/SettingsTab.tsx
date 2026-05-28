@@ -1,10 +1,22 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import { User, Bell, Plug2 } from 'lucide-react';
-import { MyStatsTab } from './MyStatsTab';
-import { NotificationsTab } from './NotificationsTab';
-import { ConnectedAccountsTab } from './ConnectedAccountsTab';
 import type { Profile } from '@/lib/types';
+import { IntegrationCardsSkeleton, TabContentLoader } from '@/components/LoadingScreen';
+
+const MyStatsTab = dynamic(
+  () => import('./MyStatsTab').then((mod) => mod.MyStatsTab),
+  { ssr: false, loading: () => <TabContentLoader message="Loading profile..." density="compact" /> },
+);
+const NotificationsTab = dynamic(
+  () => import('./NotificationsTab').then((mod) => mod.NotificationsTab),
+  { ssr: false, loading: () => <TabContentLoader message="Loading notifications..." density="compact" /> },
+);
+const ConnectedAccountsTab = dynamic(
+  () => import('./ConnectedAccountsTab').then((mod) => mod.ConnectedAccountsTab),
+  { ssr: false, loading: () => <IntegrationCardsSkeleton /> },
+);
 
 export type SettingsSection = 'profile' | 'notifications' | 'apps';
 

@@ -1,24 +1,54 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import dynamic from 'next/dynamic';
 import { createClient } from '@/lib/supabase/client';
 import { apiUrl, getApiFetchOptions } from '@/lib/api';
 import { Heart, Activity, Dumbbell, Trophy, Settings, LogOut, ChevronLeft, Search, User, Bell, Plug2, BookOpen, LogIn, RefreshCw, Scale, Ruler, Gauge } from 'lucide-react';
 
-import { DashboardTab } from '@/components/DashboardTab';
-import { LogEntryTab } from '@/components/LogEntryTab';
-import { LeaderboardTab } from '@/components/LeaderboardTab';
-import { SettingsTab, type SettingsSection } from '@/components/SettingsTab';
-import { NewEntryCTA } from '@/components/NewEntryCTA';
+import type { SettingsSection } from '@/components/SettingsTab';
 import { LoginForm } from '@/components/LoginForm';
-import GoalSetupWizard from '@/components/GoalSetupWizard';
-import { SetPinForm } from '@/components/SetPinForm';
-import { PointSystemSheet } from '@/components/PointSystemPanel';
-import { MonthLeagueSidebarCard } from '@/components/MonthLeagueSidebarCard';
 import type { Profile } from '@/lib/types';
 import { resolveAvatarUrl } from '@/lib/avatar-url';
 import { applyFitnessGoalTheme, getGoalTheme } from '@/lib/fitness-goal-theme';
-import { AppLoadingScreen } from '@/components/LoadingScreen';
+import { AppLoadingScreen, TabContentLoader } from '@/components/LoadingScreen';
+
+const DashboardTab = dynamic(
+  () => import('@/components/DashboardTab').then((mod) => mod.DashboardTab),
+  { ssr: false, loading: () => <TabContentLoader message="Loading dashboard..." /> },
+);
+const LogEntryTab = dynamic(
+  () => import('@/components/LogEntryTab').then((mod) => mod.LogEntryTab),
+  { ssr: false, loading: () => <TabContentLoader message="Loading log..." /> },
+);
+const LeaderboardTab = dynamic(
+  () => import('@/components/LeaderboardTab').then((mod) => mod.LeaderboardTab),
+  { ssr: false, loading: () => <TabContentLoader message="Loading leaderboard..." /> },
+);
+const SettingsTab = dynamic(
+  () => import('@/components/SettingsTab').then((mod) => mod.SettingsTab),
+  { ssr: false, loading: () => <TabContentLoader message="Loading settings..." /> },
+);
+const NewEntryCTA = dynamic(
+  () => import('@/components/NewEntryCTA').then((mod) => mod.NewEntryCTA),
+  { ssr: false },
+);
+const GoalSetupWizard = dynamic(() => import('@/components/GoalSetupWizard'), {
+  ssr: false,
+  loading: () => <AppLoadingScreen message="Loading goal setup..." />,
+});
+const SetPinForm = dynamic(
+  () => import('@/components/SetPinForm').then((mod) => mod.SetPinForm),
+  { ssr: false },
+);
+const PointSystemSheet = dynamic(
+  () => import('@/components/PointSystemPanel').then((mod) => mod.PointSystemSheet),
+  { ssr: false },
+);
+const MonthLeagueSidebarCard = dynamic(
+  () => import('@/components/MonthLeagueSidebarCard').then((mod) => mod.MonthLeagueSidebarCard),
+  { ssr: false },
+);
 
 /** True when the profile has no usable goal targets yet (DB dummy migration fills these for most users). */
 function profileNeedsGoals(p: Profile): boolean {
@@ -102,6 +132,7 @@ export default function Home() {
   const [entryRefresh, setEntryRefresh] = useState(0);
   /** When set from the dashboard month league CTA, leaderboard opens on monthly view for this YYYY-MM. */
   const [leaderboardOpenContext, setLeaderboardOpenContext] = useState<{ month: string } | null>(null);
+  const [monthLeagueRank, setMonthLeagueRank] = useState<number | null | undefined>(undefined);
   const [sidebarPinned, setSidebarPinned] = useState(true);
   const [pointsSheetOpen, setPointsSheetOpen] = useState(false);
   const [guestPointsOpen, setGuestPointsOpen] = useState(false);
@@ -585,7 +616,7 @@ export default function Home() {
         >
           <NewEntryCTA
             profile={profile ?? null}
-            onSuccess={() => { loadUser(); setEntryRefresh((r) => r + 1); }}
+            onSuccess={() => { loadUser(); setMonthLeagueRank(undefined); setEntryRefresh((r) => r + 1); }}
             placement="sidebar"
             sidebarPinned={sidebarPinned}
           />
@@ -595,6 +626,8 @@ export default function Home() {
           displayName={profile!.display_name}
           sidebarPinned={sidebarPinned}
           refreshTrigger={entryRefresh}
+          rank={monthLeagueRank}
+          deferLoad={activeTab === 'dashboard'}
           onOpenLeaderboard={() => {
             const d = new Date();
             const month = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -686,7 +719,7 @@ export default function Home() {
       <div className={`relative z-10 flex flex-col min-h-screen transition-[margin] duration-200 mobile-app-shell ${sidebarPinned ? 'md:ml-64' : 'md:ml-16'}`}>
 
         {/* Header */}
-        <header className="liquid-header sticky top-0 z-30 safe-area-top mobile-app-header">
+        <header className="liquid-header z-30 safe-area-top mobile-app-header shrink-0 md:sticky md:top-0">
           <div className="max-w-5xl mx-auto px-4 sm:px-6">
             <div className="h-14 sm:h-16 flex items-center justify-between gap-2 sm:gap-3">
               {/* Logo — mobile only (desktop shows in sidebar) */}
@@ -783,6 +816,7 @@ export default function Home() {
                   profile={profile!}
                   onRefresh={loadUser}
                   refreshTrigger={entryRefresh}
+                  onMonthRankChange={setMonthLeagueRank}
                   onOpenLeaderboard={() => {
                     const d = new Date();
                     const month = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -796,6 +830,7 @@ export default function Home() {
                   profile={profile!}
                   onSuccess={() => {
                     loadUser();
+                    setMonthLeagueRank(undefined);
                     setEntryRefresh((r) => r + 1);
                   }}
                   refreshTrigger={entryRefresh}
@@ -834,46 +869,46 @@ export default function Home() {
 
         {/* Point system slide-over — all screen sizes */}
         <PointSystemSheet open={pointsSheetOpen} onClose={() => setPointsSheetOpen(false)} profile={profile ?? undefined} />
-      </div>
 
-      {/* ── Mobile Bottom Navigation ── hidden on desktop */}
-      <nav className="bottom-nav md:hidden fixed bottom-0 left-0 right-0 z-40">
-        <div className="bottom-nav-liquid bottom-nav-with-fab gap-1">
-          <div className="flex min-w-0 flex-1 gap-1">
-            {TABS.slice(0, 2).map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setActiveTab(tab.id)}
-                className={`bottom-nav-item ${activeTab === tab.id ? 'active' : ''}`}
-              >
-                <tab.icon className="w-[22px] h-[22px]" />
-                <span>{tab.shortLabel}</span>
-              </button>
-            ))}
+        {/* ── Mobile Bottom Navigation — docked in shell (not fixed) so scroll stays in main ── */}
+        <nav className="bottom-nav bottom-nav--docked md:hidden z-40 shrink-0">
+          <div className="bottom-nav-liquid bottom-nav-with-fab gap-1">
+            <div className="flex min-w-0 flex-1 gap-1">
+              {TABS.slice(0, 2).map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`bottom-nav-item ${activeTab === tab.id ? 'active' : ''}`}
+                >
+                  <tab.icon className="w-[22px] h-[22px]" />
+                  <span>{tab.shortLabel}</span>
+                </button>
+              ))}
+            </div>
+            <div className="relative flex w-[4.75rem] shrink-0 flex-col items-center justify-end overflow-visible bg-transparent pb-0.5">
+              <NewEntryCTA
+                profile={profile ?? null}
+                onSuccess={() => { loadUser(); setMonthLeagueRank(undefined); setEntryRefresh((r) => r + 1); }}
+                placement="mobileDock"
+              />
+            </div>
+            <div className="flex min-w-0 flex-1 gap-1">
+              {TABS.slice(2, 4).map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`bottom-nav-item ${activeTab === tab.id ? 'active' : ''}`}
+                >
+                  <tab.icon className="w-[22px] h-[22px]" />
+                  <span>{tab.shortLabel}</span>
+                </button>
+              ))}
+            </div>
           </div>
-          <div className="relative flex w-[4.75rem] shrink-0 flex-col items-center justify-end overflow-visible bg-transparent pb-0.5">
-            <NewEntryCTA
-              profile={profile ?? null}
-              onSuccess={() => { loadUser(); setEntryRefresh((r) => r + 1); }}
-              placement="mobileDock"
-            />
-          </div>
-          <div className="flex min-w-0 flex-1 gap-1">
-            {TABS.slice(2, 4).map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setActiveTab(tab.id)}
-                className={`bottom-nav-item ${activeTab === tab.id ? 'active' : ''}`}
-              >
-                <tab.icon className="w-[22px] h-[22px]" />
-                <span>{tab.shortLabel}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      </nav>
+        </nav>
+      </div>
 
       {/* ── Command Palette — desktop only, Ctrl+/ ── */}
       {commandPaletteOpen && (

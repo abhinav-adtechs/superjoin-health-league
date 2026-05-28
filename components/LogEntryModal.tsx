@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { EntryModalHeader } from '@/components/entry/EntryModalHeader';
 import { apiUrl, getApiFetchOptions } from '@/lib/api';
 import type { CardioType, FitnessGoal, Profile } from '@/lib/types';
 import { recommendedProteinGDay } from '@/lib/protein-recommendations';
@@ -87,7 +88,7 @@ const SUCCESS_MSG: Record<EntryType, (delta: number, total: number) => string> =
 const WIZARD_STEPS = ['date', 'movement', 'hydration', 'food', 'sleep'] as const;
 type WizardStep = (typeof WIZARD_STEPS)[number];
 
-interface LogEntryModalProps {
+export interface LogEntryModalProps {
   entryType: EntryType;
   profile: Profile;
   onClose: () => void;
@@ -231,7 +232,7 @@ export function LogEntryModal({ entryType, profile, onClose, onSuccess }: LogEnt
   const renderStepContent = () => {
     if (isWizard && currentStep === 'date') {
       return (
-        <div className="space-y-4 py-4">
+        <div className="space-y-3 py-2 sm:py-4">
           <p className="text-sm text-text-muted text-center">Which day are you logging?</p>
           <DateCarousel value={date} onChange={setDate} />
         </div>
@@ -252,7 +253,7 @@ export function LogEntryModal({ entryType, profile, onClose, onSuccess }: LogEnt
           onCardioDuration={setCardioDuration}
           steps={steps}
           onSteps={setSteps}
-          className="py-2"
+          className="py-1 sm:py-2"
         />
       );
     }
@@ -267,7 +268,7 @@ export function LogEntryModal({ entryType, profile, onClose, onSuccess }: LogEnt
 
     if ((isWizard && currentStep === 'sleep') || entryType === 'sleep') {
       return (
-        <div className="py-2">
+        <div className="py-1 sm:py-2 log-entry-sleep-block">
           <SleepTimeSlider
             logDate={date}
             onChange={(v) => {
@@ -326,7 +327,7 @@ export function LogEntryModal({ entryType, profile, onClose, onSuccess }: LogEnt
   const renderQuickLog = () => {
     if (selfContainedLog) {
       return (
-        <div className="entry-modal-body flex flex-col flex-1 min-h-0 overflow-hidden">
+        <div className="log-entry-form flex-1 min-h-0 flex flex-col overflow-hidden">
           <div className="flex-1 min-h-0 overflow-hidden flex flex-col px-3 sm:px-4 pt-2">
             {renderStepContent()}
           </div>
@@ -335,18 +336,21 @@ export function LogEntryModal({ entryType, profile, onClose, onSuccess }: LogEnt
       );
     }
     return (
-      <form onSubmit={handleSubmit} className="p-4 sm:px-5 pb-6 edge-safe-bottom space-y-5 overflow-y-auto flex-1">
-        <p className="text-xs text-text-muted">Only fill what you did — everything else stays blank.</p>
-        <DateCarousel value={date} onChange={setDate} />
-        {renderStepContent()}
-        {renderSuccessMessage()}
-        <button
-          type="submit"
-          disabled={saving || !isWithinAllowedPastRange(date)}
-          className="btn-primary w-full min-h-[52px] text-base font-bold"
-        >
-          {saving ? 'Saving…' : CTA_TEXT[entryType]}
-        </button>
+      <form onSubmit={handleSubmit} className="log-entry-form flex-1 min-h-0">
+        <div className="log-entry-scroll log-entry-scroll--compact px-4 sm:px-5 pt-2 sm:pt-3 pb-2 flex-1 min-h-0">
+          <DateCarousel value={date} onChange={setDate} />
+          {renderStepContent()}
+          {renderSuccessMessage()}
+        </div>
+        <div className="log-entry-sticky-cta px-4 sm:px-5 pb-4 sm:pb-6 pt-2 sm:pt-3 edge-safe-bottom">
+          <button
+            type="submit"
+            disabled={saving || !isWithinAllowedPastRange(date)}
+            className="btn-primary w-full min-h-[48px] sm:min-h-[52px] text-base font-bold"
+          >
+            {saving ? 'Saving…' : CTA_TEXT[entryType]}
+          </button>
+        </div>
       </form>
     );
   };
@@ -360,8 +364,8 @@ export function LogEntryModal({ entryType, profile, onClose, onSuccess }: LogEnt
   };
 
   const renderWizard = () => (
-    <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
-      <div className="px-4 sm:px-5 pt-1 pb-3 flex items-center gap-1.5">
+    <form onSubmit={handleSubmit} className="log-entry-form flex-1 min-h-0">
+      <div className="px-4 sm:px-5 pt-1 pb-2 sm:pb-3 flex items-center gap-1.5 shrink-0">
         {WIZARD_STEPS.map((step, i) => (
           <div key={step} className="flex items-center gap-1.5 flex-1 min-w-0">
             <div
@@ -386,16 +390,16 @@ export function LogEntryModal({ entryType, profile, onClose, onSuccess }: LogEnt
       </div>
 
       <div
-        className={`flex-1 min-h-0 px-4 sm:px-5 ${
+        className={`log-entry-scroll log-entry-scroll--compact flex-1 min-h-0 px-4 sm:px-5 ${
           currentStep === 'food' || currentStep === 'hydration'
             ? 'flex flex-col overflow-hidden'
-            : 'overflow-y-auto'
+            : ''
         }`}
       >
         {renderStepContent()}
       </div>
 
-      <div className="px-4 sm:px-5 pb-5 pt-3 edge-safe-bottom space-y-3 shrink-0 border-t border-black/5">
+      <div className="log-entry-sticky-cta px-4 sm:px-5 pb-4 sm:pb-5 pt-2 sm:pt-3 edge-safe-bottom space-y-2 sm:space-y-3">
         {renderSuccessMessage()}
         <div className="flex gap-2">
           <button
@@ -431,26 +435,15 @@ export function LogEntryModal({ entryType, profile, onClose, onSuccess }: LogEnt
   const modal = (
     <div className="modal-overlay entry-modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal-content entry-modal-content flex flex-col min-h-0 overflow-hidden" onClick={(e) => e.stopPropagation()}>
-        <div className="sticky top-0 z-10 bg-white border-b border-black/5 rounded-t-2xl px-4 sm:px-5 py-3 edge-safe-top shrink-0">
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0 flex-1">
-              <h2 className="text-lg font-bold text-text-primary leading-tight">{ENTRY_TITLES[entryType]}</h2>
-              {selfContainedLog && (
-                <div className="mt-1.5">
-                  <DateCarousel variant="compact" value={date} onChange={setDate} />
-                </div>
-              )}
-            </div>
-            <button
-              type="button"
-              onClick={onClose}
-              className="p-2 min-w-[44px] min-h-[44px] rounded-xl hover:bg-black/5 text-text-muted flex items-center justify-center shrink-0"
-              aria-label="Close"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-        </div>
+        <EntryModalHeader
+          title={ENTRY_TITLES[entryType]}
+          onClose={onClose}
+          accessory={
+            selfContainedLog ? (
+              <DateCarousel variant="compact" value={date} onChange={setDate} />
+            ) : undefined
+          }
+        />
         <div className="entry-modal-body flex flex-col flex-1 min-h-0 overflow-hidden">
           {isWizard ? renderWizard() : renderQuickLog()}
         </div>

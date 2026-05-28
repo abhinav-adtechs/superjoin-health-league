@@ -1,57 +1,56 @@
 'use client';
 
 import { useState, useRef, useEffect, useLayoutEffect } from 'react';
+import dynamic from 'next/dynamic';
 import { createPortal } from 'react-dom';
 import { Plus, ChevronDown, Dumbbell, Utensils, Droplets, Moon, Scale } from 'lucide-react';
-import { LogEntryModal, type EntryType } from './LogEntryModal';
+import type { EntryType, LogEntryModalProps } from './LogEntryModal';
 import type { Profile } from '@/lib/types';
 
-const ENTRY_OPTIONS: { type: EntryType; label: string; arcLabel: string; icon: typeof Dumbbell }[] = [
-  { type: 'movement', label: 'Log Movement', arcLabel: 'Movement', icon: Dumbbell },
-  { type: 'meal_recovery', label: 'Log Food', arcLabel: 'Food', icon: Utensils },
-  { type: 'hydration', label: 'Log Water', arcLabel: 'Water', icon: Droplets },
-  { type: 'sleep', label: 'Log Sleep', arcLabel: 'Sleep', icon: Moon },
-  { type: 'weight', label: 'Log Weight', arcLabel: 'Weight', icon: Scale },
-];
+const LogEntryModal = dynamic<LogEntryModalProps>(
+  () => import('./LogEntryModal').then((mod) => mod.LogEntryModal),
+  { ssr: false },
+);
 
-/** Arc angles (rad): ~150° → ~30° so options sit higher and overlap the tab bar less than a full 180° semicircle. */
-function arcAngles(count: number): number[] {
-  if (count <= 0) return [];
-  if (count === 1) return [Math.PI / 2];
-  const start = (5 * Math.PI) / 6;
-  const end = Math.PI / 6;
-  return Array.from({ length: count }, (_, i) => start - ((start - end) / (count - 1)) * i);
-}
+const ENTRY_OPTIONS: { type: EntryType; label: string; shortLabel: string; icon: typeof Dumbbell }[] = [
+  { type: 'movement', label: 'Log Movement', shortLabel: 'Movement', icon: Dumbbell },
+  { type: 'meal_recovery', label: 'Log Food', shortLabel: 'Food', icon: Utensils },
+  { type: 'hydration', label: 'Log Water', shortLabel: 'Water', icon: Droplets },
+  { type: 'sleep', label: 'Log Sleep', shortLabel: 'Sleep', icon: Moon },
+  { type: 'weight', label: 'Log Weight', shortLabel: 'Weight', icon: Scale },
+];
 
 interface NewEntryCTAProps {
   profile: Profile | null;
   onSuccess: () => void;
-  /** `desktop` — header dropdown. `sidebar` — left nav above tabs (desktop). `mobileDock` — bottom bar FAB + arc (mobile only). */
+  /** `desktop` — header dropdown. `sidebar` — left nav above tabs (desktop). `mobileDock` — bottom bar FAB + sheet (mobile only). */
   placement?: 'desktop' | 'mobileDock' | 'sidebar';
   /** When `placement="sidebar"`, matches desktop sidebar pin state for layout. */
   sidebarPinned?: boolean;
 }
 
-function useMobile() {
-  const [isMobile, setIsMobile] = useState(false);
+/** Matches Tailwind `md` (768px): same band as bottom nav (`md:hidden`) vs sidebar (`md:flex`). */
+const MOBILE_DOCK_MQ = '(max-width: 767px)';
+
+function useMobileDockViewport() {
+  const [showMobileDock, setShowMobileDock] = useState(false);
 
   useEffect(() => {
-    const checkMobile = () => {
+    const check = () => {
       const isNative =
         typeof window !== 'undefined' &&
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (window as any).Capacitor?.isNativePlatform?.() === true;
-      const isMobileViewport = window.matchMedia('(max-width: 639px)').matches;
-      setIsMobile(isNative || isMobileViewport);
+      setShowMobileDock(isNative || window.matchMedia(MOBILE_DOCK_MQ).matches);
     };
 
-    checkMobile();
-    const mq = window.matchMedia('(max-width: 639px)');
-    mq.addEventListener('change', checkMobile);
-    return () => mq.removeEventListener('change', checkMobile);
+    check();
+    const mq = window.matchMedia(MOBILE_DOCK_MQ);
+    mq.addEventListener('change', check);
+    return () => mq.removeEventListener('change', check);
   }, []);
 
-  return isMobile;
+  return showMobileDock;
 }
 
 /** Below modal overlay (9999); above sidebar chrome (z-40). */
@@ -65,19 +64,25 @@ export function NewEntryCTA({ profile, onSuccess, placement = 'desktop', sidebar
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuPortalRef = useRef<HTMLDivElement>(null);
   const [portalMenuStyle, setPortalMenuStyle] = useState<React.CSSProperties>({});
-  const isMobile = useMobile();
+  const showMobileDock = useMobileDockViewport();
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
   useEffect(() => {
+    if (!dropdownOpen || placement !== 'mobileDock') return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [dropdownOpen, placement]);
+
+  useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       const t = e.target as Node;
-      if (placement === 'mobileDock') {
-        if (dropdownRef.current && !dropdownRef.current.contains(t)) setDropdownOpen(false);
-        return;
-      }
+      if (placement === 'mobileDock') return;
       if (placement === 'desktop' || placement === 'sidebar') {
         if (triggerRef.current?.contains(t)) return;
         if (menuPortalRef.current?.contains(t)) return;
@@ -151,8 +156,6 @@ export function NewEntryCTA({ profile, onSuccess, placement = 'desktop', sidebar
     />
   ) : null;
 
-  const arcRadiusPx = 120;
-
   const portalDropdown =
     mounted &&
     dropdownOpen &&
@@ -182,67 +185,70 @@ export function NewEntryCTA({ profile, onSuccess, placement = 'desktop', sidebar
         )
       : null;
 
-  if (placement === 'mobileDock' && mounted && isMobile) {
-    const angles = arcAngles(ENTRY_OPTIONS.length);
+  const mobileEntrySheet =
+    mounted &&
+    dropdownOpen &&
+    placement === 'mobileDock' &&
+    typeof document !== 'undefined'
+      ? createPortal(
+          <div
+            className="new-entry-sheet-overlay new-entry-sheet-overlay--enter"
+            role="presentation"
+            onClick={() => setDropdownOpen(false)}
+          >
+            <div
+              ref={dropdownRef}
+              className="new-entry-sheet-card new-entry-sheet-card--enter"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="new-entry-sheet-title"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="new-entry-sheet-handle" aria-hidden />
+              <h2 id="new-entry-sheet-title" className="new-entry-sheet-title">
+                What do you want to log?
+              </h2>
+              <div className="new-entry-sheet-grid">
+                {ENTRY_OPTIONS.map(({ type, label, shortLabel, icon: Icon }) => (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => openModal(type)}
+                    className="new-entry-sheet-option touch-manipulation"
+                  >
+                    <span className="new-entry-sheet-option__icon" aria-hidden>
+                      <Icon className="h-5 w-5 text-accent-superjoin-orange" strokeWidth={2.25} />
+                    </span>
+                    <span className="new-entry-sheet-option__label">{shortLabel}</span>
+                    <span className="new-entry-sheet-option__hint">{label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>,
+          document.body
+        )
+      : null;
 
+  if (placement === 'mobileDock' && mounted && showMobileDock) {
     return (
       <>
-        {/* Backdrop stays in-tree (not portaled) so it stacks under the FAB/arc inside the bottom-nav z-40 context. */}
-        <div className="relative flex -translate-y-4 flex-col items-center justify-end bg-transparent pointer-events-none">
-          {dropdownOpen && (
-            <button
-              type="button"
-              aria-label="Dismiss log menu"
-              className="arc-backdrop-scrim arc-backdrop-enter md:hidden"
-              onClick={() => setDropdownOpen(false)}
+        <div className="relative flex -translate-y-4 flex-col items-center justify-end bg-transparent">
+          <button
+            ref={triggerRef}
+            type="button"
+            onClick={() => setDropdownOpen((o) => !o)}
+            className={`relative z-[2] flex h-14 w-14 shrink-0 appearance-none items-center justify-center rounded-full touch-manipulation transition-all duration-200 active:scale-95 mobile-dock-fab-glass ${dropdownOpen ? 'mobile-dock-fab-glass--open' : ''}`}
+            aria-label="New Entry"
+            aria-expanded={dropdownOpen}
+            aria-haspopup="dialog"
+          >
+            <Plus
+              className={`h-6 w-6 text-accent-superjoin-orange transition-transform duration-300 ease-out ${dropdownOpen ? 'rotate-45' : ''}`}
             />
-          )}
-          <div ref={dropdownRef} className="pointer-events-auto relative z-[2] flex flex-col items-center overflow-visible bg-transparent">
-            {dropdownOpen && (
-              <div
-                className="absolute bottom-8 left-1/2 z-10 h-0 w-0 -translate-x-1/2 overflow-visible"
-                aria-hidden={false}
-              >
-                {ENTRY_OPTIONS.map(({ type, label, arcLabel, icon: Icon }, i) => {
-                  const angle = angles[i] ?? Math.PI / 2;
-                  const tx = arcRadiusPx * Math.cos(angle);
-                  const ty = -arcRadiusPx * Math.sin(angle);
-                  return (
-                    <button
-                      key={type}
-                      type="button"
-                      onClick={() => openModal(type)}
-                      style={
-                        {
-                          '--arc-tx': `${tx}px`,
-                          '--arc-ty': `${ty}px`,
-                          animationDelay: `${40 + i * 48}ms`,
-                        } as React.CSSProperties
-                      }
-                      className="arc-menu-glass absolute left-0 top-0 z-[3] flex h-11 min-w-[6.25rem] max-w-[6.75rem] -translate-x-1/2 -translate-y-1/2 items-center gap-2 rounded-2xl px-3 touch-manipulation"
-                      title={label}
-                    >
-                      <Icon className="h-4 w-4 shrink-0 text-accent-superjoin-orange" />
-                      <span className="arc-menu-glass-label text-left text-[12px] font-semibold leading-snug">{arcLabel}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-            <button
-              type="button"
-              onClick={() => setDropdownOpen((o) => !o)}
-              className={`relative z-[4] flex h-14 w-14 shrink-0 appearance-none items-center justify-center rounded-full touch-manipulation transition-all duration-200 active:scale-95 mobile-dock-fab-glass ${dropdownOpen ? 'mobile-dock-fab-glass--open' : ''}`}
-              aria-label="New Entry"
-              aria-expanded={dropdownOpen}
-              aria-haspopup="true"
-            >
-              <Plus
-                className={`h-6 w-6 text-accent-superjoin-orange transition-transform duration-300 ease-out ${dropdownOpen ? 'rotate-45' : ''}`}
-              />
-            </button>
-          </div>
+          </button>
         </div>
+        {mobileEntrySheet}
         {modal}
       </>
     );

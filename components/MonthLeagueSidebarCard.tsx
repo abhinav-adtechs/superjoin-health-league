@@ -23,15 +23,24 @@ export function MonthLeagueSidebarCard({
   sidebarPinned,
   refreshTrigger = 0,
   onOpenLeaderboard,
+  rank,
+  deferLoad = false,
 }: {
   displayName: string;
   sidebarPinned: boolean;
   refreshTrigger?: number;
   onOpenLeaderboard?: () => void;
+  rank?: number | null;
+  deferLoad?: boolean;
 }) {
-  const [monthRank, setMonthRank] = useState<number | null>(null);
+  const [monthRank, setMonthRank] = useState<number | null>(rank ?? null);
 
   useEffect(() => {
+    if (rank !== undefined) setMonthRank(rank);
+  }, [rank]);
+
+  useEffect(() => {
+    if (rank !== undefined) return;
     let cancelled = false;
     async function load() {
       try {
@@ -51,11 +60,13 @@ export function MonthLeagueSidebarCard({
         if (!cancelled) setMonthRank(null);
       }
     }
-    load();
+    const timer = deferLoad ? window.setTimeout(load, 1200) : null;
+    if (!deferLoad) load();
     return () => {
       cancelled = true;
+      if (timer != null) window.clearTimeout(timer);
     };
-  }, [displayName, refreshTrigger]);
+  }, [deferLoad, displayName, rank, refreshTrigger]);
 
   const now = new Date();
   const dayOfMonth = now.getDate();

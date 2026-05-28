@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, type ComponentType, type ReactNode, type ReactElement } from 'react';
+import dynamic from 'next/dynamic';
 import {
   Flame,
   Target,
@@ -19,16 +20,16 @@ import {
   Circle,
 } from 'lucide-react';
 import { apiUrl, getApiFetchOptions } from '@/lib/api';
-import { LogEntryModal, type EntryType } from './LogEntryModal';
+import type { EntryType, LogEntryModalProps } from './LogEntryModal';
 import type { Profile, DailyEntry, FitnessGoal } from '@/lib/types';
 import { FITNESS_GOAL_THEMES } from '@/lib/fitness-goal-theme';
-import {
-  buildWeekViewColumns,
-  weekColumnStatus,
-  weekColumnLabel,
-  type EntryRow,
-  type WeekViewColumn,
-} from '@/components/CalendarHistogram';
+import { type EntryRow } from '@/lib/health-log-week-view';
+import { WeekGoalsGrid } from '@/components/WeekGoalsGrid';
+
+const LogEntryModal = dynamic<LogEntryModalProps>(
+  () => import('./LogEntryModal').then((mod) => mod.LogEntryModal),
+  { ssr: false },
+);
 
 const FITNESS_GOAL_BADGES: Record<FitnessGoal, { label: string; color: string }> = Object.fromEntries(
   (Object.entries(FITNESS_GOAL_THEMES) as [FitnessGoal, { label: string; badgeClass: string }][]).map(
@@ -189,6 +190,20 @@ type GoalMetrics = {
   stepsPct: number | null;
   overallDailyPct: number;
   activeDailyPcts: number[];
+};
+
+type DashboardSummaryResponse = {
+  today_entry?: DailyEntry | null;
+  yesterday_entry?: DailyEntry | null;
+  weekly_entries?: DailyEntry[];
+  logging_streak?: number;
+  goal_crush_streak?: number;
+  week_log_days?: number;
+  weekly_goals_hit?: 'full' | 'partial' | 'none';
+  weekly_rank?: number | null;
+  weekly_points?: number;
+  monthly_rank?: number | null;
+  monthly_points?: number;
 };
 
 function computeGoalMetrics(entry: DailyEntry | null, profile: Profile): GoalMetrics {
@@ -603,247 +618,6 @@ function GoalsBoxPanel({
   );
 }
 
-// ── Dashboard week grid (This week card) ───────────────────────────────────────
-
-function weekColumnIcon(col: WeekViewColumn): ComponentType<{ className?: string }> {
-  switch (col.kind) {
-    case 'workout_agg':
-      return Dumbbell;
-    case 'steps':
-      return Footprints;
-    case 'sleep':
-      return Moon;
-    case 'water':
-      return Droplets;
-    case 'protein':
-      return Utensils;
-    case 'calories':
-      return Activity;
-    default:
-      return Target;
-  }
-}
-
-function GoalDot({
-  Icon,
-  met,
-  isFuture,
-  isToday,
-  ariaLabel,
-}: {
-  Icon: ComponentType<{ className?: string }>;
-  met: boolean | null;
-  isFuture: boolean;
-  isToday: boolean;
-  ariaLabel?: string;
-}) {
-  let bgClass = 'bg-surface-3';
-  let iconClass = 'text-text-muted/25';
-  let borderClass = '';
-
-  if (isFuture) {
-    bgClass = 'bg-surface-3';
-    iconClass = 'text-text-muted/25';
-  } else if (isToday && met === null) {
-    bgClass = 'bg-transparent';
-    borderClass = 'border-2 border-dashed border-text-muted/40';
-    iconClass = 'text-text-muted/50';
-  } else if (met === true) {
-    bgClass = 'bg-emerald-500/20';
-    iconClass = 'text-emerald-500';
-  } else if (met === false) {
-    bgClass = 'bg-rose-500/20';
-    iconClass = 'text-rose-500';
-  }
-
-  return (
-    <div
-      className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${bgClass} ${borderClass}`}
-      role="img"
-      aria-label={ariaLabel}
-    >
-      <Icon className={`h-3 w-3 ${iconClass}`} aria-hidden />
-    </div>
-  );
-}
-
-function DashboardWeekGrid({
-  entries,
-  goals,
-  from,
-  to,
-}: {
-  entries: EntryRow[];
-  goals: Profile;
-  from: string;
-  to: string;
-}) {
-  const columns = buildWeekViewColumns(goals);
-  const todayStr = getLocalDateStr(new Date());
-
-  if (columns.length === 0) {
-    return (
-      <p className="text-sm text-text-muted">
-        Set your goals in{' '}
-        <span className="font-medium text-text-secondary">Profile &amp; Goals</span> to see how each day lines up
-        with your targets.
-      </p>
-    );
-  }
-
-  const entriesByDate = new Map(entries.map((e) => [e.date, e]));
-  const days: string[] = [];
-  const d = new Date(from + 'T12:00:00');
-  const end = new Date(to + 'T12:00:00');
-  while (d <= end) {
-    days.push(getLocalDateStr(d));
-    d.setDate(d.getDate() + 1);
-  }
-
-  const todayStatusByCol = new Map<string, boolean | null>();
-  let todayHasAnyLogged = false;
-
-  const dayChips = days.map((date) => {
-    const e = entriesByDate.get(date);
-    const isToday = date === todayStr;
-    const isPast = date < todayStr;
-    const isFuture = date > todayStr;
-    const isPastNoEntry = !e && isPast;
-    const dayLabel = new Date(date + 'T12:00:00').toLocaleDateString(undefined, {
-      weekday: 'short',
-    });
-    const dayNum = new Date(date + 'T12:00:00').getDate();
-
-    const cells = columns.map((col) => {
-      const { met, value } = weekColumnStatus(e, col, goals, isPastNoEntry, isPast);
-      const Icon = weekColumnIcon(col);
-      const colMet = isFuture ? null : met;
-      if (isToday) {
-        if (e) todayHasAnyLogged = true;
-        todayStatusByCol.set(col.kind, colMet);
-      }
-      const showValue = !isFuture && value && value !== '—';
-      return (
-        <div key={col.kind} className="flex flex-col items-center gap-0.5 min-w-0">
-          <GoalDot
-            Icon={Icon}
-            met={colMet}
-            isFuture={isFuture}
-            isToday={isToday}
-            ariaLabel={`${weekColumnLabel(col)}: ${
-              colMet === true ? 'goal met' : colMet === false ? 'missed' : 'not logged'
-            }${showValue ? ` (${value})` : ''}`}
-          />
-          <span
-            className={`text-[8px] leading-none tabular-nums truncate max-w-full ${
-              colMet === true
-                ? 'text-emerald-600/80'
-                : colMet === false
-                ? 'text-rose-500/70'
-                : 'text-transparent'
-            }`}
-            aria-hidden
-          >
-            {showValue ? value : '·'}
-          </span>
-        </div>
-      );
-    });
-
-    return (
-      <div
-        key={date}
-        className={`flex flex-1 min-w-0 flex-col items-center gap-1.5 rounded-xl border px-1 py-2 ${
-          isToday
-            ? 'border-accent-superjoin-orange/60 bg-accent-superjoin-orange/[0.06]'
-            : 'border-white/10 bg-surface-2/40'
-        }`}
-      >
-        <span
-          className={`text-[9px] font-medium leading-none ${
-            isToday ? 'text-accent-superjoin-orange' : 'text-text-muted'
-          }`}
-        >
-          {dayLabel}
-        </span>
-        <span
-          className={`text-sm font-bold leading-none ${
-            isToday ? 'text-accent-superjoin-orange' : 'text-text-primary'
-          }`}
-        >
-          {dayNum}
-        </span>
-        <div className="flex flex-col items-center gap-1 w-full">{cells}</div>
-      </div>
-    );
-  });
-
-  const hasToday = isTodayInWeek(days, todayStr);
-  const leftTodayCount = hasToday
-    ? columns.filter((c) => todayStatusByCol.get(c.kind) !== true).length
-    : 0;
-  const allDoneToday = hasToday && leftTodayCount === 0 && columns.length > 0;
-
-  return (
-    <div className="space-y-0">
-      <div className="flex gap-1.5">{dayChips}</div>
-
-      {/* Legend + today status strip */}
-      <div className="mt-3 border-t border-white/10 pt-3">
-        {hasToday && (
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-text-muted">
-              Today
-            </p>
-            {allDoneToday ? (
-              <span className="text-[10px] font-semibold text-emerald-500">
-                All done ✓
-              </span>
-            ) : !todayHasAnyLogged ? (
-              <span className="text-[10px] text-text-muted">Not logged yet</span>
-            ) : (
-              <span className="text-[10px] text-text-muted">
-                {leftTodayCount} left
-              </span>
-            )}
-          </div>
-        )}
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-          {columns.map((col) => {
-            const Icon = weekColumnIcon(col);
-            const status = hasToday ? todayStatusByCol.get(col.kind) : undefined;
-            const iconColor =
-              status === true
-                ? 'text-emerald-500'
-                : status === false
-                ? 'text-rose-500'
-                : 'text-text-muted/60';
-            const labelColor =
-              status === true
-                ? 'text-text-primary'
-                : status === false
-                ? 'text-text-secondary'
-                : 'text-text-muted';
-            return (
-              <span
-                key={col.kind}
-                className={`inline-flex items-center gap-1 text-[11px] ${labelColor}`}
-              >
-                <Icon className={`h-3.5 w-3.5 shrink-0 ${iconColor}`} aria-hidden />
-                {weekColumnLabel(col)}
-              </span>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function isTodayInWeek(days: string[], todayStr: string): boolean {
-  return days.includes(todayStr);
-}
-
 // ── Main Component ─────────────────────────────────────────────────────────────
 
 export function DashboardTab({
@@ -851,11 +625,13 @@ export function DashboardTab({
   onRefresh,
   refreshTrigger = 0,
   onOpenLeaderboard,
+  onMonthRankChange,
 }: {
   profile: Profile;
   onRefresh: () => void;
   refreshTrigger?: number;
   onOpenLeaderboard?: () => void;
+  onMonthRankChange?: (rank: number | null) => void;
 }) {
   const [todayEntry, setTodayEntry] = useState<DailyEntry | null>(null);
   const [yesterdayEntry, setYesterdayEntry] = useState<DailyEntry | null>(null);
@@ -897,44 +673,28 @@ export function DashboardTab({
         const monday = getMondayOfWeek(new Date());
         const d = new Date();
         const monthStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-        const [entryRes, yesterdayRes, weeklyRes, streakRes, lbRes, monthLbRes] = await Promise.all([
-          fetch(apiUrl(`/api/entries?date=${today}`), getApiFetchOptions()),
-          fetch(apiUrl(`/api/entries?date=${yesterdayStr}`), getApiFetchOptions()),
-          fetch(apiUrl(`/api/entries/history?from=${monday}&to=${today}`), getApiFetchOptions()),
-          fetch(apiUrl('/api/streaks/me'), getApiFetchOptions()),
-          fetch(apiUrl('/api/leaderboard?view=weekly'), getApiFetchOptions()),
-          fetch(apiUrl(`/api/leaderboard?view=monthly&month=${monthStr}`), getApiFetchOptions()),
-        ]);
-        if (cancelled) return;
-        const [entryData, yesterdayData, weeklyData, streakData, lbData, monthLbData] = await Promise.all([
-          entryRes.json().catch(() => null),
-          yesterdayRes.json().catch(() => null),
-          weeklyRes.json().catch(() => []),
-          streakRes.json().catch(() => ({})),
-          lbRes.json().catch(() => ({})),
-          monthLbRes.json().catch(() => ({})),
-        ]);
-        if (cancelled) return;
-        setTodayEntry(entryData?.id ? (entryData as DailyEntry) : null);
-        setYesterdayEntry(yesterdayData?.id ? (yesterdayData as DailyEntry) : null);
-        setWeeklyEntries(Array.isArray(weeklyData) ? (weeklyData as DailyEntry[]) : []);
-        setLoggingStreak(streakData.logging_streak ?? 0);
-        setGoalCrushStreak(streakData.goal_crush_streak ?? 0);
-        setWeekLogDays(streakData.week_log_days ?? 0);
-        setWeeklyGoalsHit(streakData.weekly_goals_hit ?? 'none');
-        const name = profile.display_name;
-        const myEntry = lbData.rankings?.find(
-          (r: { user: { display_name: string }; rank: number; score: { total_points: number } }) =>
-            r.user.display_name === name,
+        const summaryRes = await fetch(
+          apiUrl(
+            `/api/dashboard/summary?today=${today}&yesterday=${yesterdayStr}&week_start=${monday}&month=${monthStr}`,
+          ),
+          getApiFetchOptions(),
         );
-        setRank(myEntry?.rank ?? null);
-        setWeeklyPoints(myEntry?.score?.total_points ?? 0);
-        const myMonthEntry = monthLbData.rankings?.find(
-          (r: { user: { display_name: string }; rank: number; score: { total_points: number } }) =>
-            r.user.display_name === name,
-        );
-        setMonthRank(myMonthEntry?.rank ?? null);
-        setMonthlyPoints(myMonthEntry?.score?.total_points ?? 0);
+        if (cancelled) return;
+        if (!summaryRes.ok) throw new Error(`Dashboard summary failed (${summaryRes.status})`);
+        const summary = (await summaryRes.json().catch(() => ({}))) as DashboardSummaryResponse;
+        if (cancelled) return;
+        setTodayEntry(summary.today_entry ?? null);
+        setYesterdayEntry(summary.yesterday_entry ?? null);
+        setWeeklyEntries(Array.isArray(summary.weekly_entries) ? summary.weekly_entries : []);
+        setLoggingStreak(summary.logging_streak ?? 0);
+        setGoalCrushStreak(summary.goal_crush_streak ?? 0);
+        setWeekLogDays(summary.week_log_days ?? 0);
+        setWeeklyGoalsHit(summary.weekly_goals_hit ?? 'none');
+        setRank(summary.weekly_rank ?? null);
+        setWeeklyPoints(summary.weekly_points ?? 0);
+        setMonthRank(summary.monthly_rank ?? null);
+        setMonthlyPoints(summary.monthly_points ?? 0);
+        onMonthRankChange?.(summary.monthly_rank ?? null);
       } catch (e) {
         console.error('Dashboard load failed:', e);
       } finally {
@@ -945,7 +705,7 @@ export function DashboardTab({
     return () => {
       cancelled = true;
     };
-  }, [profile.display_name, refreshKey, refreshTrigger]);
+  }, [onMonthRankChange, refreshKey, refreshTrigger]);
 
   useEffect(() => {
     localStorage.setItem(DASHBOARD_GOALS_LAYOUT_KEY, desktopGoalsView);
@@ -1342,7 +1102,7 @@ export function DashboardTab({
               )}
             </div>
 
-            <DashboardWeekGrid
+            <WeekGoalsGrid
               entries={weeklyEntries as EntryRow[]}
               goals={profile}
               from={weekMonday}

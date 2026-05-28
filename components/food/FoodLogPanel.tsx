@@ -1,7 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
-import { Sparkles } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ChevronDown, ChevronUp, Sparkles } from 'lucide-react';
 import { apiUrl, getApiFetchOptions, getAuthHeaders } from '@/lib/api';
 import type { Profile } from '@/lib/types';
 import type { FoodCartItem, MealType } from '@/lib/food/types';
@@ -43,6 +43,11 @@ export function FoodLogPanel({ profile, date, onLogged, onError }: FoodLogPanelP
   const [manualOpen, setManualOpen] = useState(false);
   const [manualProtein, setManualProtein] = useState(0);
   const [manualCalories, setManualCalories] = useState(0);
+  /** Either cart or search/AI is expanded — not both (avoids overlap on small screens). */
+  const [activePane, setActivePane] = useState<'composer' | 'cart'>('composer');
+  /** Mobile keyboard open — collapse chrome and sync visual viewport height. */
+  const [composerFocused, setComposerFocused] = useState(false);
+  const composerBlurTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const foodMode = profile.food_tracking_mode ?? 'protein_only';
   const showProtein = foodMode === 'protein_only' || foodMode === 'both';
@@ -104,6 +109,69 @@ export function FoodLogPanel({ profile, date, onLogged, onError }: FoodLogPanelP
     const t = setTimeout(runSearch, 200);
     return () => clearTimeout(t);
   }, [runSearch]);
+
+  useEffect(() => {
+    if (cart.length === 0) setActivePane('composer');
+  }, [cart.length]);
+
+  useEffect(() => {
+    if (activePane === 'cart') {
+      setManualOpen(false);
+      if (composerBlurTimer.current) clearTimeout(composerBlurTimer.current);
+      setComposerFocused(false);
+    }
+  }, [activePane]);
+
+  useEffect(() => {
+    if (!composerFocused) {
+      document.documentElement.style.removeProperty('--visual-vh');
+      document.documentElement.style.removeProperty('--visual-offset-top');
+      document.documentElement.style.removeProperty('--keyboard-inset');
+      return;
+    }
+
+    const vv = window.visualViewport;
+    if (!vv) return;
+
+    const syncViewport = () => {
+      document.documentElement.style.setProperty('--visual-vh', `${vv.height}px`);
+      document.documentElement.style.setProperty('--visual-offset-top', `${vv.offsetTop}px`);
+      const keyboardInset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      document.documentElement.style.setProperty('--keyboard-inset', `${keyboardInset}px`);
+    };
+
+    syncViewport();
+    vv.addEventListener('resize', syncViewport);
+    vv.addEventListener('scroll', syncViewport);
+    return () => {
+      vv.removeEventListener('resize', syncViewport);
+      vv.removeEventListener('scroll', syncViewport);
+      document.documentElement.style.removeProperty('--visual-vh');
+      document.documentElement.style.removeProperty('--visual-offset-top');
+      document.documentElement.style.removeProperty('--keyboard-inset');
+    };
+  }, [composerFocused]);
+
+  useEffect(
+    () => () => {
+      if (composerBlurTimer.current) clearTimeout(composerBlurTimer.current);
+    },
+    [],
+  );
+
+  const handleComposerFocus = () => {
+    if (composerBlurTimer.current) clearTimeout(composerBlurTimer.current);
+    setComposerFocused(true);
+    setActivePane('composer');
+  };
+
+  const handleComposerBlur = () => {
+    composerBlurTimer.current = setTimeout(() => setComposerFocused(false), 120);
+  };
+
+  const showComposer = activePane === 'composer';
+  const showCartExpanded = activePane === 'cart' && cart.length > 0;
+  const showTypingChrome = !composerFocused;
 
   const addToCart = (payload: {
     food_catalog_id: string;
@@ -240,154 +308,217 @@ export function FoodLogPanel({ profile, date, onLogged, onError }: FoodLogPanelP
   const proteinTarget = getProteinTargetGrams(profile);
 
   return (
-    <div className="food-log-panel flex flex-col flex-1 min-h-0 h-full overflow-hidden gap-1.5 sm:gap-2">
+    <div
+      className={`food-log-panel log-entry-form flex flex-col flex-1 min-h-0 h-full overflow-hidden gap-1.5 sm:gap-2${
+        composerFocused ? ' food-log-panel--typing' : ''
+      }${showCartExpanded ? ' food-log-panel--cart-expanded' : ''}`}
+    >
       <p className="hidden sm:block text-[10px] text-text-muted shrink-0 leading-tight">
         Logged today: {dayTotals.calories_kcal} kcal · {dayTotals.protein_g}g
         {showProtein && ` · goal ~${proteinTarget}g`}
       </p>
 
-      <div className="shrink-0 rounded-xl border border-slate-200 bg-slate-50 shadow-sm overflow-hidden">
+      <div
+        className={`food-log-panel__cart rounded-xl border border-slate-200 bg-slate-50 shadow-sm overflow-hidden ${
+          showCartExpanded ? 'flex flex-col flex-1 min-h-0' : 'shrink-0'
+        }`}
+      >
         {cart.length === 0 ? (
           <div className="flex items-center justify-between gap-2 px-3 py-1.5 bg-white">
             <span className="text-xs font-bold text-text-primary">Cart</span>
             <span className="text-[11px] text-text-muted truncate">Search or AI below</span>
           </div>
-        ) : (
+        ) : showCartExpanded ? (
           <>
-        <div className="flex items-center justify-between px-3 py-1.5 bg-white border-b border-slate-200">
-          <span className="text-xs font-bold text-text-primary">Cart</span>
-          <span className="text-[11px] font-semibold tabular-nums text-primary-orange">{cart.length}</span>
-        </div>
-          <ul className={`divide-y divide-slate-200 ${cart.length > 2 ? 'max-h-[88px] sm:max-h-[120px] overflow-y-auto' : ''}`}>
-            {cart.map((line) => (
-              <li
-                key={line.client_id}
-                className={`px-3 py-1.5 text-sm ${line.catalog_created ? 'bg-sky-50' : 'bg-white'}`}
-              >
-                <div className="flex justify-between gap-2 items-start">
-                  <div className="min-w-0">
-                    <p className="font-medium text-text-primary text-[13px] leading-snug truncate">
-                      <span className="text-[10px] uppercase text-text-muted mr-1">{line.meal_type}</span>
-                      {line.quantity}× {line.display_name}
-                    </p>
-                    <p className="text-[10px] text-text-muted">
-                      {line.calories_kcal} kcal · {line.protein_g}g
-                      {line.catalog_created ? ' · new' : ''}
-                    </p>
+            <button
+              type="button"
+              className="w-full flex items-center justify-between gap-2 px-3 py-1.5 bg-white border-b border-slate-200 text-left"
+              aria-expanded
+              onClick={() => setActivePane('composer')}
+            >
+              <span className="text-xs font-bold text-text-primary">Cart</span>
+              <span className="inline-flex items-center gap-1 text-[11px] font-semibold tabular-nums text-primary-orange">
+                {cart.length}
+                <ChevronUp className="w-3.5 h-3.5 text-text-muted" aria-hidden />
+              </span>
+            </button>
+            <ul className="divide-y divide-slate-200 flex-1 min-h-0 overflow-y-auto">
+              {cart.map((line) => (
+                <li
+                  key={line.client_id}
+                  className={`px-3 py-1.5 text-sm ${line.catalog_created ? 'bg-sky-50' : 'bg-white'}`}
+                >
+                  <div className="flex justify-between gap-2 items-start">
+                    <div className="min-w-0">
+                      <p className="font-medium text-text-primary text-[13px] leading-snug truncate">
+                        <span className="text-[10px] uppercase text-text-muted mr-1">{line.meal_type}</span>
+                        {line.quantity}× {line.display_name}
+                      </p>
+                      <p className="text-[10px] text-text-muted">
+                        {line.calories_kcal} kcal · {line.protein_g}g
+                        {line.catalog_created ? ' · new' : ''}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      className="text-text-muted shrink-0 p-1 text-xs"
+                      aria-label="Remove"
+                      onClick={() => setCart((prev) => prev.filter((c) => c.client_id !== line.client_id))}
+                    >
+                      ✕
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    className="text-text-muted shrink-0 p-1 text-xs"
-                    aria-label="Remove"
-                    onClick={() => setCart((prev) => prev.filter((c) => c.client_id !== line.client_id))}
-                  >
-                    ✕
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
+                </li>
+              ))}
+            </ul>
           </>
+        ) : (
+          <button
+            type="button"
+            className="w-full flex items-center justify-between gap-2 px-3 py-2 bg-white text-left"
+            aria-expanded={false}
+            onClick={() => setActivePane('cart')}
+          >
+            <span className="text-xs font-bold text-text-primary">Cart</span>
+            <span className="min-w-0 flex-1 text-[11px] text-text-muted truncate text-center px-1 tabular-nums">
+              {cart.length} item{cart.length === 1 ? '' : 's'} · +{batchKcal} kcal · +{batchProtein}g
+            </span>
+            <ChevronDown className="w-3.5 h-3.5 shrink-0 text-text-muted" aria-hidden />
+          </button>
         )}
       </div>
 
-      <div
-        role="tablist"
-        aria-label="Add food"
-        className="grid grid-cols-2 gap-1 p-0.5 sm:p-1 rounded-xl bg-slate-100 shrink-0"
-      >
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === 'add'}
-          onClick={() => setTab('add')}
-          className={`rounded-lg py-2 text-sm font-semibold transition-all ${
-            tab === 'add'
-              ? 'bg-white text-text-primary shadow-sm'
-              : 'text-text-muted hover:text-text-secondary'
-          }`}
+      {!showCartExpanded ? (
+        <div
+          role="tablist"
+          aria-label="Add food"
+          className="food-log-panel__tabs grid grid-cols-2 gap-1 p-0.5 sm:p-1 rounded-xl bg-slate-100 shrink-0"
         >
-          Search
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === 'describe'}
-          onClick={() => setTab('describe')}
-          className={`rounded-lg py-2 text-sm font-semibold transition-all inline-flex items-center justify-center gap-1 ${
-            tab === 'describe'
-              ? 'bg-white text-text-primary shadow-sm'
-              : 'text-text-muted hover:text-text-secondary'
-          }`}
-        >
-          <Sparkles className="w-3.5 h-3.5 text-primary-orange" aria-hidden />
-          AI
-        </button>
-      </div>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'add'}
+            onClick={() => {
+              setTab('add');
+              setActivePane('composer');
+            }}
+            className={`rounded-lg py-2 text-sm font-semibold transition-all ${
+              tab === 'add'
+                ? 'bg-white text-text-primary shadow-sm'
+                : 'text-text-muted hover:text-text-secondary'
+            }`}
+          >
+            Search
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'describe'}
+            onClick={() => {
+              setTab('describe');
+              setActivePane('composer');
+            }}
+            className={`rounded-lg py-2 text-sm font-semibold transition-all inline-flex items-center justify-center gap-1 ${
+              tab === 'describe'
+                ? 'bg-white text-text-primary shadow-sm'
+                : 'text-text-muted hover:text-text-secondary'
+            }`}
+          >
+            <Sparkles className="w-3.5 h-3.5 text-primary-orange" aria-hidden />
+            AI
+          </button>
+        </div>
+      ) : null}
 
-      <div className="food-log-panel__main flex-1 min-h-0 flex flex-col overflow-hidden">
+      {showCartExpanded ? (
+        <button
+          type="button"
+          className="shrink-0 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-sm font-medium text-text-secondary text-center"
+          onClick={() => setActivePane('composer')}
+        >
+          Add more via Search or AI
+        </button>
+      ) : null}
+
+      {!showCartExpanded ? (
+      <div
+        className={`food-log-panel__main flex flex-col overflow-hidden ${
+          showComposer ? 'flex-1 min-h-0' : 'shrink-0 h-0 min-h-0 overflow-hidden pointer-events-none'
+        }`}
+        aria-hidden={!showComposer}
+      >
       {tab === 'add' ? (
-        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain space-y-2 -mx-0.5 px-0.5 pb-1">
-          <div className="flex gap-1 overflow-x-auto pb-0.5">
-            {MEAL_TYPES.map((m) => (
-              <button
-                key={m}
-                type="button"
-                onClick={() => setDefaultMeal(m)}
-                className={`shrink-0 px-2 py-1 rounded-lg text-[10px] font-medium ${
-                  defaultMeal === m ? 'bg-black/10' : 'text-text-muted'
-                }`}
-              >
-                {m}
-              </button>
-            ))}
-          </div>
+        <div className="food-log-panel__search flex flex-col flex-1 min-h-0 overflow-hidden -mx-0.5 px-0.5">
+          {showTypingChrome ? (
+            <div className="food-log-panel__search-chrome shrink-0 space-y-2 pb-2">
+              <div className="flex gap-1 overflow-x-auto pb-0.5">
+                {MEAL_TYPES.map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setDefaultMeal(m)}
+                    className={`shrink-0 px-2 py-1 rounded-lg text-[10px] font-medium ${
+                      defaultMeal === m ? 'bg-black/10' : 'text-text-muted'
+                    }`}
+                  >
+                    {m}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
           <input
             type="search"
             placeholder="Search roti, dal, egg…"
             value={searchQ}
             onChange={(e) => setSearchQ(e.target.value)}
-            className="w-full border border-black/10 rounded-xl px-3 py-2 text-sm shrink-0"
+            onFocus={handleComposerFocus}
+            onBlur={handleComposerBlur}
+            className="food-log-panel__search-input w-full border border-black/10 rounded-xl px-3 py-2 text-sm shrink-0"
           />
-          <div className="flex gap-1.5 overflow-x-auto pb-0.5 snap-x shrink-0">
-            <button
-              type="button"
-              onClick={() => setSection(null)}
-              className={`shrink-0 px-3 py-1 rounded-full text-xs font-medium border ${
-                !section ? 'border-primary-orange bg-primary-orange/10' : 'border-black/10'
-              }`}
-            >
-              All
-            </button>
-            {sections.map((s) => (
-              <button
-                key={s.id}
-                type="button"
-                onClick={() => setSection(s.id)}
-                className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-medium border whitespace-nowrap ${
-                  section === s.id ? 'border-primary-orange bg-primary-orange/10' : 'border-black/10'
-                }`}
-              >
-                {s.emoji ? `${s.emoji} ` : ''}
-                {s.label}
-              </button>
-            ))}
-          </div>
-          {recents.length > 0 && (
-            <div className="flex gap-1.5 overflow-x-auto shrink-0">
-              {recents.map((r) => (
+          {showTypingChrome ? (
+            <div className="food-log-panel__search-chrome shrink-0 space-y-2 pt-2">
+              <div className="flex gap-1.5 overflow-x-auto pb-0.5 snap-x">
                 <button
-                  key={r.food_catalog_id}
                   type="button"
-                  onClick={() => setPortionPick(r)}
-                  className="shrink-0 px-3 py-1 rounded-full bg-black/5 text-xs font-medium"
+                  onClick={() => setSection(null)}
+                  className={`shrink-0 px-3 py-1 rounded-full text-xs font-medium border ${
+                    !section ? 'border-primary-orange bg-primary-orange/10' : 'border-black/10'
+                  }`}
                 >
-                  {r.name}
+                  All
                 </button>
-              ))}
+                {sections.map((s) => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => setSection(s.id)}
+                    className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-medium border whitespace-nowrap ${
+                      section === s.id ? 'border-primary-orange bg-primary-orange/10' : 'border-black/10'
+                    }`}
+                  >
+                    {s.emoji ? `${s.emoji} ` : ''}
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+              {recents.length > 0 && (
+                <div className="flex gap-1.5 overflow-x-auto">
+                  {recents.map((r) => (
+                    <button
+                      key={r.food_catalog_id}
+                      type="button"
+                      onClick={() => setPortionPick(r)}
+                      className="shrink-0 px-3 py-1 rounded-full bg-black/5 text-xs font-medium"
+                    >
+                      {r.name}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
-          )}
-          <ul className="space-y-0.5 pb-1">
+          ) : null}
+          <ul className="food-log-panel__search-results flex-1 min-h-0 overflow-y-auto overscroll-contain space-y-0.5 pt-2 pb-1">
             {results.length === 0 ? (
               <li className="text-sm text-text-muted py-3 text-center">
                 {searchQ.length < 2 && !section ? 'Search or pick a category' : 'No dishes found'}
@@ -416,30 +547,36 @@ export function FoodLogPanel({ profile, date, onLogged, onError }: FoodLogPanelP
           </ul>
         </div>
       ) : (
-        <div className="food-log-panel__ai flex flex-col min-h-0 overflow-hidden rounded-xl sm:rounded-2xl border-2 border-dashed border-primary-orange/30 bg-gradient-to-b from-primary-orange/[0.06] to-transparent p-2.5 sm:p-3">
-          <p className="text-[10px] sm:text-[11px] text-text-secondary shrink-0 mb-1.5 line-clamp-2">
-            Describe meals — we match dishes and add new ones to the catalog.
-          </p>
+        <div className="food-log-panel__ai flex flex-col flex-1 min-h-0 overflow-hidden rounded-xl sm:rounded-2xl border-2 border-dashed border-primary-orange/30 bg-gradient-to-b from-primary-orange/[0.06] to-transparent p-2.5 sm:p-3">
+          {showTypingChrome ? (
+            <p className="food-log-panel__ai-hint text-[10px] sm:text-[11px] text-text-secondary shrink-0 mb-1.5 line-clamp-2">
+              Describe meals — we match dishes and add new ones to the catalog.
+            </p>
+          ) : null}
           <textarea
             value={describeText}
             onChange={(e) => setDescribeText(e.target.value)}
-            rows={3}
+            onFocus={handleComposerFocus}
+            onBlur={handleComposerBlur}
+            rows={composerFocused ? undefined : 3}
             placeholder="breakfast: poha — lunch: 3 chapati, dal"
-            className="food-log-panel__ai-input w-full shrink-0 bg-white/90 border border-black/8 rounded-xl px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary-orange/30"
+            className="food-log-panel__ai-input w-full min-h-[5rem] bg-white/90 border border-black/8 rounded-xl px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary-orange/30"
           />
-          <div className="flex flex-wrap gap-1 shrink-0 pt-1.5">
-            {['Since morning', 'Today', 'This meal'].map((chip) => (
-              <button
-                key={chip}
-                type="button"
-                className="text-[10px] px-2 py-0.5 rounded-full bg-white/80 border border-black/8 text-text-muted"
-                onClick={() => setDescribeText((t) => (t ? `${t}\n` : '') + `${chip}: `)}
-              >
-                {chip}
-              </button>
-            ))}
-          </div>
-          <div className="flex justify-end shrink-0 pt-1.5">
+          {showTypingChrome ? (
+            <div className="food-log-panel__ai-chips flex flex-wrap gap-1 shrink-0 pt-1.5">
+              {['Since morning', 'Today', 'This meal'].map((chip) => (
+                <button
+                  key={chip}
+                  type="button"
+                  className="text-[10px] px-2 py-0.5 rounded-full bg-white/80 border border-black/8 text-text-muted"
+                  onClick={() => setDescribeText((t) => (t ? `${t}\n` : '') + `${chip}: `)}
+                >
+                  {chip}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          <div className="food-log-panel__ai-actions flex justify-end shrink-0 pt-1.5">
             <button
               type="button"
               disabled={parsing || !describeText.trim()}
@@ -453,9 +590,10 @@ export function FoodLogPanel({ profile, date, onLogged, onError }: FoodLogPanelP
         </div>
       )}
       </div>
+      ) : null}
 
-      <div className="food-log-panel__footer shrink-0 pt-1.5 sm:pt-2 border-t border-black/5 bg-white">
-        {tab === 'add' && (showProtein || showCalories) && (
+      <div className="food-log-panel__footer log-entry-sticky-cta shrink-0 pt-1.5 sm:pt-2 border-t border-black/5 bg-white">
+        {!showCartExpanded && tab === 'add' && (showProtein || showCalories) && (
           <button
             type="button"
             className="text-[10px] text-text-muted underline mb-2 block"
@@ -464,7 +602,7 @@ export function FoodLogPanel({ profile, date, onLogged, onError }: FoodLogPanelP
             {manualOpen ? 'Hide manual macros' : 'Manual protein / calories'}
           </button>
         )}
-        {manualOpen && tab === 'add' && (
+        {!showCartExpanded && manualOpen && tab === 'add' && (
           <div className="space-y-2 max-h-[100px] overflow-y-auto mb-2">
             {showProtein && (
               <SliderField

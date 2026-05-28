@@ -349,7 +349,8 @@ export default function GoalSetupWizard({ isNewUser, existingProfile, onComplete
   const habitTips = getGoalHabitTips(fitnessGoal);
 
   return (
-    <div className="relative z-10 min-h-screen w-full bg-gray-50 flex items-start justify-center p-4 pt-8">
+    <div className="goal-setup-shell relative z-10 w-full bg-gray-50">
+      <div className="goal-setup-scroll flex items-start justify-center p-4 pt-6 sm:pt-8 pb-4">
       <div className="w-full max-w-2xl">
         {/* Header */}
         <div className="mb-6 text-center">
@@ -498,38 +499,6 @@ export default function GoalSetupWizard({ isNewUser, existingProfile, onComplete
             </div>
 
             {error && <p className="text-sm text-red-600">{error}</p>}
-
-            <div className="flex gap-3">
-              {onCancel && (
-                <button
-                  type="button"
-                  onClick={onCancel}
-                  className="flex-1 py-2.5 rounded-xl border border-gray-300 text-sm text-gray-600 hover:bg-gray-50"
-                >
-                  Cancel
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => {
-                  const err = validateStep1();
-                  if (err) { setError(err); return; }
-                  setError(null);
-                  // Pre-fill step 2 defaults
-                  const w = parseFloat(weightKg) || 70;
-                  if (!sleepHours) setSleepHours(String(RECOMMENDED_SLEEP_HOURS_BY_GOAL[fitnessGoal]));
-                  if (!waterLiters) setWaterLiters(String(RECOMMENDED_WATER_LITERS_BY_GOAL[fitnessGoal]));
-                  if (!workoutMins) setWorkoutMins(String(RECOMMENDED_WORKOUT_MINS_WEEK_BY_GOAL[fitnessGoal]));
-                  if (!workoutDays) setWorkoutDays(String(RECOMMENDED_WORKOUT_DAYS_WEEK_BY_GOAL[fitnessGoal]));
-                  if (!proteinGoal) setProteinGoal(String(recommendedProteinGDay(w, fitnessGoal)));
-                  if (!calorieGoal) setCalorieGoal(String(Math.round(w * CALORIE_MULTIPLIERS_PER_KG[fitnessGoal])));
-                  setStep(2);
-                }}
-                className="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700"
-              >
-                Next: Set Daily Targets →
-              </button>
-            </div>
           </div>
         )}
 
@@ -791,25 +760,61 @@ export default function GoalSetupWizard({ isNewUser, existingProfile, onComplete
               )}
             </div>
 
-            {error && <p className="text-sm text-red-600">{error}</p>}
+            {error && step === 2 && <p className="text-sm text-red-600">{error}</p>}
+          </div>
+        )}
+      </div>
+      </div>
 
-            <div className="flex gap-3">
+      <div className="log-entry-sticky-cta shrink-0 px-4 pb-4 pt-2 bg-gray-50 max-w-2xl w-full mx-auto">
+        {step === 1 ? (
+          <div className="flex gap-3">
+            {onCancel && (
               <button
                 type="button"
-                onClick={() => { setError(null); setStep(1); }}
-                className="flex-1 py-2.5 rounded-xl border border-gray-300 text-sm text-gray-600 hover:bg-gray-50"
+                onClick={onCancel}
+                className="flex-1 py-2.5 rounded-xl border border-gray-300 text-sm text-gray-600 hover:bg-gray-50 min-h-[48px]"
               >
-                ← Back
+                Cancel
               </button>
-              <button
-                type="button"
-                onClick={handleFinish}
-                disabled={saving}
-                className="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-50"
-              >
-                {saving ? 'Saving…' : isNewUser ? 'Start Tracking →' : 'Save Goals →'}
-              </button>
-            </div>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                const err = validateStep1();
+                if (err) { setError(err); return; }
+                setError(null);
+                const w = parseFloat(weightKg) || 70;
+                if (!sleepHours) setSleepHours(String(RECOMMENDED_SLEEP_HOURS_BY_GOAL[fitnessGoal]));
+                if (!waterLiters) setWaterLiters(String(RECOMMENDED_WATER_LITERS_BY_GOAL[fitnessGoal]));
+                if (!workoutMins) setWorkoutMins(String(RECOMMENDED_WORKOUT_MINS_WEEK_BY_GOAL[fitnessGoal]));
+                if (!workoutDays) setWorkoutDays(String(RECOMMENDED_WORKOUT_DAYS_WEEK_BY_GOAL[fitnessGoal]));
+                if (!proteinGoal) setProteinGoal(String(recommendedProteinGDay(w, fitnessGoal)));
+                if (!calorieGoal) setCalorieGoal(String(Math.round(w * CALORIE_MULTIPLIERS_PER_KG[fitnessGoal])));
+                setStep(2);
+              }}
+              className="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 min-h-[48px]"
+            >
+              Next: Set Daily Targets →
+            </button>
+          </div>
+        ) : (
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={() => { setError(null); setStep(1); }}
+              className="flex-1 py-2.5 rounded-xl border border-gray-300 text-sm text-gray-600 hover:bg-gray-50 min-h-[48px]"
+            >
+              ← Back
+            </button>
+            <button
+              type="button"
+              onClick={handleFinish}
+              disabled={saving}
+              className="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 min-h-[48px]"
+            >
+              {saving ? 'Saving…' : isNewUser ? 'Start Tracking →' : 'Save Goals →'}
+            </button>
           </div>
         )}
       </div>
