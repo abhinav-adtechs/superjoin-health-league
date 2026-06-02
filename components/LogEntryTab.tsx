@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from "react";
 import {
   Activity,
   Target,
@@ -15,23 +15,23 @@ import {
   UtensilsCrossed,
   Gauge,
   Trash2,
-} from 'lucide-react';
-import type { ReactNode } from 'react';
-import { apiUrl, getApiFetchOptions, getAuthHeaders } from '@/lib/api';
-import { CalendarHistogram } from './CalendarHistogram';
-import { LogHistorySkeleton } from '@/components/LoadingScreen';
-import { getLoggingStreakBonus } from '@/lib/points';
-import type { Profile } from '@/lib/types';
+} from "lucide-react";
+import type { ReactNode } from "react";
+import { apiUrl, getApiFetchOptions, getAuthHeaders } from "@/lib/api";
+import { CalendarHistogram } from "./CalendarHistogram";
+import { LogHistorySkeleton } from "@/components/LoadingScreen";
+import { getLoggingStreakBonus } from "@/lib/points";
+import type { Profile } from "@/lib/types";
 import {
   CLEAR_ACTIVITY_LABELS,
   type ClearActivityKey,
-} from '@/lib/clearEntryActivity';
+} from "@/lib/clearEntryActivity";
 import {
   MAX_DELETE_DAYS_BACK,
   getLocalDateString,
   isDateWithinAnchorRange,
   normalizeYmd,
-} from '@/lib/entryDateWindow';
+} from "@/lib/entryDateWindow";
 
 /** Canonical YYYY-MM-DD for API rows (ISO timestamps from Supabase break string compares and delete keys). */
 function normalizeEntryRow<T extends { date: string }>(row: T): T {
@@ -79,13 +79,23 @@ type EntryRow = {
   is_goal_crush_day?: boolean | null;
 };
 
-type HistoryRange = 'week' | 'month' | 'all';
+type HistoryRange = "week" | "month" | "all";
 /** What to show in the daily log list (replaces strength / cardio / steps). */
-type LogCategoryFilter = 'all' | 'movement' | 'nutrition' | 'hydration' | 'sleep' | 'weight';
-type WeekStatus = 'green' | 'yellow' | 'red';
+type LogCategoryFilter =
+  | "all"
+  | "movement"
+  | "nutrition"
+  | "hydration"
+  | "sleep"
+  | "weight";
+type WeekStatus = "green" | "yellow" | "red";
 
 function hasMovement(e: EntryRow): boolean {
-  return e.workout_done === true || e.cardio_done === true || (e.steps != null && Number(e.steps) > 0);
+  return (
+    e.workout_done === true ||
+    e.cardio_done === true ||
+    (e.steps != null && Number(e.steps) > 0)
+  );
 }
 
 function hasHydration(e: EntryRow): boolean {
@@ -110,30 +120,30 @@ function hasAnyLog(e: EntryRow): boolean {
 }
 
 function workoutMins(e: EntryRow): number {
-  const w = (e.workout_done && e.workout_duration) ? e.workout_duration : 0;
-  const c = (e.cardio_done && e.cardio_duration) ? e.cardio_duration : 0;
+  const w = e.workout_done && e.workout_duration ? e.workout_duration : 0;
+  const c = e.cardio_done && e.cardio_duration ? e.cardio_duration : 0;
   return w + c;
 }
 
 function label(s: string): string {
-  return s.replace(/_/g, ' ');
+  return s.replace(/_/g, " ");
 }
 
-const COLOR_WORKOUT = '#FF6B35';
-const COLOR_CARDIO = '#0d9488';
-const COLOR_STEPS = '#2563eb';
-const COLOR_WATER = '#f59e0b';
-const COLOR_SLEEP = '#0ea5e9';
-const COLOR_NUTRITION = '#6366f1';
-const COLOR_WEIGHT = '#94a3b8';
+const COLOR_WORKOUT = "#FF6B35";
+const COLOR_CARDIO = "#0d9488";
+const COLOR_STEPS = "#2563eb";
+const COLOR_WATER = "#f59e0b";
+const COLOR_SLEEP = "#0ea5e9";
+const COLOR_NUTRITION = "#6366f1";
+const COLOR_WEIGHT = "#94a3b8";
 
 const LOG_FILTER_META: { id: LogCategoryFilter; label: string }[] = [
-  { id: 'all', label: 'All' },
-  { id: 'movement', label: 'Movement' },
-  { id: 'nutrition', label: 'Nutrition' },
-  { id: 'hydration', label: 'Water' },
-  { id: 'sleep', label: 'Sleep' },
-  { id: 'weight', label: 'Weight' },
+  { id: "all", label: "All" },
+  { id: "movement", label: "Movement" },
+  { id: "nutrition", label: "Nutrition" },
+  { id: "hydration", label: "Water" },
+  { id: "sleep", label: "Sleep" },
+  { id: "weight", label: "Weight" },
 ];
 
 function isGoalCrushEntry(e: EntryRow): boolean {
@@ -142,7 +152,7 @@ function isGoalCrushEntry(e: EntryRow): boolean {
 }
 
 function addDays(dateStr: string, delta: number): string {
-  const d = new Date(dateStr + 'T12:00:00');
+  const d = new Date(dateStr + "T12:00:00");
   d.setDate(d.getDate() + delta);
   return d.toISOString().slice(0, 10);
 }
@@ -159,68 +169,89 @@ function getWeekBounds(offset: number): { from: string; to: string } {
   monday.setDate(monday.getDate() + offset * 7);
   const sunday = new Date(monday);
   sunday.setDate(sunday.getDate() + 6);
-  return { from: monday.toISOString().slice(0, 10), to: sunday.toISOString().slice(0, 10) };
+  return {
+    from: monday.toISOString().slice(0, 10),
+    to: sunday.toISOString().slice(0, 10),
+  };
 }
 
 function getMonthBounds(offset: number): { from: string; to: string } {
   const today = new Date();
   const first = new Date(today.getFullYear(), today.getMonth() + offset, 1);
   const last = new Date(today.getFullYear(), today.getMonth() + offset + 1, 0);
-  return { from: first.toISOString().slice(0, 10), to: last.toISOString().slice(0, 10) };
+  return {
+    from: first.toISOString().slice(0, 10),
+    to: last.toISOString().slice(0, 10),
+  };
 }
 
 function formatWeekNav(offset: number): string {
   const { from, to } = getWeekBounds(offset);
-  const f = new Date(from + 'T12:00:00');
-  const t = new Date(to + 'T12:00:00');
-  const opts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' };
+  const f = new Date(from + "T12:00:00");
+  const t = new Date(to + "T12:00:00");
+  const opts: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
   return `${f.toLocaleDateString(undefined, opts)} – ${t.toLocaleDateString(undefined, opts)}`;
 }
 
 function formatMonthNav(offset: number): string {
   const today = new Date();
   const d = new Date(today.getFullYear(), today.getMonth() + offset, 1);
-  return d.toLocaleString('default', { month: 'long', year: 'numeric' });
+  return d.toLocaleString("default", { month: "long", year: "numeric" });
 }
 
 // Returns the Monday of the ISO week for a given date string
 function getWeekStart(dateStr: string): string {
-  const d = getMondayOfWeek(new Date(dateStr + 'T12:00:00'));
+  const d = getMondayOfWeek(new Date(dateStr + "T12:00:00"));
   return d.toISOString().slice(0, 10);
 }
 
 function formatWeekRange(weekStartStr: string): string {
-  const start = new Date(weekStartStr + 'T12:00:00');
-  const end = new Date(weekStartStr + 'T12:00:00');
+  const start = new Date(weekStartStr + "T12:00:00");
+  const end = new Date(weekStartStr + "T12:00:00");
   end.setDate(end.getDate() + 6);
-  const opts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' };
+  const opts: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
   return `${start.toLocaleDateString(undefined, opts)} – ${end.toLocaleDateString(undefined, opts)}`;
 }
 
-function getWorkoutPoints(e: EntryRow, ageBracket: Profile['age_bracket']): number {
+function getWorkoutPoints(
+  e: EntryRow,
+  ageBracket: Profile["age_bracket"],
+): number {
   if (!e.workout_done) return 0;
-  let pts = 10;
-  if (e.workout_duration != null && e.workout_duration >= 45) pts += 5;
-  if (e.workout_duration != null && e.workout_duration >= 60) pts += 5;
-  return pts;
+  const adj = ageBracket === "over_35" ? 0.85 : 1.0;
+  const dur = e.workout_duration ?? 0;
+  if (dur >= Math.round(60 * adj)) return 25;
+  if (dur >= Math.round(45 * adj)) return 20;
+  if (dur >= Math.round(30 * adj)) return 15;
+  if (dur >= Math.round(15 * adj)) return 11;
+  return 5;
 }
 
-function getCardioPoints(e: EntryRow, ageBracket: Profile['age_bracket']): number {
+function getCardioPoints(
+  e: EntryRow,
+  ageBracket: Profile["age_bracket"],
+): number {
   if (!e.cardio_done) return 0;
-  let pts = 10;
-  const adj = ageBracket === 'over_35' ? 0.85 : 1.0;
-  const threshold = 30 * adj;
-  if (e.cardio_duration != null && e.cardio_duration >= threshold) pts += 5;
-  return pts;
+  const adj = ageBracket === "over_35" ? 0.85 : 1.0;
+  const dur = e.cardio_duration ?? 0;
+  if (dur >= Math.round(60 * adj)) return 20;
+  if (dur >= Math.round(45 * adj)) return 16;
+  if (dur >= Math.round(30 * adj)) return 12;
+  if (dur >= Math.round(15 * adj)) return 8;
+  return 4;
 }
 
-function getStepsPoints(e: EntryRow, ageBracket: Profile['age_bracket']): number {
+function getStepsPoints(
+  e: EntryRow,
+  ageBracket: Profile["age_bracket"],
+): number {
   if (e.steps == null) return 0;
-  const adj = ageBracket === 'over_35' ? 0.85 : 1.0;
+  const adj = ageBracket === "over_35" ? 0.85 : 1.0;
   const thresholds: [number, number][] = [
-    [10000 * adj, 15],
-    [7500 * adj, 10],
-    [5000 * adj, 5],
+    [Math.round(10000 * adj), 20],
+    [Math.round(7500 * adj), 15],
+    [Math.round(5000 * adj), 10],
+    [Math.round(2500 * adj), 5],
   ];
   for (const [th, pts] of thresholds) {
     if (e.steps >= th) return pts;
@@ -228,22 +259,49 @@ function getStepsPoints(e: EntryRow, ageBracket: Profile['age_bracket']): number
   return 0;
 }
 
-export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profile: Profile; onSuccess: () => void; refreshTrigger?: number }) {
+function getSleepPoints(e: EntryRow): number {
+  const h = e.sleep_hours;
+  if (h == null) return 0;
+  if (h >= 8 && h < 9) return 15;
+  if (h >= 9) return 13;
+  if (h >= 7) return 12;
+  if (h >= 6) return 7;
+  if (h >= 5) return 3;
+  return 0;
+}
+
+export function LogEntryTab({
+  profile,
+  onSuccess,
+  refreshTrigger = 0,
+}: {
+  profile: Profile;
+  onSuccess: () => void;
+  refreshTrigger?: number;
+}) {
   const [entries, setEntries] = useState<EntryRow[]>([]);
-  const [weightHistory, setWeightHistory] = useState<{ week_start: string; weight_kg: number }[]>([]);
+  const [weightHistory, setWeightHistory] = useState<
+    { week_start: string; weight_kg: number }[]
+  >([]);
   const [loading, setLoading] = useState(true);
   const [projection, setProjection] = useState<ProjectionResponse | null>(null);
-  const [monthlyBoard, setMonthlyBoard] = useState<LeaderboardSnapshot | null>(null);
-  const [historyRange, setHistoryRange] = useState<HistoryRange>('all');
+  const [monthlyBoard, setMonthlyBoard] = useState<LeaderboardSnapshot | null>(
+    null,
+  );
+  const [historyRange, setHistoryRange] = useState<HistoryRange>("all");
   const [historyWeekOffset, setHistoryWeekOffset] = useState(0);
   const [historyMonthOffset, setHistoryMonthOffset] = useState(0);
-  const [categoryFilter, setCategoryFilter] = useState<LogCategoryFilter>('all');
+  const [categoryFilter, setCategoryFilter] =
+    useState<LogCategoryFilter>("all");
   const [visibleWeeks, setVisibleWeeks] = useState(8);
   const [busyClearKey, setBusyClearKey] = useState<string | null>(null);
   /** Anchor for delete UI: today + previous 2 days only. */
   const todayLocalForDelete = getLocalDateString();
 
-  async function clearActivityForDate(date: string, activity: ClearActivityKey) {
+  async function clearActivityForDate(
+    date: string,
+    activity: ClearActivityKey,
+  ) {
     const label = CLEAR_ACTIVITY_LABELS[activity];
     if (!confirm(`Remove ${label} log for this day?`)) return;
     const dateKey = normalizeYmd(date) ?? date;
@@ -251,14 +309,23 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
     setBusyClearKey(k);
     try {
       const authHeaders = await getAuthHeaders();
-      const res = await fetch(apiUrl('/api/entries'), getApiFetchOptions({
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...authHeaders },
-        body: JSON.stringify({ date: dateKey, activity, client_today: getLocalDateString() }),
-      }));
+      const res = await fetch(
+        apiUrl("/api/entries"),
+        getApiFetchOptions({
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", ...authHeaders },
+          body: JSON.stringify({
+            date: dateKey,
+            activity,
+            client_today: getLocalDateString(),
+          }),
+        }),
+      );
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const msg = (data as { error?: string }).error || `Could not remove (${res.status})`;
+        const msg =
+          (data as { error?: string }).error ||
+          `Could not remove (${res.status})`;
         alert(msg);
         return;
       }
@@ -269,13 +336,19 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
   }
 
   const logEntries = useMemo(
-    () => [...entries].filter(hasAnyLog).sort((a, b) => b.date.localeCompare(a.date)),
-    [entries]
+    () =>
+      [...entries]
+        .filter(hasAnyLog)
+        .sort((a, b) => b.date.localeCompare(a.date)),
+    [entries],
   );
 
   const movementEntries = useMemo(
-    () => [...entries].filter(hasMovement).sort((a, b) => b.date.localeCompare(a.date)),
-    [entries]
+    () =>
+      [...entries]
+        .filter(hasMovement)
+        .sort((a, b) => b.date.localeCompare(a.date)),
+    [entries],
   );
 
   const weightByWeek = useMemo(() => {
@@ -294,7 +367,7 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
     // Use local-date strings (not UTC) so entries logged after midnight in UTC+
     // timezones are included — entries are stored with the local date on the client.
     const localDate = (d: Date) =>
-      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
     const from = localDate(start);
     const to = localDate(end);
 
@@ -305,9 +378,12 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
         const [entriesRes, weightRes] = await Promise.all([
           fetch(
             apiUrl(`/api/entries/history?from=${from}&to=${to}`),
-            getApiFetchOptions({ cache: 'no-store', headers: baseHeaders }),
+            getApiFetchOptions({ cache: "no-store", headers: baseHeaders }),
           ),
-          fetch(apiUrl('/api/weight/history'), getApiFetchOptions({ cache: 'no-store', headers: baseHeaders })),
+          fetch(
+            apiUrl("/api/weight/history"),
+            getApiFetchOptions({ cache: "no-store", headers: baseHeaders }),
+          ),
         ]);
         const data = await entriesRes.json().catch(() => []);
         const wh = await weightRes.json().catch(() => []);
@@ -317,8 +393,14 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
         const weights = Array.isArray(wh) ? wh : [];
         setWeightHistory(
           weights
-            .filter((x: { week_start?: string; weight_kg?: number }) => x.week_start && typeof x.weight_kg === 'number')
-            .map((x: { week_start: string; weight_kg: number }) => ({ week_start: x.week_start, weight_kg: x.weight_kg }))
+            .filter(
+              (x: { week_start?: string; weight_kg?: number }) =>
+                x.week_start && typeof x.weight_kg === "number",
+            )
+            .map((x: { week_start: string; weight_kg: number }) => ({
+              week_start: x.week_start,
+              weight_kg: x.weight_kg,
+            })),
         );
       } catch {
         if (!cancelled) {
@@ -329,66 +411,95 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
         if (!cancelled) setLoading(false);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [refreshTrigger]);
 
   useEffect(() => {
     let cancelled = false;
-    fetch(apiUrl('/api/leaderboard/projection'), getApiFetchOptions())
+    fetch(apiUrl("/api/leaderboard/projection"), getApiFetchOptions())
       .then((r) => r.json())
-      .then((data) => { if (!cancelled) setProjection(data); })
-      .catch(() => { if (!cancelled) setProjection(null); });
-    return () => { cancelled = true; };
+      .then((data) => {
+        if (!cancelled) setProjection(data);
+      })
+      .catch(() => {
+        if (!cancelled) setProjection(null);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [refreshTrigger]);
 
   useEffect(() => {
     let cancelled = false;
     const d = new Date();
-    const monthStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    fetch(apiUrl(`/api/leaderboard?view=monthly&month=${monthStr}`), getApiFetchOptions())
+    const monthStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    fetch(
+      apiUrl(`/api/leaderboard?view=monthly&month=${monthStr}`),
+      getApiFetchOptions(),
+    )
       .then((r) => r.json())
-      .then((data) => { if (!cancelled) setMonthlyBoard(data); })
-      .catch(() => { if (!cancelled) setMonthlyBoard(null); });
-    return () => { cancelled = true; };
+      .then((data) => {
+        if (!cancelled) setMonthlyBoard(data);
+      })
+      .catch(() => {
+        if (!cancelled) setMonthlyBoard(null);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [refreshTrigger]);
 
-  const { streakBonusByDate, streakHighlightDates, streakLengthByDate } = useMemo(() => {
-    const bonuses = new Map<string, number>();
-    const highlight = new Set<string>();
-    const lengths = new Map<string, number>();
-    if (!logEntries.length) return { streakBonusByDate: bonuses, streakHighlightDates: highlight, streakLengthByDate: lengths };
+  const { streakBonusByDate, streakHighlightDates, streakLengthByDate } =
+    useMemo(() => {
+      const bonuses = new Map<string, number>();
+      const highlight = new Set<string>();
+      const lengths = new Map<string, number>();
+      if (!logEntries.length)
+        return {
+          streakBonusByDate: bonuses,
+          streakHighlightDates: highlight,
+          streakLengthByDate: lengths,
+        };
 
-    const uniqueDates = Array.from(new Set(logEntries.map((e) => e.date))).sort();
-    let currentStreak = 0;
-    let prevDate: string | null = null;
-    let run: string[] = [];
+      const uniqueDates = Array.from(
+        new Set(logEntries.map((e) => e.date)),
+      ).sort();
+      let currentStreak = 0;
+      let prevDate: string | null = null;
+      let run: string[] = [];
 
-    const flushRun = () => {
-      if (run.length >= 7) {
-        for (const d of run) highlight.add(d);
+      const flushRun = () => {
+        if (run.length >= 7) {
+          for (const d of run) highlight.add(d);
+        }
+        run = [];
+      };
+
+      for (const date of uniqueDates) {
+        if (prevDate && addDays(prevDate, 1) === date) {
+          currentStreak += 1;
+        } else {
+          flushRun();
+          currentStreak = 1;
+        }
+        run.push(date);
+        const totalBefore = getLoggingStreakBonus(currentStreak - 1);
+        const totalNow = getLoggingStreakBonus(currentStreak);
+        const delta = totalNow - totalBefore;
+        if (delta > 0) bonuses.set(date, delta);
+        lengths.set(date, currentStreak);
+        prevDate = date;
       }
-      run = [];
-    };
+      flushRun();
 
-    for (const date of uniqueDates) {
-      if (prevDate && addDays(prevDate, 1) === date) {
-        currentStreak += 1;
-      } else {
-        flushRun();
-        currentStreak = 1;
-      }
-      run.push(date);
-      const totalBefore = getLoggingStreakBonus(currentStreak - 1);
-      const totalNow = getLoggingStreakBonus(currentStreak);
-      const delta = totalNow - totalBefore;
-      if (delta > 0) bonuses.set(date, delta);
-      lengths.set(date, currentStreak);
-      prevDate = date;
-    }
-    flushRun();
-
-    return { streakBonusByDate: bonuses, streakHighlightDates: highlight, streakLengthByDate: lengths };
-  }, [logEntries]);
+      return {
+        streakBonusByDate: bonuses,
+        streakHighlightDates: highlight,
+        streakLengthByDate: lengths,
+      };
+    }, [logEntries]);
 
   // Reset pagination when filters change
   useEffect(() => {
@@ -403,26 +514,30 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
 
   // Compute filter bounds from offset-based navigation
   const filterBounds = useMemo(() => {
-    if (historyRange === 'all') return null;
-    if (historyRange === 'week') return getWeekBounds(historyWeekOffset);
+    if (historyRange === "all") return null;
+    if (historyRange === "week") return getWeekBounds(historyWeekOffset);
     return getMonthBounds(historyMonthOffset);
   }, [historyRange, historyWeekOffset, historyMonthOffset]);
 
   const filteredLogEntries = useMemo(() => {
     return logEntries.filter((e) => {
-      if (filterBounds && (e.date < filterBounds.from || e.date > filterBounds.to)) return false;
+      if (
+        filterBounds &&
+        (e.date < filterBounds.from || e.date > filterBounds.to)
+      )
+        return false;
       switch (categoryFilter) {
-        case 'all':
+        case "all":
           return true;
-        case 'movement':
+        case "movement":
           return hasMovement(e);
-        case 'nutrition':
+        case "nutrition":
           return hasNutrition(e);
-        case 'hydration':
+        case "hydration":
           return hasHydration(e);
-        case 'sleep':
+        case "sleep":
           return hasSleepLog(e);
-        case 'weight':
+        case "weight":
           return false;
         default:
           return true;
@@ -432,7 +547,10 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
 
   // 3-tier week goal map (keyed by week-start date)
   const weekGoalMap = useMemo(() => {
-    const map = new Map<string, { status: WeekStatus; metric: string | null }>();
+    const map = new Map<
+      string,
+      { status: WeekStatus; metric: string | null }
+    >();
     const goalDays = profile.goal_workout_days_week ?? 0;
     const goalMins = profile.goal_workout_mins_week ?? 0;
 
@@ -446,23 +564,28 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
     byWeek.forEach((wEntries, weekStart) => {
       // Weekly workout goal: count days with an actual workout or cardio session logged.
       // workout goal is inherently weekly (not daily), so is_goal_crush_day is irrelevant here.
-      const workoutCount = wEntries.filter((e) => e.workout_done === true || e.cardio_done === true).length;
+      const workoutCount = wEntries.filter(
+        (e) => e.workout_done === true || e.cardio_done === true,
+      ).length;
 
       if (goalDays > 0) {
         const metric = `${workoutCount}/${goalDays} workout days`;
-        if (workoutCount >= goalDays) map.set(weekStart, { status: 'green', metric });
-        else if (workoutCount > 0) map.set(weekStart, { status: 'yellow', metric });
-        else map.set(weekStart, { status: 'red', metric });
+        if (workoutCount >= goalDays)
+          map.set(weekStart, { status: "green", metric });
+        else if (workoutCount > 0)
+          map.set(weekStart, { status: "yellow", metric });
+        else map.set(weekStart, { status: "red", metric });
       } else if (goalMins > 0) {
         const total = wEntries.reduce((s, e) => s + workoutMins(e), 0);
         const metric = `${total}/${goalMins} min`;
-        if (total >= goalMins) map.set(weekStart, { status: 'green', metric });
-        else if (total > 0) map.set(weekStart, { status: 'yellow', metric });
-        else map.set(weekStart, { status: 'red', metric });
+        if (total >= goalMins) map.set(weekStart, { status: "green", metric });
+        else if (total > 0) map.set(weekStart, { status: "yellow", metric });
+        else map.set(weekStart, { status: "red", metric });
       } else {
         // No weekly workout goal set — fall back to whether any goal-crush days occurred
         const goalHitCount = wEntries.filter((e) => isGoalCrushEntry(e)).length;
-        const status: WeekStatus = goalHitCount > 0 ? 'green' : workoutCount > 0 ? 'yellow' : 'red';
+        const status: WeekStatus =
+          goalHitCount > 0 ? "green" : workoutCount > 0 ? "yellow" : "red";
         map.set(weekStart, { status, metric: null });
       }
     });
@@ -479,10 +602,15 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
       byWeek.get(ws)!.push(e);
     });
 
-    const includeWeightOnlyWeeks = categoryFilter === 'all' || categoryFilter === 'weight';
+    const includeWeightOnlyWeeks =
+      categoryFilter === "all" || categoryFilter === "weight";
     if (includeWeightOnlyWeeks) {
       for (const w of weightHistory) {
-        if (filterBounds && (w.week_start < filterBounds.from || w.week_start > filterBounds.to)) continue;
+        if (
+          filterBounds &&
+          (w.week_start < filterBounds.from || w.week_start > filterBounds.to)
+        )
+          continue;
         if (!byWeek.has(w.week_start)) byWeek.set(w.week_start, []);
       }
     }
@@ -490,8 +618,8 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
     let pairs = Array.from(byWeek.entries());
     pairs = pairs.filter(([ws, ent]) => {
       const wkg = weightByWeek.get(ws);
-      if (categoryFilter === 'weight') return wkg != null;
-      if (categoryFilter === 'all') return ent.length > 0 || wkg != null;
+      if (categoryFilter === "weight") return wkg != null;
+      if (categoryFilter === "all") return ent.length > 0 || wkg != null;
       return ent.length > 0;
     });
 
@@ -501,29 +629,46 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
 
     const sorted = pairs.sort((a, b) => b[0].localeCompare(a[0]));
     const totalWeekCount = sorted.length;
-    const weekGroups = sorted.slice(0, visibleWeeks).map(([weekStart, entries]) => ({
-      weekStart,
-      entries,
-      weightKg: weightByWeek.get(weekStart) ?? null,
-    }));
+    const weekGroups = sorted
+      .slice(0, visibleWeeks)
+      .map(([weekStart, entries]) => ({
+        weekStart,
+        entries,
+        weightKg: weightByWeek.get(weekStart) ?? null,
+      }));
 
     return { weekGroups, totalWeekCount };
-  }, [filteredLogEntries, weightHistory, weightByWeek, filterBounds, categoryFilter, visibleWeeks]);
+  }, [
+    filteredLogEntries,
+    weightHistory,
+    weightByWeek,
+    filterBounds,
+    categoryFilter,
+    visibleWeeks,
+  ]);
 
   // Estimate daily points when hitting goals, based on past goal-crush day entries
   const goalDailyPts = useMemo(() => {
-    const goalDays = logEntries.filter((e) => e.is_goal_crush_day === true && (e.daily_points ?? 0) > 0);
+    const goalDays = logEntries.filter(
+      (e) => e.is_goal_crush_day === true && (e.daily_points ?? 0) > 0,
+    );
     if (goalDays.length === 0) {
       // Fall back: rough estimate based on which goals are set (new 85pt system)
       let est = 0;
-      if ((profile.goal_workout_days_week ?? 0) > 0 || (profile.goal_workout_mins_week ?? 0) > 0) est += 20;
-      if ((profile.goal_sleep_hours ?? profile.goal_sleep_hours_min ?? 0) > 0) est += 10;
+      if (
+        (profile.goal_workout_days_week ?? 0) > 0 ||
+        (profile.goal_workout_mins_week ?? 0) > 0
+      )
+        est += 20;
+      if ((profile.goal_sleep_hours ?? profile.goal_sleep_hours_min ?? 0) > 0)
+        est += 10;
       if ((profile.goal_water_liters ?? 0) > 0) est += 10;
       if ((profile.goal_protein_g_day ?? 0) > 0) est += 8;
       if ((profile.goal_calories_day ?? 0) > 0) est += 8;
       return est > 0 ? est : 55;
     }
-    const avg = goalDays.reduce((s, e) => s + (e.daily_points ?? 0), 0) / goalDays.length;
+    const avg =
+      goalDays.reduce((s, e) => s + (e.daily_points ?? 0), 0) / goalDays.length;
     return Math.round(avg);
   }, [logEntries, profile]);
 
@@ -532,55 +677,107 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
     const dailyPts = projection?.expected_daily_points ?? 0;
     const today = new Date();
     const dayOfMonth = today.getDate();
-    const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+    const daysInMonth = new Date(
+      today.getFullYear(),
+      today.getMonth() + 1,
+      0,
+    ).getDate();
     const remainingMonthDays = Math.max(0, daysInMonth - dayOfMonth);
 
     if (!monthlyBoard?.current_user_id || !monthlyBoard.rankings.length) {
-      return { dailyPts, remainingMonthDays, myRank: null, myPts: null, total: 0, above: null, ptsNeeded: null, projectedRank: null, goalProjectedTotal: null, goalProjectedRank: null };
+      return {
+        dailyPts,
+        remainingMonthDays,
+        myRank: null,
+        myPts: null,
+        total: 0,
+        above: null,
+        ptsNeeded: null,
+        projectedRank: null,
+        goalProjectedTotal: null,
+        goalProjectedRank: null,
+      };
     }
 
     const userId = monthlyBoard.current_user_id;
     const myEntry = monthlyBoard.rankings.find((r) => r.user.id === userId);
     if (!myEntry) {
-      return { dailyPts, remainingMonthDays, myRank: null, myPts: null, total: monthlyBoard.rankings.length, above: null, ptsNeeded: null, projectedRank: null, goalProjectedTotal: null, goalProjectedRank: null };
+      return {
+        dailyPts,
+        remainingMonthDays,
+        myRank: null,
+        myPts: null,
+        total: monthlyBoard.rankings.length,
+        above: null,
+        ptsNeeded: null,
+        projectedRank: null,
+        goalProjectedTotal: null,
+        goalProjectedRank: null,
+      };
     }
 
     const myRank = myEntry.rank;
     const myPts = myEntry.score.total_points;
     const total = monthlyBoard.rankings.length;
 
-    const above = myRank > 1 ? monthlyBoard.rankings.find((r) => r.rank === myRank - 1) : null;
-    const ptsNeeded = above ? Math.max(1, above.score.total_points - myPts + 1) : null;
+    const above =
+      myRank > 1
+        ? monthlyBoard.rankings.find((r) => r.rank === myRank - 1)
+        : null;
+    const ptsNeeded = above
+      ? Math.max(1, above.score.total_points - myPts + 1)
+      : null;
 
     const projectedTotal = myPts + Math.round(dailyPts * remainingMonthDays);
     const projectedRank =
-      monthlyBoard.rankings.filter((r) => r.user.id !== userId && r.score.total_points > projectedTotal)
-        .length + 1;
+      monthlyBoard.rankings.filter(
+        (r) => r.user.id !== userId && r.score.total_points > projectedTotal,
+      ).length + 1;
 
-    const goalProjectedTotal = myPts + Math.round(goalDailyPts * remainingMonthDays);
+    const goalProjectedTotal =
+      myPts + Math.round(goalDailyPts * remainingMonthDays);
     const goalProjectedRank =
-      monthlyBoard.rankings.filter((r) => r.user.id !== userId && r.score.total_points > goalProjectedTotal)
-        .length + 1;
+      monthlyBoard.rankings.filter(
+        (r) =>
+          r.user.id !== userId && r.score.total_points > goalProjectedTotal,
+      ).length + 1;
 
-    return { dailyPts, remainingMonthDays, myRank, myPts, total, above, ptsNeeded, projectedTotal, projectedRank, goalProjectedTotal, goalProjectedRank };
+    return {
+      dailyPts,
+      remainingMonthDays,
+      myRank,
+      myPts,
+      total,
+      above,
+      ptsNeeded,
+      projectedTotal,
+      projectedRank,
+      goalProjectedTotal,
+      goalProjectedRank,
+    };
   }, [monthlyBoard, projection, goalDailyPts]);
 
-  const hasWeeklyGoal = (profile.goal_workout_days_week ?? 0) > 0 || (profile.goal_workout_mins_week ?? 0) > 0;
+  const hasWeeklyGoal =
+    (profile.goal_workout_days_week ?? 0) > 0 ||
+    (profile.goal_workout_mins_week ?? 0) > 0;
 
-  const weekStatusMeta: Record<WeekStatus, { label: string; cls: string; icon: ReactNode }> = {
+  const weekStatusMeta: Record<
+    WeekStatus,
+    { label: string; cls: string; icon: ReactNode }
+  > = {
     green: {
-      label: hasWeeklyGoal ? 'Workout goal met' : 'Perfect week',
-      cls: 'bg-emerald-500/10 text-emerald-500',
+      label: hasWeeklyGoal ? "Workout goal met" : "Perfect week",
+      cls: "bg-emerald-500/10 text-emerald-500",
       icon: <Trophy className="w-3 h-3 text-accent-gold" />,
     },
     yellow: {
-      label: hasWeeklyGoal ? 'Workout goal partial' : 'Partial week',
-      cls: 'bg-amber-400/10 text-amber-400',
+      label: hasWeeklyGoal ? "Workout goal partial" : "Partial week",
+      cls: "bg-amber-400/10 text-amber-400",
       icon: <Activity className="w-3 h-3" />,
     },
     red: {
-      label: hasWeeklyGoal ? 'Workout goal missed' : 'Week missed',
-      cls: 'bg-rose-500/10 text-rose-500',
+      label: hasWeeklyGoal ? "Workout goal missed" : "Week missed",
+      cls: "bg-rose-500/10 text-rose-500",
       icon: <Frown className="w-3 h-3" />,
     },
   };
@@ -588,9 +785,14 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
   return (
     <div className="space-y-8 animate-fade-up">
       <div>
-        <h2 className="text-lg font-semibold text-text-primary mb-1">Health &amp; Activity Log</h2>
+        <h2 className="text-lg font-semibold text-text-primary mb-1">
+          Health &amp; Activity Log
+        </h2>
         <p className="text-sm text-text-secondary">
-          Calendar tracks <strong>Workout</strong>, <strong>Nutrition</strong>, <strong>Sleep</strong>, <strong>Hydration</strong> and more — all your daily goals in one view. Use <strong>New Entry</strong> in the header to log.
+          Calendar tracks <strong>Workout</strong>, <strong>Nutrition</strong>,{" "}
+          <strong>Sleep</strong>, <strong>Hydration</strong> and more — all your
+          daily goals in one view. Use <strong>New Entry</strong> in the header
+          to log.
         </p>
       </div>
 
@@ -602,23 +804,29 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
         (profile.goal_protein_g_day ?? 0) > 0 ||
         (profile.goal_calories_day ?? 0) > 0) && (
         <div className="space-y-1.5">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Your goals</p>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+            Your goals
+          </p>
           <div className="flex flex-wrap gap-2">
             {(profile.goal_workout_days_week ?? 0) > 0 && (
               <span className="rounded-full bg-[#FF6B35]/15 text-[#FF6B35] px-2.5 py-1 text-xs font-semibold">
                 🏋️ {profile.goal_workout_days_week} days/wk
               </span>
             )}
-            {(profile.goal_workout_mins_week ?? 0) > 0 && !(profile.goal_workout_days_week ?? 0) && (
-              <span className="rounded-full bg-[#FF6B35]/15 text-[#FF6B35] px-2.5 py-1 text-xs font-semibold">
-                🏋️ {profile.goal_workout_mins_week}min/wk
-              </span>
-            )}
-            {((profile.goal_sleep_hours ?? profile.goal_sleep_hours_min ?? 0) > 0) && (
+            {(profile.goal_workout_mins_week ?? 0) > 0 &&
+              !(profile.goal_workout_days_week ?? 0) && (
+                <span className="rounded-full bg-[#FF6B35]/15 text-[#FF6B35] px-2.5 py-1 text-xs font-semibold">
+                  🏋️ {profile.goal_workout_mins_week}min/wk
+                </span>
+              )}
+            {(profile.goal_sleep_hours ?? profile.goal_sleep_hours_min ?? 0) >
+              0 && (
               <span className="rounded-full bg-blue-500/15 text-blue-400 px-2.5 py-1 text-xs font-semibold">
-                😴 {profile.goal_sleep_hours != null
+                😴{" "}
+                {profile.goal_sleep_hours != null
                   ? `${profile.goal_sleep_hours}h`
-                  : `${profile.goal_sleep_hours_min}–${profile.goal_sleep_hours_max}h`} sleep
+                  : `${profile.goal_sleep_hours_min}–${profile.goal_sleep_hours_max}h`}{" "}
+                sleep
               </span>
             )}
             {(profile.goal_water_liters ?? 0) > 0 && (
@@ -651,20 +859,27 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
           Rank trajectory
         </h3>
 
-        {(projection || rankInsights.myRank != null) ? (
+        {projection || rankInsights.myRank != null ? (
           <div className="space-y-3 text-sm">
             {/* This month block */}
             <div className="rounded-lg bg-surface-2/50 md:bg-surface-2 p-3 space-y-2">
-              <div className="text-[10px] font-semibold text-text-muted uppercase tracking-wide mb-1">This month</div>
+              <div className="text-[10px] font-semibold text-text-muted uppercase tracking-wide mb-1">
+                This month
+              </div>
 
               {/* Monthly rank */}
               {rankInsights.myRank != null && (
                 <div className="flex items-center justify-between">
-                  <span className="text-text-secondary">Your rank this month</span>
+                  <span className="text-text-secondary">
+                    Your rank this month
+                  </span>
                   <span className="font-bold text-text-primary">
                     #{rankInsights.myRank}
                     {rankInsights.total > 1 && (
-                      <span className="text-text-muted font-normal text-xs"> of {rankInsights.total} players</span>
+                      <span className="text-text-muted font-normal text-xs">
+                        {" "}
+                        of {rankInsights.total} players
+                      </span>
                     )}
                   </span>
                 </div>
@@ -675,9 +890,19 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
                 <div className="flex items-start gap-2 text-xs text-text-secondary">
                   <Target className="w-3.5 h-3.5 text-text-muted shrink-0 mt-0.5" />
                   <span>
-                    You need <span className="font-bold text-text-primary">{rankInsights.ptsNeeded} more points</span> to overtake{' '}
-                    <span className="font-bold text-text-primary">{rankInsights.above.user.display_name}</span> and move up to{' '}
-                    <span className="font-bold text-text-primary">rank #{rankInsights.myRank! - 1}</span>.
+                    You need{" "}
+                    <span className="font-bold text-text-primary">
+                      {rankInsights.ptsNeeded} more points
+                    </span>{" "}
+                    to overtake{" "}
+                    <span className="font-bold text-text-primary">
+                      {rankInsights.above.user.display_name}
+                    </span>{" "}
+                    and move up to{" "}
+                    <span className="font-bold text-text-primary">
+                      rank #{rankInsights.myRank! - 1}
+                    </span>
+                    .
                   </span>
                 </div>
               )}
@@ -690,34 +915,59 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
               )}
 
               {/* Projected rank at current pace */}
-              {rankInsights.dailyPts > 0 && rankInsights.remainingMonthDays > 0 && rankInsights.projectedRank != null && (
-                <div className="flex items-start gap-2 text-xs text-text-secondary">
-                  <TrendingUp className="w-3.5 h-3.5 text-text-muted shrink-0 mt-0.5" />
-                  <span>
-                    If you keep scoring at your current pace (~<span className="font-bold text-text-primary">{rankInsights.dailyPts} pts/day</span> for the remaining{' '}
-                    <span className="font-bold text-text-primary">{rankInsights.remainingMonthDays} day{rankInsights.remainingMonthDays !== 1 ? 's' : ''}</span> of the month), you&apos;ll finish the month at{' '}
-                    <span className="font-bold text-text-primary">rank #{rankInsights.projectedRank}</span> with{' '}
-                    <span className="font-bold text-text-primary">{rankInsights.projectedTotal} pts</span>.
-                  </span>
-                </div>
-              )}
+              {rankInsights.dailyPts > 0 &&
+                rankInsights.remainingMonthDays > 0 &&
+                rankInsights.projectedRank != null && (
+                  <div className="flex items-start gap-2 text-xs text-text-secondary">
+                    <TrendingUp className="w-3.5 h-3.5 text-text-muted shrink-0 mt-0.5" />
+                    <span>
+                      If you keep scoring at your current pace (~
+                      <span className="font-bold text-text-primary">
+                        {rankInsights.dailyPts} pts/day
+                      </span>{" "}
+                      for the remaining{" "}
+                      <span className="font-bold text-text-primary">
+                        {rankInsights.remainingMonthDays} day
+                        {rankInsights.remainingMonthDays !== 1 ? "s" : ""}
+                      </span>{" "}
+                      of the month), you&apos;ll finish the month at{" "}
+                      <span className="font-bold text-text-primary">
+                        rank #{rankInsights.projectedRank}
+                      </span>{" "}
+                      with{" "}
+                      <span className="font-bold text-text-primary">
+                        {rankInsights.projectedTotal} pts
+                      </span>
+                      .
+                    </span>
+                  </div>
+                )}
 
               {/* Projected rank if goals are met */}
-              {rankInsights.remainingMonthDays > 0 && rankInsights.goalProjectedRank != null && (
-                <div className="flex items-start gap-2 text-xs text-text-secondary">
-                  <Trophy className="w-3.5 h-3.5 text-text-muted shrink-0 mt-0.5" />
-                  <span>
-                    If you hit your daily goals for every remaining day this month, you&apos;ll finish at{' '}
-                    <span className="font-bold text-text-primary">rank #{rankInsights.goalProjectedRank}</span> with about{' '}
-                    <span className="font-bold text-text-primary">{rankInsights.goalProjectedTotal} pts</span>.
-                  </span>
-                </div>
-              )}
+              {rankInsights.remainingMonthDays > 0 &&
+                rankInsights.goalProjectedRank != null && (
+                  <div className="flex items-start gap-2 text-xs text-text-secondary">
+                    <Trophy className="w-3.5 h-3.5 text-text-muted shrink-0 mt-0.5" />
+                    <span>
+                      If you hit your daily goals for every remaining day this
+                      month, you&apos;ll finish at{" "}
+                      <span className="font-bold text-text-primary">
+                        rank #{rankInsights.goalProjectedRank}
+                      </span>{" "}
+                      with about{" "}
+                      <span className="font-bold text-text-primary">
+                        {rankInsights.goalProjectedTotal} pts
+                      </span>
+                      .
+                    </span>
+                  </div>
+                )}
             </div>
-
           </div>
         ) : (
-          <p className="text-sm text-text-muted">Log some entries to see your rank trajectory.</p>
+          <p className="text-sm text-text-muted">
+            Log some entries to see your rank trajectory.
+          </p>
         )}
       </div>
 
@@ -733,20 +983,20 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
           <div className="flex flex-wrap items-center gap-3">
             {/* Range buttons */}
             <div className="inline-flex rounded-full border border-white/10 overflow-hidden text-xs">
-              {(['all', 'week', 'month'] as HistoryRange[]).map((r) => (
+              {(["all", "week", "month"] as HistoryRange[]).map((r) => (
                 <button
                   key={r}
                   type="button"
                   onClick={() => setHistoryRange(r)}
-                  className={`px-2.5 py-1 ${historyRange === r ? 'bg-primary-orange text-white' : 'bg-surface-0 text-text-muted'}`}
+                  className={`px-2.5 py-1 ${historyRange === r ? "bg-primary-orange text-white" : "bg-surface-0 text-text-muted"}`}
                 >
-                  {r === 'all' ? 'All' : r === 'week' ? 'Week' : 'Month'}
+                  {r === "all" ? "All" : r === "week" ? "Week" : "Month"}
                 </button>
               ))}
             </div>
 
             {/* Week navigation */}
-            {historyRange === 'week' && (
+            {historyRange === "week" && (
               <div className="flex items-center gap-1 text-xs">
                 <button
                   type="button"
@@ -762,7 +1012,9 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
                 {historyWeekOffset < 0 && (
                   <button
                     type="button"
-                    onClick={() => setHistoryWeekOffset((o) => Math.min(0, o + 1))}
+                    onClick={() =>
+                      setHistoryWeekOffset((o) => Math.min(0, o + 1))
+                    }
                     className="p-1 rounded hover:bg-surface-2 text-text-muted"
                     aria-label="Next week"
                   >
@@ -773,7 +1025,7 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
             )}
 
             {/* Month navigation */}
-            {historyRange === 'month' && (
+            {historyRange === "month" && (
               <div className="flex items-center gap-1 text-xs">
                 <button
                   type="button"
@@ -789,7 +1041,9 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
                 {historyMonthOffset < 0 && (
                   <button
                     type="button"
-                    onClick={() => setHistoryMonthOffset((o) => Math.min(0, o + 1))}
+                    onClick={() =>
+                      setHistoryMonthOffset((o) => Math.min(0, o + 1))
+                    }
                     className="p-1 rounded hover:bg-surface-2 text-text-muted"
                     aria-label="Next month"
                   >
@@ -809,8 +1063,8 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
                 onClick={() => setCategoryFilter(id)}
                 className={`px-2.5 py-1 rounded-full text-xs font-medium border ${
                   categoryFilter === id
-                    ? 'bg-surface-2 text-text-primary border-white/20'
-                    : 'bg-surface-0 text-text-muted border-white/10 hover:bg-surface-2/80'
+                    ? "bg-surface-2 text-text-primary border-white/20"
+                    : "bg-surface-0 text-text-muted border-white/10 hover:bg-surface-2/80"
                 }`}
               >
                 {label}
@@ -824,9 +1078,9 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
           <LogHistorySkeleton />
         ) : weekGroups.length === 0 ? (
           <p className="text-sm text-text-muted">
-            {categoryFilter === 'weight'
-              ? 'No weigh-ins in this period.'
-              : 'Nothing logged in this period for this filter.'}
+            {categoryFilter === "weight"
+              ? "No weigh-ins in this period."
+              : "Nothing logged in this period for this filter."}
           </p>
         ) : (
           <div className="space-y-6">
@@ -835,11 +1089,16 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
               const meta = wkEntry ? weekStatusMeta[wkEntry.status] : null;
               const wkMetric = wkEntry?.metric ?? null;
               const showWeightRow =
-                weightKg != null && (categoryFilter === 'all' || categoryFilter === 'weight');
-              const showM = categoryFilter === 'all' || categoryFilter === 'movement';
-              const showN = categoryFilter === 'all' || categoryFilter === 'nutrition';
-              const showH = categoryFilter === 'all' || categoryFilter === 'hydration';
-              const showSlp = categoryFilter === 'all' || categoryFilter === 'sleep';
+                weightKg != null &&
+                (categoryFilter === "all" || categoryFilter === "weight");
+              const showM =
+                categoryFilter === "all" || categoryFilter === "movement";
+              const showN =
+                categoryFilter === "all" || categoryFilter === "nutrition";
+              const showH =
+                categoryFilter === "all" || categoryFilter === "hydration";
+              const showSlp =
+                categoryFilter === "all" || categoryFilter === "sleep";
 
               return (
                 <div key={weekStart}>
@@ -848,7 +1107,7 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
                     <span className="text-xs font-semibold text-text-muted uppercase tracking-wide">
                       {formatWeekRange(weekStart)}
                     </span>
-                    {hasWeeklyGoal && meta && categoryFilter !== 'weight' && (
+                    {hasWeeklyGoal && meta && categoryFilter !== "weight" && (
                       <span
                         className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${meta.cls}`}
                       >
@@ -866,18 +1125,34 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
                       <li className="py-2 pl-3">
                         <div className="flex items-center justify-between gap-3 text-sm text-text-secondary">
                           <div className="flex items-center gap-2 min-w-0">
-                            <Scale className="w-3.5 h-3.5 shrink-0" style={{ color: COLOR_WEIGHT }} />
-                            <span className="font-medium text-text-primary">Weekly weigh-in</span>
-                            <span className="text-text-secondary">{weightKg} kg</span>
+                            <Scale
+                              className="w-3.5 h-3.5 shrink-0"
+                              style={{ color: COLOR_WEIGHT }}
+                            />
+                            <span className="font-medium text-text-primary">
+                              Weekly weigh-in
+                            </span>
+                            <span className="text-text-secondary">
+                              {weightKg} kg
+                            </span>
                           </div>
                         </div>
                       </li>
                     )}
 
                     {weekEntries.map((e) => {
-                      const hasStrength = e.workout_done === true && (e.workout_duration != null || (e.workout_types?.length ?? 0) > 0);
-                      const hasCardio = e.cardio_done === true && (e.cardio_duration != null || !!e.cardio_type);
-                      const hasSteps = !hasStrength && !hasCardio && e.steps != null && Number(e.steps) > 0;
+                      const hasStrength =
+                        e.workout_done === true &&
+                        (e.workout_duration != null ||
+                          (e.workout_types?.length ?? 0) > 0);
+                      const hasCardio =
+                        e.cardio_done === true &&
+                        (e.cardio_duration != null || !!e.cardio_type);
+                      const hasSteps =
+                        !hasStrength &&
+                        !hasCardio &&
+                        e.steps != null &&
+                        Number(e.steps) > 0;
                       const streakBonus = streakBonusByDate.get(e.date) ?? 0;
                       const isStreakDay = streakHighlightDates.has(e.date);
                       const goalHit = isGoalCrushEntry(e);
@@ -888,7 +1163,8 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
                       const showWater = hasHydration(e) && showH;
                       const showSleepRow = hasSleepLog(e) && showSlp;
                       const showProtein =
-                        showN && ((e.protein_qty ?? 0) > 0 || e.protein_meal === true);
+                        showN &&
+                        ((e.protein_qty ?? 0) > 0 || e.protein_meal === true);
                       const showCals = showN && (e.calories_kcal ?? 0) > 0;
                       const showJunk = showN && e.junk_food != null;
                       const showAlc = showN && e.alcohol != null;
@@ -911,15 +1187,28 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
                         return null;
                       }
 
-                      const strengthPts = showStrength ? getWorkoutPoints(e, profile.age_bracket) : 0;
-                      const cardioPts = showCardio ? getCardioPoints(e, profile.age_bracket) : 0;
-                      const stepsPts = showSteps ? getStepsPoints(e, profile.age_bracket) : 0;
+                      const strengthPts = showStrength
+                        ? getWorkoutPoints(e, profile.age_bracket)
+                        : 0;
+                      const cardioPts = showCardio
+                        ? getCardioPoints(e, profile.age_bracket)
+                        : 0;
+                      const stepsPts = showSteps
+                        ? getStepsPoints(e, profile.age_bracket)
+                        : 0;
+                      const sleepPts = showSleepRow ? getSleepPoints(e) : 0;
                       const movementPts = strengthPts + cardioPts + stepsPts;
                       const totalDayPoints =
-                        (e.daily_points ?? null) != null ? e.daily_points! : movementPts + streakBonus;
+                        (e.daily_points ?? null) != null
+                          ? e.daily_points!
+                          : movementPts + sleepPts + streakBonus;
 
                       const clearBtn = (activity: ClearActivityKey) =>
-                        isDateWithinAnchorRange(e.date, todayLocalForDelete, MAX_DELETE_DAYS_BACK) ? (
+                        isDateWithinAnchorRange(
+                          e.date,
+                          todayLocalForDelete,
+                          MAX_DELETE_DAYS_BACK,
+                        ) ? (
                           <button
                             type="button"
                             onPointerDown={(ev) => {
@@ -942,8 +1231,8 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
                           key={e.date}
                           className={`relative py-2 pl-3 ${
                             isStreakDay && showM
-                              ? 'before:absolute before:left-0 before:top-0 before:bottom-0 before:w-[3px] before:rounded-r before:bg-accent-gold/80'
-                              : ''
+                              ? "before:absolute before:left-0 before:top-0 before:bottom-0 before:w-[3px] before:rounded-r before:bg-accent-gold/80"
+                              : ""
                           }`}
                         >
                           <div className="flex items-center justify-between mb-1 gap-3">
@@ -951,16 +1240,20 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
                               {isStreakDay && showM && (
                                 <Flame className="w-3 h-3 text-accent-gold flex-shrink-0" />
                               )}
-                              {new Date((normalizeYmd(e.date) ?? e.date) + 'T12:00:00').toLocaleDateString(undefined, {
-                                weekday: 'short',
-                                month: 'short',
-                                day: 'numeric',
+                              {new Date(
+                                (normalizeYmd(e.date) ?? e.date) + "T12:00:00",
+                              ).toLocaleDateString(undefined, {
+                                weekday: "short",
+                                month: "short",
+                                day: "numeric",
                               })}
                             </span>
                             <div className="flex items-center gap-2">
                               <span
                                 className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-                                  goalHit ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500'
+                                  goalHit
+                                    ? "bg-emerald-500/10 text-emerald-500"
+                                    : "bg-rose-500/10 text-rose-500"
                                 }`}
                               >
                                 {goalHit ? (
@@ -968,7 +1261,9 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
                                 ) : (
                                   <Frown className="w-3 h-3" />
                                 )}
-                                <span>{goalHit ? 'Goal hit' : 'Goal missed'}</span>
+                                <span>
+                                  {goalHit ? "Goal hit" : "Goal missed"}
+                                </span>
                               </span>
                               <span className="text-[11px] font-semibold text-text-primary whitespace-nowrap">
                                 +{totalDayPoints} pts
@@ -979,11 +1274,20 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
                             {showStrength && (
                               <div className="flex items-center justify-between gap-2 text-sm text-text-secondary">
                                 <div className="flex items-center gap-2 min-w-0">
-                                  <Dumbbell className="w-3.5 h-3.5 shrink-0" style={{ color: COLOR_WORKOUT }} />
-                                  <span className="font-medium text-text-primary">Strength</span>
+                                  <Dumbbell
+                                    className="w-3.5 h-3.5 shrink-0"
+                                    style={{ color: COLOR_WORKOUT }}
+                                  />
+                                  <span className="font-medium text-text-primary">
+                                    Strength
+                                  </span>
                                   <span className="truncate">
-                                    {e.workout_duration ? `${e.workout_duration} min` : ''}
-                                    {e.workout_types?.length ? ` · ${e.workout_types.map(label).join(', ')}` : ''}
+                                    {e.workout_duration
+                                      ? `${e.workout_duration} min`
+                                      : ""}
+                                    {e.workout_types?.length
+                                      ? ` · ${e.workout_types.map(label).join(", ")}`
+                                      : ""}
                                   </span>
                                 </div>
                                 <div className="flex items-center gap-1.5 shrink-0">
@@ -992,18 +1296,27 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
                                       +{strengthPts} pts
                                     </span>
                                   )}
-                                  {clearBtn('strength')}
+                                  {clearBtn("strength")}
                                 </div>
                               </div>
                             )}
                             {showCardio && (
                               <div className="flex items-center justify-between gap-2 text-sm text-text-secondary">
                                 <div className="flex items-center gap-2 min-w-0">
-                                  <Activity className="w-3.5 h-3.5 shrink-0" style={{ color: COLOR_CARDIO }} />
-                                  <span className="font-medium text-text-primary">Cardio</span>
+                                  <Activity
+                                    className="w-3.5 h-3.5 shrink-0"
+                                    style={{ color: COLOR_CARDIO }}
+                                  />
+                                  <span className="font-medium text-text-primary">
+                                    Cardio
+                                  </span>
                                   <span className="truncate">
-                                    {e.cardio_duration ? `${e.cardio_duration} min` : ''}
-                                    {e.cardio_type ? ` · ${label(e.cardio_type)}` : ''}
+                                    {e.cardio_duration
+                                      ? `${e.cardio_duration} min`
+                                      : ""}
+                                    {e.cardio_type
+                                      ? ` · ${label(e.cardio_type)}`
+                                      : ""}
                                   </span>
                                 </div>
                                 <div className="flex items-center gap-1.5 shrink-0">
@@ -1012,15 +1325,20 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
                                       +{cardioPts} pts
                                     </span>
                                   )}
-                                  {clearBtn('cardio')}
+                                  {clearBtn("cardio")}
                                 </div>
                               </div>
                             )}
                             {showSteps && (
                               <div className="flex items-center justify-between gap-2 text-sm text-text-secondary">
                                 <div className="flex items-center gap-2 min-w-0">
-                                  <Activity className="w-3.5 h-3.5 shrink-0" style={{ color: COLOR_STEPS }} />
-                                  <span className="font-medium text-text-primary">Steps</span>
+                                  <Activity
+                                    className="w-3.5 h-3.5 shrink-0"
+                                    style={{ color: COLOR_STEPS }}
+                                  />
+                                  <span className="font-medium text-text-primary">
+                                    Steps
+                                  </span>
                                   <span>{e.steps?.toLocaleString()} steps</span>
                                 </div>
                                 <div className="flex items-center gap-1.5 shrink-0">
@@ -1029,78 +1347,124 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
                                       +{stepsPts} pts
                                     </span>
                                   )}
-                                  {clearBtn('steps')}
+                                  {clearBtn("steps")}
                                 </div>
                               </div>
                             )}
                             {showWater && (
                               <div className="flex items-center justify-between gap-2 text-sm text-text-secondary">
                                 <div className="flex items-center gap-2 min-w-0">
-                                  <Droplets className="w-3.5 h-3.5 shrink-0" style={{ color: COLOR_WATER }} />
-                                  <span className="font-medium text-text-primary">Water</span>
+                                  <Droplets
+                                    className="w-3.5 h-3.5 shrink-0"
+                                    style={{ color: COLOR_WATER }}
+                                  />
+                                  <span className="font-medium text-text-primary">
+                                    Water
+                                  </span>
                                   <span>{e.water_liters} L</span>
                                 </div>
-                                <div className="flex items-center gap-1.5 shrink-0">{clearBtn('water')}</div>
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  {clearBtn("water")}
+                                </div>
                               </div>
                             )}
                             {showSleepRow && (
                               <div className="flex items-center justify-between gap-2 text-sm text-text-secondary">
                                 <div className="flex items-center gap-2 min-w-0">
-                                  <Moon className="w-3.5 h-3.5 shrink-0" style={{ color: COLOR_SLEEP }} />
-                                  <span className="font-medium text-text-primary">Sleep</span>
+                                  <Moon
+                                    className="w-3.5 h-3.5 shrink-0"
+                                    style={{ color: COLOR_SLEEP }}
+                                  />
+                                  <span className="font-medium text-text-primary">
+                                    Sleep
+                                  </span>
                                   <span>{e.sleep_hours} h</span>
                                 </div>
-                                <div className="flex items-center gap-1.5 shrink-0">{clearBtn('sleep')}</div>
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  {sleepPts > 0 && (
+                                    <span className="text-xs font-semibold text-text-primary whitespace-nowrap">
+                                      +{sleepPts} pts
+                                    </span>
+                                  )}
+                                  {clearBtn("sleep")}
+                                </div>
                               </div>
                             )}
                             {showProtein && (
                               <div className="flex items-center justify-between gap-2 text-sm text-text-secondary">
                                 <div className="flex items-center gap-2 min-w-0">
-                                  <UtensilsCrossed className="w-3.5 h-3.5 shrink-0" style={{ color: COLOR_NUTRITION }} />
-                                  <span className="font-medium text-text-primary">Protein</span>
+                                  <UtensilsCrossed
+                                    className="w-3.5 h-3.5 shrink-0"
+                                    style={{ color: COLOR_NUTRITION }}
+                                  />
+                                  <span className="font-medium text-text-primary">
+                                    Protein
+                                  </span>
                                   <span>
-                                    {(e.protein_qty ?? 0) > 0 ? `${e.protein_qty} g` : 'Logged'}
-                                    {e.protein_meal === true ? ' · meal' : ''}
+                                    {(e.protein_qty ?? 0) > 0
+                                      ? `${e.protein_qty} g`
+                                      : "Logged"}
+                                    {e.protein_meal === true ? " · meal" : ""}
                                   </span>
                                 </div>
-                                <div className="flex items-center gap-1.5 shrink-0">{clearBtn('protein')}</div>
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  {clearBtn("protein")}
+                                </div>
                               </div>
                             )}
                             {showCals && (
                               <div className="flex items-center justify-between gap-2 text-sm text-text-secondary">
                                 <div className="flex items-center gap-2 min-w-0">
                                   <Gauge className="w-3.5 h-3.5 shrink-0 text-rose-400" />
-                                  <span className="font-medium text-text-primary">Calories</span>
-                                  <span>{e.calories_kcal?.toLocaleString()} kcal</span>
+                                  <span className="font-medium text-text-primary">
+                                    Calories
+                                  </span>
+                                  <span>
+                                    {e.calories_kcal?.toLocaleString()} kcal
+                                  </span>
                                 </div>
-                                <div className="flex items-center gap-1.5 shrink-0">{clearBtn('calories')}</div>
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  {clearBtn("calories")}
+                                </div>
                               </div>
                             )}
                             {showJunk && (
                               <div className="flex items-center justify-between gap-2 text-sm text-text-secondary">
                                 <div className="flex items-center gap-2 min-w-0">
-                                  <span className="font-medium text-text-primary">Junk food</span>
-                                  <span>{e.junk_food ? 'Yes' : 'No'}</span>
+                                  <span className="font-medium text-text-primary">
+                                    Junk food
+                                  </span>
+                                  <span>{e.junk_food ? "Yes" : "No"}</span>
                                 </div>
-                                <div className="flex items-center gap-1.5 shrink-0">{clearBtn('junk')}</div>
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  {clearBtn("junk")}
+                                </div>
                               </div>
                             )}
                             {showAlc && (
                               <div className="flex items-center justify-between gap-2 text-sm text-text-secondary">
                                 <div className="flex items-center gap-2 min-w-0">
-                                  <span className="font-medium text-text-primary">Alcohol</span>
+                                  <span className="font-medium text-text-primary">
+                                    Alcohol
+                                  </span>
                                   <span>{label(e.alcohol!)}</span>
                                 </div>
-                                <div className="flex items-center gap-1.5 shrink-0">{clearBtn('alcohol')}</div>
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  {clearBtn("alcohol")}
+                                </div>
                               </div>
                             )}
                             {showHome && (
                               <div className="flex items-center justify-between gap-2 text-sm text-text-secondary">
                                 <div className="flex items-center gap-2 min-w-0">
-                                  <span className="font-medium text-text-primary">Home-cooked meals</span>
+                                  <span className="font-medium text-text-primary">
+                                    Home-cooked meals
+                                  </span>
                                   <span>{e.home_cooked_meals}</span>
                                 </div>
-                                <div className="flex items-center gap-1.5 shrink-0">{clearBtn('home_cooked')}</div>
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  {clearBtn("home_cooked")}
+                                </div>
                               </div>
                             )}
                             {showStreak && (
@@ -1108,10 +1472,10 @@ export function LogEntryTab({ profile, onSuccess, refreshTrigger = 0 }: { profil
                                 <div className="flex items-center gap-2">
                                   <Flame className="w-3.5 h-3.5 text-accent-gold" />
                                   <span className="font-medium text-text-primary">
-                                    Logging streak{' '}
+                                    Logging streak{" "}
                                     {streakLengthByDate.get(e.date)
                                       ? `(${streakLengthByDate.get(e.date)} days)`
-                                      : ''}
+                                      : ""}
                                   </span>
                                 </div>
                                 <span className="text-xs font-semibold text-text-primary whitespace-nowrap">
